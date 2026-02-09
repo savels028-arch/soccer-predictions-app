@@ -12,6 +12,7 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from config.settings import LEAGUES, DATA_SETTINGS
 from src.api.free_football_client import FreeFootballClient
+from src.api.csv_football_client import FootballDataCSVClient
 
 logger = logging.getLogger(__name__)
 
@@ -20,10 +21,11 @@ class DataAggregator:
     """Aggregates data from multiple football APIs and generates demo data as fallback.
     
     Priority order:
-      1. Free APIs (ESPN, TheSportsDB, OpenLigaDB) - NO key needed
-      2. Football-Data.org (if API key provided)
-      3. API-Football (if API key provided)
-      4. Demo data (fallback)
+      1. Football-Data.co.uk CSV (historical with odds+stats) - NO key needed
+      2. Free APIs (ESPN, TheSportsDB, OpenLigaDB) - NO key needed  
+      3. Football-Data.org (if API key provided)
+      4. API-Football (if API key provided)
+      5. Demo data (fallback)
     """
 
     def __init__(self, db_manager, fd_client=None, af_client=None):
@@ -31,6 +33,7 @@ class DataAggregator:
         self.fd_client = fd_client
         self.af_client = af_client
         self.free_client = FreeFootballClient()
+        self.csv_client = FootballDataCSVClient()
 
     # ──────────────────────────────────────────
     # MAIN DATA FETCH
@@ -177,15 +180,36 @@ class DataAggregator:
 
         matches = []
 
-        # 1. Free APIs first (TheSportsDB season data)
+        # 1. Football-Data.co.uk CSV (best source: full stats + odds!)
         try:
-            free_hist = self.free_client.get_historical_matches(league_code, season)
-            matches.extend(free_hist)
-            logger.info(f"Got {len(free_hist)} historical from free APIs for {league_code}/{season}")
+            csv_matches = self.csv_client.get_season_matches(league_code, season)
+            if csv_matches:
+                matches.extend(csv_matches)
+                logger.info(f"Got {len(csv_matches)} historical from CSV for {league_code}/{season}")
         except Exception as e:
-            logger.error(f"Free API historical error: {e}")
+            logger.error(f"CSV historical error: {e}")
 
-        # 2. Football-Data.org
+        # 2. Also try previous seasons for more training data
+        if len(matches) < 100:
+            for prev_season in [season - 1, season - 2]:
+                try:
+                    prev = self.csv_client.get_season_matches(league_code, prev_season)
+                    if prev:
+                        matches.extend(prev)
+                        logger.info(f"Added {len(prev)} matches from {league_code}/{prev_season}")
+                except Exception:
+                    pass
+
+        # 3. Free APIs (TheSportsDB)
+        if not matches:
+            try:
+                free_hist = self.free_client.get_historical_matches(league_code, season)
+                matches.extend(free_hist)
+                logger.info(f"Got {len(free_hist)} historical from free APIs for {league_code}/{season}")
+            except Exception as e:
+                logger.error(f"Free API historical error: {e}")
+
+        # 4. Football-Data.org (if key provided)
         if not matches and self.fd_client:
             try:
                 fd_hist = self.fd_client.get_league_matches(league_code, season)
@@ -193,11 +217,11 @@ class DataAggregator:
             except Exception as e:
                 logger.error(f"Error fetching historical: {e}")
 
-        # 3. Check database
+        # 5. Check database
         if not matches:
             matches = self.db.get_finished_matches(league_code, season)
 
-        # 4. Generate demo data if nothing else works
+        # 6. Generate demo data if nothing else works
         if not matches:
             matches = self._generate_demo_historical(league_code, season)
 
