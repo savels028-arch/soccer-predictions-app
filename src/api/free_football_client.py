@@ -490,6 +490,92 @@ class FreeFootballClient:
             return None
 
     # ═══════════════════════════════════════════════════
+    #  SOURCE 4: Football-Data.org FREE /matches endpoint
+    #  No API key needed for the /matches endpoint!
+    # ═══════════════════════════════════════════════════
+    FOOTBALLDATA_BASE = "https://api.football-data.org/v4"
+
+    def _footballdata_get_matches(self, date_from: str = None, date_to: str = None) -> List[Dict]:
+        """Get matches from Football-Data.org (no key needed for /matches)."""
+        params = {}
+        if date_from:
+            params["dateFrom"] = date_from
+        if date_to:
+            params["dateTo"] = date_to
+
+        data = self._safe_get(f"{self.FOOTBALLDATA_BASE}/matches", params)
+        matches = []
+        if data and "matches" in data:
+            for m in data["matches"]:
+                match = self._normalize_footballdata_match(m)
+                if match:
+                    matches.append(match)
+        return matches
+
+    def _normalize_footballdata_match(self, m: Dict) -> Optional[Dict]:
+        """Normalize Football-Data.org match to standard format."""
+        try:
+            comp = m.get("competition", {})
+            score = m.get("score", {})
+            full_time = score.get("fullTime", {})
+            half_time = score.get("halfTime", {})
+            home_team = m.get("homeTeam", {})
+            away_team = m.get("awayTeam", {})
+            odds = m.get("odds", {})
+
+            # Detect league code
+            comp_code = comp.get("code", "")
+            league_code = comp_code if comp_code in LEAGUES else self._detect_league_code(comp.get("name", ""))
+
+            # Parse season
+            season = None
+            season_data = m.get("season", {})
+            if season_data:
+                start = season_data.get("startDate", "")
+                if start:
+                    try:
+                        season = int(start[:4])
+                    except (ValueError, IndexError):
+                        pass
+
+            # Parse referee
+            referee = ""
+            referees = m.get("referees", [])
+            if referees:
+                referee = referees[0].get("name", "")
+
+            return {
+                "api_id": m.get("id"),
+                "league_code": league_code,
+                "league_name": comp.get("name", ""),
+                "season": season,
+                "matchday": m.get("matchday"),
+                "match_date": m.get("utcDate", ""),
+                "status": m.get("status", "SCHEDULED"),
+                "home_team_name": home_team.get("name", "Unknown"),
+                "away_team_name": away_team.get("name", "Unknown"),
+                "home_team_crest": home_team.get("crest", ""),
+                "away_team_crest": away_team.get("crest", ""),
+                "home_score": full_time.get("home"),
+                "away_score": full_time.get("away"),
+                "home_ht_score": half_time.get("home"),
+                "away_ht_score": half_time.get("away"),
+                "venue": m.get("venue", ""),
+                "referee": referee,
+                "home_odds": odds.get("homeWin"),
+                "draw_odds": odds.get("draw"),
+                "away_odds": odds.get("awayWin"),
+                "extra_data": {
+                    "source": "football-data.org",
+                    "home_team_id": home_team.get("id"),
+                    "away_team_id": away_team.get("id"),
+                },
+            }
+        except Exception as e:
+            logger.debug(f"Error normalizing football-data match: {e}")
+            return None
+
+    # ═══════════════════════════════════════════════════
     #  UNIFIED PUBLIC METHODS
     # ═══════════════════════════════════════════════════
     def _detect_league_code(self, league_name: str) -> str:
@@ -528,7 +614,20 @@ class FreeFootballClient:
         except Exception as e:
             logger.error(f"ESPN failed: {e}")
 
-        # 2. Try TheSportsDB
+        # 2. Football-Data.org free /matches endpoint (includes odds!)
+        logger.info("Fetching from Football-Data.org (free)...")
+        try:
+            fd_free = self._footballdata_get_matches()
+            for m in fd_free:
+                key = f"{m['home_team_name']}_{m['away_team_name']}"
+                if key not in seen_keys:
+                    seen_keys.add(key)
+                    all_matches.append(m)
+            logger.info(f"Football-Data.org free: {len(fd_free)} matches")
+        except Exception as e:
+            logger.error(f"Football-Data.org free failed: {e}")
+
+        # 3. Try TheSportsDB
         logger.info("Fetching from TheSportsDB...")
         try:
             sdb = self._sportsdb_get_todays_matches()
@@ -562,6 +661,19 @@ class FreeFootballClient:
                             all_matches.append(m)
                 except Exception:
                     pass
+
+        # Football-Data.org upcoming
+        try:
+            for d in range(1, min(days + 1, 8)):
+                target = (date.today() + timedelta(days=d)).strftime("%Y-%m-%d")
+                fd_matches = self._footballdata_get_matches(date_from=target, date_to=target)
+                for m in fd_matches:
+                    key = f"{m['home_team_name']}_{m['away_team_name']}_{m.get('match_date', '')[:10]}"
+                    if key not in seen_keys:
+                        seen_keys.add(key)
+                        all_matches.append(m)
+        except Exception:
+            pass
 
         # TheSportsDB upcoming
         for league_code in list(self.SPORTSDB_LEAGUES.keys())[:5]:
