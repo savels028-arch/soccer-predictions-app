@@ -858,26 +858,32 @@ class SoccerPredictionsApp:
         api_card = CardFrame(container)
         api_card.pack(fill="x", padx=20, pady=10)
 
-        tk.Label(api_card, text="🔑 API Nøgler", font=("Segoe UI", 13, "bold"),
-                bg=C["bg_card"], fg=C["accent"]).pack(anchor="w", pady=(0, 10))
+        tk.Label(api_card, text="🔑 API Nøgler (VALGFRIT - appen virker uden!)",
+                font=("Segoe UI", 13, "bold"),
+                bg=C["bg_card"], fg=C["accent"]).pack(anchor="w", pady=(0, 5))
 
-        tk.Label(api_card, text="Football-Data.org API Key:",
+        tk.Label(api_card, text="✅ Appen bruger gratis API'er (ESPN, TheSportsDB, OpenLigaDB) uden registrering.\n"
+                 "      API nøgler herunder er helt valgfrie og kun for ekstra data.",
+                font=("Segoe UI", 10), bg=C["bg_card"],
+                fg=C["accent_green"]).pack(anchor="w", pady=(0, 10))
+
+        tk.Label(api_card, text="Football-Data.org API Key (valgfrit):",
                 font=("Segoe UI", 10), bg=C["bg_card"],
                 fg=C["text_secondary"]).pack(anchor="w")
         self.fd_api_entry = tk.Entry(api_card, font=("Consolas", 10), width=50,
                                       bg=C["bg_dark"], fg=C["text_primary"],
                                       insertbackground=C["text_primary"])
         self.fd_api_entry.pack(fill="x", pady=(2, 10))
-        MutedLabel(api_card, text="Gratis på: https://www.football-data.org/client/register (opret konto)").pack(anchor="w")
+        MutedLabel(api_card, text="Valgfrit: https://www.football-data.org/client/register").pack(anchor="w")
 
-        tk.Label(api_card, text="API-Football Key:",
+        tk.Label(api_card, text="API-Football Key (valgfrit):",
                 font=("Segoe UI", 10), bg=C["bg_card"],
                 fg=C["text_secondary"]).pack(anchor="w", pady=(10, 0))
         self.af_api_entry = tk.Entry(api_card, font=("Consolas", 10), width=50,
                                       bg=C["bg_dark"], fg=C["text_primary"],
                                       insertbackground=C["text_primary"])
         self.af_api_entry.pack(fill="x", pady=(2, 10))
-        MutedLabel(api_card, text="Gratis på: https://dashboard.api-football.com/register").pack(anchor="w")
+        MutedLabel(api_card, text="Valgfrit: https://dashboard.api-football.com/register").pack(anchor="w")
 
         SecondaryButton(api_card, text="💾 Gem API nøgler",
                        command=self._save_api_keys).pack(pady=10)

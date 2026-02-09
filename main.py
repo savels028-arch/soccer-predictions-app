@@ -46,21 +46,21 @@ def create_app_components():
     logger.info("Initializing database...")
     db = DatabaseManager()
 
-    # API Clients
+    # API Clients (optional - app works WITHOUT any keys)
     fd_client = None
     af_client = None
 
     if FOOTBALL_DATA_API_KEY:
         fd_client = FootballDataClient(FOOTBALL_DATA_API_KEY)
-        logger.info("Football-Data.org client initialized")
+        logger.info("Football-Data.org client initialized (optional)")
     else:
-        logger.info("No Football-Data.org API key set - using demo data")
+        logger.info("No Football-Data.org API key - using free APIs (ESPN, TheSportsDB)")
 
     if API_FOOTBALL_KEY:
         af_client = ApiFootballClient(API_FOOTBALL_KEY)
-        logger.info("API-Football client initialized")
+        logger.info("API-Football client initialized (optional)")
     else:
-        logger.info("No API-Football key set - using demo data")
+        logger.info("No API-Football key - using free APIs (no registration needed!)")
 
     # Data Aggregator
     data_aggregator = DataAggregator(db, fd_client, af_client)

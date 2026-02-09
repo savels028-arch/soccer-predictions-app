@@ -1,6 +1,7 @@
 """
 Data Aggregator - Combines data from multiple sources
 Handles caching, deduplication, and normalization.
+Uses FREE APIs (no registration needed) as primary sources.
 """
 import logging
 from datetime import date, datetime, timedelta
@@ -10,17 +11,26 @@ import random
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from config.settings import LEAGUES, DATA_SETTINGS
+from src.api.free_football_client import FreeFootballClient
 
 logger = logging.getLogger(__name__)
 
 
 class DataAggregator:
-    """Aggregates data from multiple football APIs and generates demo data as fallback."""
+    """Aggregates data from multiple football APIs and generates demo data as fallback.
+    
+    Priority order:
+      1. Free APIs (ESPN, TheSportsDB, OpenLigaDB) - NO key needed
+      2. Football-Data.org (if API key provided)
+      3. API-Football (if API key provided)
+      4. Demo data (fallback)
+    """
 
     def __init__(self, db_manager, fd_client=None, af_client=None):
         self.db = db_manager
         self.fd_client = fd_client
         self.af_client = af_client
+        self.free_client = FreeFootballClient()
 
     # ──────────────────────────────────────────
     # MAIN DATA FETCH
@@ -37,8 +47,16 @@ class DataAggregator:
 
         matches = []
 
-        # Try Football-Data.org first
-        if self.fd_client:
+        # 1. Try FREE APIs first (no key needed!)
+        try:
+            free_matches = self.free_client.get_todays_matches()
+            matches.extend(free_matches)
+            logger.info(f"Got {len(free_matches)} matches from free APIs (ESPN/TheSportsDB)")
+        except Exception as e:
+            logger.error(f"Free API error: {e}")
+
+        # 2. Try Football-Data.org (if key provided)
+        if self.fd_client and not matches:
             try:
                 league_codes = list(LEAGUES.keys())
                 fd_matches = self.fd_client.get_todays_matches(league_codes[:5])
@@ -47,7 +65,7 @@ class DataAggregator:
             except Exception as e:
                 logger.error(f"Football-Data.org error: {e}")
 
-        # Try API-Football
+        # 3. Try API-Football (if key provided)
         if self.af_client and not matches:
             try:
                 af_matches = self.af_client.get_todays_fixtures()
@@ -56,7 +74,7 @@ class DataAggregator:
             except Exception as e:
                 logger.error(f"API-Football error: {e}")
 
-        # Fallback to demo data if no API keys configured
+        # 4. Fallback to demo data
         if not matches:
             logger.info("No API data available, generating demo matches")
             matches = self._generate_demo_matches()
@@ -79,15 +97,25 @@ class DataAggregator:
             return cached
 
         matches = []
-        date_from = date.today().isoformat()
-        date_to = (date.today() + timedelta(days=days)).isoformat()
 
-        if self.fd_client:
+        # 1. Free APIs first
+        try:
+            free_matches = self.free_client.get_upcoming_matches(days)
+            matches.extend(free_matches)
+            logger.info(f"Got {len(free_matches)} upcoming from free APIs")
+        except Exception as e:
+            logger.error(f"Free API upcoming error: {e}")
+
+        # 2. Football-Data.org fallback
+        if not matches and self.fd_client:
+            date_from = date.today().isoformat()
+            date_to = (date.today() + timedelta(days=days)).isoformat()
             try:
                 matches = self.fd_client.get_matches_by_date_range(date_from, date_to)
             except Exception as e:
                 logger.error(f"Error fetching upcoming: {e}")
 
+        # 3. Demo fallback
         if not matches:
             matches = self._generate_demo_upcoming(days)
 
@@ -104,20 +132,30 @@ class DataAggregator:
         """Fetch currently live matches."""
         matches = []
 
-        if self.fd_client:
+        # 1. Free APIs first (ESPN + TheSportsDB live)
+        try:
+            free_live = self.free_client.get_live_matches()
+            matches.extend(free_live)
+            logger.info(f"Got {len(free_live)} live matches from free APIs")
+        except Exception as e:
+            logger.error(f"Free API live error: {e}")
+
+        # 2. Football-Data.org
+        if not matches and self.fd_client:
             try:
                 matches = self.fd_client.get_live_matches()
             except Exception as e:
                 logger.error(f"Error fetching live: {e}")
 
+        # 3. API-Football
         if not matches and self.af_client:
             try:
                 matches = self.af_client.get_live_fixtures()
             except Exception as e:
                 logger.error(f"Error fetching live: {e}")
 
+        # 4. Database / demo fallback
         if not matches:
-            # Check database for recent IN_PLAY matches
             matches = self.db.get_live_matches()
             if not matches:
                 matches = self._generate_demo_live()
@@ -138,15 +176,28 @@ class DataAggregator:
             return cached
 
         matches = []
-        if self.fd_client:
+
+        # 1. Free APIs first (TheSportsDB season data)
+        try:
+            free_hist = self.free_client.get_historical_matches(league_code, season)
+            matches.extend(free_hist)
+            logger.info(f"Got {len(free_hist)} historical from free APIs for {league_code}/{season}")
+        except Exception as e:
+            logger.error(f"Free API historical error: {e}")
+
+        # 2. Football-Data.org
+        if not matches and self.fd_client:
             try:
-                matches = self.fd_client.get_league_matches(league_code, season)
+                fd_hist = self.fd_client.get_league_matches(league_code, season)
+                matches.extend(fd_hist)
             except Exception as e:
                 logger.error(f"Error fetching historical: {e}")
 
+        # 3. Check database
         if not matches:
             matches = self.db.get_finished_matches(league_code, season)
 
+        # 4. Generate demo data if nothing else works
         if not matches:
             matches = self._generate_demo_historical(league_code, season)
 

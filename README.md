@@ -51,22 +51,24 @@ source venv/bin/activate  # macOS/Linux
 pip install -r requirements.txt
 ```
 
-### 3. (Valgfrit) Sæt API nøgler
-
-```bash
-# Football-Data.org (gratis: https://www.football-data.org/client/register)
-export FOOTBALL_DATA_API_KEY="din-nøgle-her"
-
-# API-Football (gratis: https://dashboard.api-football.com/register)
-export API_FOOTBALL_KEY="din-nøgle-her"
-```
-
-> **Note:** Appen fungerer uden API nøgler med realistiske demo-data!
-
-### 4. Start appen
+### 3. Start appen
 
 ```bash
 python main.py
+```
+
+> **✅ Ingen API nøgler nødvendige!** Appen bruger gratis, åbne API'er (ESPN, TheSportsDB, OpenLigaDB) som ikke kræver registrering. Du får ægte kampdata fra alle top-ligaer ud af boksen!
+
+### (Valgfrit) Ekstra API nøgler
+
+Hvis du vil have endnu mere data, kan du tilføje valgfrie API nøgler:
+
+```bash
+# Football-Data.org (valgfrit)
+export FOOTBALL_DATA_API_KEY="din-nøgle-her"
+
+# API-Football (valgfrit)
+export API_FOOTBALL_KEY="din-nøgle-her"
 ```
 
 ## 💻 Brug
