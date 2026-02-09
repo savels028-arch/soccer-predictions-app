@@ -868,7 +868,7 @@ class SoccerPredictionsApp:
                                       bg=C["bg_dark"], fg=C["text_primary"],
                                       insertbackground=C["text_primary"])
         self.fd_api_entry.pack(fill="x", pady=(2, 10))
-        MutedLabel(api_card, text="Gratis på: https://www.football-data.org/client/register").pack(anchor="w")
+        MutedLabel(api_card, text="Gratis på: https://www.football-data.org/client/register (opret konto)").pack(anchor="w")
 
         tk.Label(api_card, text="API-Football Key:",
                 font=("Segoe UI", 10), bg=C["bg_card"],
@@ -877,7 +877,7 @@ class SoccerPredictionsApp:
                                       bg=C["bg_dark"], fg=C["text_primary"],
                                       insertbackground=C["text_primary"])
         self.af_api_entry.pack(fill="x", pady=(2, 10))
-        MutedLabel(api_card, text="Gratis på: https://www.api-football.com/").pack(anchor="w")
+        MutedLabel(api_card, text="Gratis på: https://dashboard.api-football.com/register").pack(anchor="w")
 
         SecondaryButton(api_card, text="💾 Gem API nøgler",
                        command=self._save_api_keys).pack(pady=10)

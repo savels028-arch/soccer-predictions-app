@@ -2,6 +2,7 @@
 API-Football Client (api-sports.io)
 Free tier: 100 requests/day
 Docs: https://www.api-football.com/documentation-v3
+Register: https://dashboard.api-football.com/register
 """
 import requests
 import logging

@@ -57,7 +57,7 @@ pip install -r requirements.txt
 # Football-Data.org (gratis: https://www.football-data.org/client/register)
 export FOOTBALL_DATA_API_KEY="din-nøgle-her"
 
-# API-Football (gratis: https://www.api-football.com/)
+# API-Football (gratis: https://dashboard.api-football.com/register)
 export API_FOOTBALL_KEY="din-nøgle-her"
 ```
 
