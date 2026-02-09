@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from config.settings import LEAGUES, DATA_SETTINGS
 from src.api.free_football_client import FreeFootballClient
 from src.api.csv_football_client import FootballDataCSVClient
+from src.api.prediction_scraper import PredictionScraper
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ class DataAggregator:
         self.af_client = af_client
         self.free_client = FreeFootballClient()
         self.csv_client = FootballDataCSVClient()
+        self.prediction_scraper = PredictionScraper()
 
     # ──────────────────────────────────────────
     # MAIN DATA FETCH
@@ -170,6 +172,59 @@ class DataAggregator:
                 pass
 
         return matches
+
+    # ──────────────────────────────────────────
+    # AI PREDICTIONS FROM EXTERNAL SITES
+    # ──────────────────────────────────────────
+    def fetch_ai_predictions(self, force_refresh: bool = False) -> List[Dict]:
+        """
+        Fetch consensus AI predictions from multiple external prediction websites.
+        Returns list of consensus prediction dicts sorted by number of sources.
+        """
+        cache_key = f"ai_predictions_{date.today().isoformat()}"
+
+        if not force_refresh:
+            cached = self.db.get_cache(cache_key)
+            if cached:
+                logger.info("Returning cached AI predictions")
+                return cached
+
+        try:
+            consensus = self.prediction_scraper.get_consensus_predictions()
+            logger.info(f"Got {len(consensus)} consensus AI predictions")
+        except Exception as e:
+            logger.error(f"AI prediction scraper error: {e}")
+            consensus = []
+
+        if consensus:
+            self.db.set_cache(cache_key, consensus,
+                              DATA_SETTINGS["cache_ttl_minutes"])
+        return consensus
+
+    def fetch_ai_predictions_raw(self, force_refresh: bool = False) -> List[Dict]:
+        """
+        Fetch raw (non-consensus) AI predictions from all sources.
+        Returns flat list of individual predictions from each site.
+        """
+        cache_key = f"ai_predictions_raw_{date.today().isoformat()}"
+
+        if not force_refresh:
+            cached = self.db.get_cache(cache_key)
+            if cached:
+                logger.info("Returning cached raw AI predictions")
+                return cached
+
+        try:
+            preds = self.prediction_scraper.get_all_predictions()
+            logger.info(f"Got {len(preds)} raw AI predictions")
+        except Exception as e:
+            logger.error(f"AI prediction scraper error: {e}")
+            preds = []
+
+        if preds:
+            self.db.set_cache(cache_key, preds,
+                              DATA_SETTINGS["cache_ttl_minutes"])
+        return preds
 
     def fetch_historical_matches(self, league_code: str, season: int = 2025) -> List[Dict]:
         """Fetch historical match data for ML training."""

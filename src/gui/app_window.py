@@ -78,6 +78,7 @@ class SoccerPredictionsApp:
         self.pages = {}
         self._build_dashboard_page()
         self._build_predictions_page()
+        self._build_ai_sites_page()
         self._build_comparison_page()
         self._build_live_page()
         self._build_suggestions_page()
@@ -110,6 +111,7 @@ class SoccerPredictionsApp:
         nav_items = [
             ("dashboard",   "📊  Dashboard",     "Oversigt & dagens kampe"),
             ("predictions", "🎯  AI Predictions", "ML model predictions"),
+            ("ai_sites",    "🌐  AI Sites",       "Predictions fra 4 AI-sider"),
             ("comparison",  "📈  Sammenligning",  "Sammenlign modeller"),
             ("live",        "🔴  Live Scores",    "Live kampresultater"),
             ("suggestions", "💡  Forslag",        "Betting forslag"),
@@ -701,6 +703,170 @@ class SoccerPredictionsApp:
                 tk.Label(score_row, text=f"⏱️ {elapsed}'",
                         font=("Segoe UI", 11, "bold"), bg=C["bg_card"],
                         fg=C["accent_yellow"]).pack(side="right")
+
+    # ═══════════════════════════════════════════
+    # AI SITES PAGE  (external AI predictions)
+    # ═══════════════════════════════════════════
+    def _build_ai_sites_page(self):
+        page = StyledFrame(self.content_frame)
+        self.pages["ai_sites"] = page
+
+        scroll = ScrollableFrame(page)
+        scroll.pack(fill="both", expand=True)
+        container = scroll.scrollable_frame
+
+        # Header
+        header = StyledFrame(container)
+        header.pack(fill="x", padx=20, pady=(20, 10))
+        HeaderLabel(header, text="🌐 AI Sites – Consensus Predictions").pack(side="left")
+
+        # Controls
+        ctrl = StyledFrame(container)
+        ctrl.pack(fill="x", padx=20, pady=(0, 10))
+        AccentButton(ctrl, text="🔄  Hent fra AI-sider",
+                     command=self._fetch_ai_site_predictions).pack(side="left")
+        self.ai_sites_status = StyledLabel(ctrl, text="", font=("Segoe UI", 10))
+        self.ai_sites_status.pack(side="left", padx=20)
+
+        # Source info
+        info_card = CardFrame(container)
+        info_card.pack(fill="x", padx=20, pady=(0, 10))
+        tk.Label(info_card, text="Kilder: AI-Goalie.com  ·  BetsWithBots.com  ·  SoccerTips.ai  ·  FootballPredictions.ai",
+                 font=("Segoe UI", 9), bg=C["bg_card"], fg=C["text_muted"]).pack(padx=10, pady=5)
+
+        # Predictions container
+        self.ai_sites_container = StyledFrame(container)
+        self.ai_sites_container.pack(fill="both", expand=True, padx=20, pady=10)
+
+        StyledLabel(self.ai_sites_container,
+                    text="Klik '🔄 Hent fra AI-sider' for at hente predictions",
+                    font=("Segoe UI", 12)).pack(pady=40)
+
+    def _fetch_ai_site_predictions(self):
+        """Fetch AI predictions in background thread."""
+        self.ai_sites_status.configure(text="⏳ Henter fra 4 AI-sider… (ca. 30 sek)")
+        self.status_bar.set_status("Henter AI predictions…")
+
+        def _worker():
+            try:
+                consensus = self.data.fetch_ai_predictions(force_refresh=True)
+                self.root.after(0, lambda: self._populate_ai_sites(consensus))
+            except Exception as e:
+                self.root.after(0, lambda: self.ai_sites_status.configure(
+                    text=f"❌ Fejl: {e}"))
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _populate_ai_sites(self, consensus: List[Dict]):
+        """Populate AI Sites page with consensus data."""
+        for w in self.ai_sites_container.winfo_children():
+            w.destroy()
+
+        if not consensus:
+            StyledLabel(self.ai_sites_container,
+                        text="Ingen AI predictions fundet i dag",
+                        font=("Segoe UI", 12)).pack(pady=40)
+            self.ai_sites_status.configure(text="⚠️ Ingen data")
+            return
+
+        # Stats
+        multi = [c for c in consensus if c["num_sources"] >= 2]
+        self.ai_sites_status.configure(
+            text=f"✅ {len(consensus)} kampe  ·  {len(multi)} med 2+ kilder"
+        )
+        self.status_bar.set_status(f"AI Sites: {len(consensus)} predictions hentet")
+
+        # Sort: multi-source first, then by confidence
+        consensus.sort(key=lambda x: (x["num_sources"],
+                                       x.get("consensus_confidence") or 0),
+                        reverse=True)
+
+        for match in consensus[:80]:  # limit display
+            card = CardFrame(self.ai_sites_container)
+            card.pack(fill="x", pady=4)
+
+            home = match.get("home_team", "?")
+            away = match.get("away_team", "?")
+            n_src = match.get("num_sources", 0)
+            league = match.get("league", "")
+            ko = match.get("kickoff_time", "")
+
+            # Top row: match title + source count
+            top = StyledFrame(card, bg=C["bg_card"])
+            top.pack(fill="x")
+
+            title_text = f"⚽ {home}  vs  {away}"
+            tk.Label(top, text=title_text, font=("Segoe UI", 11, "bold"),
+                     bg=C["bg_card"], fg=C["text_primary"]).pack(side="left")
+
+            meta_parts = []
+            if league:
+                meta_parts.append(league)
+            if ko:
+                meta_parts.append(f"🕐 {ko}")
+            meta_parts.append(f"📡 {n_src} kilder")
+            meta_text = "  ·  ".join(meta_parts)
+            tk.Label(top, text=meta_text, font=("Segoe UI", 9),
+                     bg=C["bg_card"], fg=C["text_muted"]).pack(side="right")
+
+            # Probability row
+            prob_row = StyledFrame(card, bg=C["bg_card"])
+            prob_row.pack(fill="x", pady=(4, 0))
+
+            h_pct = match.get("avg_home_win_pct")
+            d_pct = match.get("avg_draw_pct")
+            a_pct = match.get("avg_away_win_pct")
+
+            if h_pct is not None:
+                tk.Label(prob_row, text=f"1: {h_pct:.0f}%", font=("Segoe UI", 10, "bold"),
+                         bg=C["bg_card"], fg=C["win_color"]).pack(side="left", padx=(0, 10))
+            if d_pct is not None:
+                tk.Label(prob_row, text=f"X: {d_pct:.0f}%", font=("Segoe UI", 10, "bold"),
+                         bg=C["bg_card"], fg=C["draw_color"]).pack(side="left", padx=(0, 10))
+            if a_pct is not None:
+                tk.Label(prob_row, text=f"2: {a_pct:.0f}%", font=("Segoe UI", 10, "bold"),
+                         bg=C["bg_card"], fg=C["lose_color"]).pack(side="left", padx=(0, 10))
+
+            # Probability bar (if we have valid data)
+            if h_pct and a_pct:
+                dp = d_pct if d_pct else 0
+                total = h_pct + dp + a_pct
+                if total > 0:
+                    ProbabilityBar(prob_row,
+                                   home_prob=h_pct / total,
+                                   draw_prob=dp / total,
+                                   away_prob=a_pct / total,
+                                   width=220).pack(side="left", padx=15)
+
+            # Winner prediction
+            winner = match.get("consensus_winner")
+            conf = match.get("consensus_confidence")
+            if winner:
+                w_map = {"1": f"🏠 {home}", "2": f"✈️ {away}", "X": "🤝 Uafgjort"}
+                w_color = {"1": C["win_color"], "2": C["lose_color"], "X": C["draw_color"]}
+                w_text = f"Prediction: {w_map.get(winner, winner)}"
+                if conf:
+                    w_text += f"  ({conf:.0f}%)"
+                tk.Label(prob_row, text=w_text, font=("Segoe UI", 10, "bold"),
+                         bg=C["bg_card"], fg=w_color.get(winner, C["accent"])).pack(side="right")
+
+            # Extra row: BTTS / O-U / sources
+            extras = []
+            btts = match.get("btts_consensus")
+            ou = match.get("over_under_consensus")
+            if btts:
+                extras.append(f"BTTS: {btts}")
+            if ou:
+                extras.append(f"O/U 2.5: {ou}")
+            sources = match.get("sources", [])
+            if sources:
+                extras.append(f"Fra: {', '.join(sources)}")
+
+            if extras:
+                extra_text = "  ·  ".join(extras)
+                tk.Label(card, text=extra_text, font=("Segoe UI", 8),
+                         bg=C["bg_card"], fg=C["text_muted"],
+                         anchor="w").pack(fill="x", pady=(3, 0))
 
     # ═══════════════════════════════════════════
     # SUGGESTIONS PAGE
