@@ -5,6 +5,7 @@ Handles all data storage: matches, teams, predictions, history.
 import sqlite3
 import json
 import logging
+import threading
 from datetime import datetime, date
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple
@@ -22,6 +23,7 @@ class DatabaseManager:
     def __init__(self, db_path: Optional[Path] = None):
         self.db_path = db_path or DATABASE_PATH
         self.conn: Optional[sqlite3.Connection] = None
+        self._lock = threading.Lock()
         self._connect()
         self._create_tables()
 
@@ -31,6 +33,7 @@ class DatabaseManager:
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA foreign_keys=ON")
+        self.conn.execute("PRAGMA busy_timeout=5000")
         logger.info(f"Database connected: {self.db_path}")
 
     def _create_tables(self):
@@ -190,6 +193,29 @@ class DatabaseManager:
             )
         """)
 
+        # ── Prediction Results (persistent hit/miss history) ──
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS prediction_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                match_date TEXT NOT NULL,
+                home_team TEXT NOT NULL,
+                away_team TEXT NOT NULL,
+                league_code TEXT,
+                home_score INTEGER,
+                away_score INTEGER,
+                actual_outcome TEXT NOT NULL,
+                predicted_outcome TEXT NOT NULL,
+                confidence REAL DEFAULT 0,
+                source TEXT DEFAULT 'AI Sites',
+                is_correct INTEGER NOT NULL,
+                home_win_prob REAL,
+                draw_prob REAL,
+                away_win_prob REAL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(match_date, home_team, away_team, source)
+            )
+        """)
+
         # ── Indexes ──
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_matches_date ON matches(match_date)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_matches_league ON matches(league_code)")
@@ -197,6 +223,7 @@ class DatabaseManager:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_predictions_match ON predictions(match_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_team_stats_team ON team_stats(team_name)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_h2h_teams ON head_to_head(home_team, away_team)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_pred_results_date ON prediction_results(match_date)")
 
         self.conn.commit()
         logger.info("Database tables created/verified")
@@ -495,30 +522,48 @@ class DatabaseManager:
     # CACHE OPERATIONS
     # ──────────────────────────────────────────────
     def set_cache(self, key: str, data: Any, ttl_minutes: int = 15):
-        cursor = self.conn.cursor()
-        cursor.execute("""
-            INSERT INTO api_cache (cache_key, data, expires_at)
-            VALUES (?, ?, datetime('now', ? || ' minutes'))
-            ON CONFLICT(cache_key) DO UPDATE SET
-                data=excluded.data, expires_at=excluded.expires_at
-        """, (key, json.dumps(data), str(ttl_minutes)))
-        self.conn.commit()
+        with self._lock:
+            try:
+                cursor = self.conn.cursor()
+                cursor.execute("""
+                    INSERT INTO api_cache (cache_key, data, expires_at)
+                    VALUES (?, ?, datetime('now', ? || ' minutes'))
+                    ON CONFLICT(cache_key) DO UPDATE SET
+                        data=excluded.data, expires_at=excluded.expires_at
+                """, (key, json.dumps(data), str(ttl_minutes)))
+                self.conn.commit()
+            except Exception as e:
+                logger.warning(f"set_cache failed for {key}: {e}")
+                try:
+                    self.conn.execute("DROP TABLE IF EXISTS api_cache")
+                    self.conn.execute("""CREATE TABLE IF NOT EXISTS api_cache (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        cache_key TEXT UNIQUE NOT NULL,
+                        data TEXT NOT NULL,
+                        expires_at TIMESTAMP NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+                    self.conn.commit()
+                    logger.info("api_cache table rebuilt after error")
+                except Exception:
+                    pass
 
     def get_cache(self, key: str) -> Optional[Any]:
-        cursor = self.conn.cursor()
-        cursor.execute("""
-            SELECT data FROM api_cache
-            WHERE cache_key = ? AND expires_at > datetime('now')
-        """, (key,))
-        row = cursor.fetchone()
-        if row:
-            return json.loads(row["data"])
-        return None
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                SELECT data FROM api_cache
+                WHERE cache_key = ? AND expires_at > datetime('now')
+            """, (key,))
+            row = cursor.fetchone()
+            if row:
+                return json.loads(row["data"])
+            return None
 
     def clear_expired_cache(self):
-        cursor = self.conn.cursor()
-        cursor.execute("DELETE FROM api_cache WHERE expires_at <= datetime('now')")
-        self.conn.commit()
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute("DELETE FROM api_cache WHERE expires_at <= datetime('now')")
+            self.conn.commit()
 
     # ──────────────────────────────────────────────
     # STATISTICS COMPUTATION
@@ -590,6 +635,237 @@ class DatabaseManager:
             stats["avg_goals_conceded"] = round(stats["goals_conceded"] / stats["matches_played"], 2)
 
         return stats
+
+    # ──────────────────────────────────────────────
+    # HISTORICAL PREDICTION ACCURACY
+    # ──────────────────────────────────────────────
+    def get_prediction_accuracy(self) -> Dict:
+        """
+        Beregn historisk nøjagtighed: Match predictions mod faktiske resultater.
+        Checker predictions-tabellen for rækker med actual_outcome + is_correct,
+        og falder tilbage til at krydstjekke mod matches-tabellen.
+        """
+        cursor = self.conn.cursor()
+
+        # ── 1. Tjek predictions med actual_outcome sat direkte ──
+        cursor.execute("""
+            SELECT model_name,
+                   COUNT(*) as total,
+                   SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END) as correct
+            FROM predictions
+            WHERE actual_outcome IS NOT NULL
+            GROUP BY model_name
+        """)
+        from_predictions = [dict(r) for r in cursor.fetchall()]
+
+        # ── 2. Krydstjek: match prediction.predicted_outcome mod matches.status='FINISHED' ──
+        cursor.execute("""
+            SELECT p.model_name,
+                   COUNT(*) as total,
+                   SUM(CASE
+                       WHEN (p.predicted_outcome = 'HOME_WIN' AND m.home_score > m.away_score)
+                         OR (p.predicted_outcome = 'DRAW' AND m.home_score = m.away_score)
+                         OR (p.predicted_outcome = 'AWAY_WIN' AND m.home_score < m.away_score)
+                       THEN 1 ELSE 0
+                   END) as correct,
+                   AVG(p.confidence) as avg_confidence
+            FROM predictions p
+            JOIN matches m ON p.match_id = m.id
+            WHERE m.status = 'FINISHED'
+              AND m.home_score IS NOT NULL
+              AND m.away_score IS NOT NULL
+              AND p.predicted_outcome IS NOT NULL
+            GROUP BY p.model_name
+        """)
+        from_crosscheck = [dict(r) for r in cursor.fetchall()]
+
+        # ── 3. Samlet per liga ──
+        cursor.execute("""
+            SELECT p.league_code,
+                   COUNT(*) as total,
+                   SUM(CASE
+                       WHEN (p.predicted_outcome = 'HOME_WIN' AND m.home_score > m.away_score)
+                         OR (p.predicted_outcome = 'DRAW' AND m.home_score = m.away_score)
+                         OR (p.predicted_outcome = 'AWAY_WIN' AND m.home_score < m.away_score)
+                       THEN 1 ELSE 0
+                   END) as correct
+            FROM predictions p
+            JOIN matches m ON p.match_id = m.id
+            WHERE m.status = 'FINISHED'
+              AND m.home_score IS NOT NULL
+              AND m.away_score IS NOT NULL
+              AND p.predicted_outcome IS NOT NULL
+            GROUP BY p.league_code
+        """)
+        per_league = [dict(r) for r in cursor.fetchall()]
+
+        # ── 4. Seneste verificerede predictions ──
+        cursor.execute("""
+            SELECT p.home_team, p.away_team, p.league_code,
+                   p.model_name, p.predicted_outcome, p.confidence,
+                   p.match_date,
+                   m.home_score, m.away_score,
+                   CASE
+                       WHEN (p.predicted_outcome = 'HOME_WIN' AND m.home_score > m.away_score)
+                         OR (p.predicted_outcome = 'DRAW' AND m.home_score = m.away_score)
+                         OR (p.predicted_outcome = 'AWAY_WIN' AND m.home_score < m.away_score)
+                       THEN 1 ELSE 0
+                   END as is_correct
+            FROM predictions p
+            JOIN matches m ON p.match_id = m.id
+            WHERE m.status = 'FINISHED'
+              AND m.home_score IS NOT NULL
+              AND p.predicted_outcome IS NOT NULL
+            ORDER BY p.match_date DESC
+            LIMIT 100
+        """)
+        recent = [dict(r) for r in cursor.fetchall()]
+
+        # ── 5. Over/Under & BTTS accuracy (fra extra_data) ──
+        cursor.execute("""
+            SELECT COUNT(*) as total_predictions,
+                   SUM(CASE WHEN p.is_correct = 1 THEN 1 ELSE 0 END) as direct_correct
+            FROM predictions p
+        """)
+        totals = dict(cursor.fetchone())
+
+        # ── 6. Model performance tabel ──
+        model_perf = self.get_all_model_performance()
+
+        return {
+            "by_model_crosscheck": from_crosscheck,
+            "by_model_direct": from_predictions,
+            "by_league": per_league,
+            "recent_predictions": recent,
+            "totals": totals,
+            "model_performance": model_perf,
+        }
+
+    def get_predictions_by_teams(self, home_team: str, away_team: str) -> List[Dict]:
+        """Look up predictions for a match by team names (fuzzy match)."""
+        with self._lock:
+            cursor = self.conn.cursor()
+            # Exact match first
+            cursor.execute("""
+                SELECT model_name, predicted_outcome, confidence,
+                       home_win_prob, draw_prob, away_win_prob,
+                       value_rating, suggestion
+                FROM predictions
+                WHERE LOWER(home_team) = LOWER(?) AND LOWER(away_team) = LOWER(?)
+                ORDER BY confidence DESC
+            """, (home_team, away_team))
+            rows = [dict(r) for r in cursor.fetchall()]
+            if rows:
+                return rows
+            # Partial match fallback
+            cursor.execute("""
+                SELECT model_name, predicted_outcome, confidence,
+                       home_win_prob, draw_prob, away_win_prob,
+                       value_rating, suggestion
+                FROM predictions
+                WHERE (LOWER(home_team) LIKE ? OR LOWER(?) LIKE '%' || LOWER(home_team) || '%')
+                  AND (LOWER(away_team) LIKE ? OR LOWER(?) LIKE '%' || LOWER(away_team) || '%')
+                ORDER BY confidence DESC
+            """, (
+                f"%{home_team.split()[0].lower()}%", home_team.lower(),
+                f"%{away_team.split()[0].lower()}%", away_team.lower(),
+            ))
+            return [dict(r) for r in cursor.fetchall()]
+
+    # ──────────────────────────────────────────────
+    # PREDICTION RESULTS (persistent hit/miss)
+    # ──────────────────────────────────────────────
+    def save_prediction_result(self, result: Dict) -> bool:
+        """Save a prediction result (hit/miss). Returns True if newly inserted."""
+        with self._lock:
+            cursor = self.conn.cursor()
+            try:
+                cursor.execute("""
+                    INSERT INTO prediction_results (
+                        match_date, home_team, away_team, league_code,
+                        home_score, away_score, actual_outcome,
+                        predicted_outcome, confidence, source, is_correct,
+                        home_win_prob, draw_prob, away_win_prob
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    result["match_date"], result["home_team"], result["away_team"],
+                    result.get("league_code", ""),
+                    result.get("home_score"), result.get("away_score"),
+                    result["actual_outcome"], result["predicted_outcome"],
+                    result.get("confidence", 0), result.get("source", "AI Sites"),
+                    1 if result["is_correct"] else 0,
+                    result.get("home_win_prob"), result.get("draw_prob"),
+                    result.get("away_win_prob"),
+                ))
+                self.conn.commit()
+                return True
+            except sqlite3.IntegrityError:
+                return False
+            except Exception as e:
+                logger.error(f"save_prediction_result error: {e}")
+                return False
+
+    def get_all_prediction_results(self) -> List[Dict]:
+        """Get all stored prediction results, newest first."""
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                SELECT * FROM prediction_results
+                ORDER BY match_date DESC, created_at DESC
+            """)
+            return [dict(r) for r in cursor.fetchall()]
+
+    def get_prediction_results_summary(self) -> Dict:
+        """Get summary stats of prediction results."""
+        with self._lock:
+            cursor = self.conn.cursor()
+            # Overall
+            cursor.execute("""
+                SELECT COUNT(*) as total,
+                       SUM(is_correct) as correct,
+                       AVG(confidence) as avg_confidence
+                FROM prediction_results
+            """)
+            overall = dict(cursor.fetchone())
+            # By source
+            cursor.execute("""
+                SELECT source,
+                       COUNT(*) as total,
+                       SUM(is_correct) as correct,
+                       AVG(confidence) as avg_confidence
+                FROM prediction_results
+                GROUP BY source
+            """)
+            by_source = [dict(r) for r in cursor.fetchall()]
+            # By league
+            cursor.execute("""
+                SELECT league_code,
+                       COUNT(*) as total,
+                       SUM(is_correct) as correct,
+                       AVG(confidence) as avg_confidence
+                FROM prediction_results
+                WHERE league_code IS NOT NULL AND league_code != ''
+                GROUP BY league_code
+                ORDER BY total DESC
+            """)
+            by_league = [dict(r) for r in cursor.fetchall()]
+            # By date
+            cursor.execute("""
+                SELECT DATE(match_date) as day,
+                       COUNT(*) as total,
+                       SUM(is_correct) as correct
+                FROM prediction_results
+                GROUP BY DATE(match_date)
+                ORDER BY day DESC
+                LIMIT 30
+            """)
+            by_date = [dict(r) for r in cursor.fetchall()]
+            return {
+                "overall": overall,
+                "by_source": by_source,
+                "by_league": by_league,
+                "by_date": by_date,
+            }
 
     # ──────────────────────────────────────────────
     # UTILITIES

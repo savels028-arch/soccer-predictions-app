@@ -12,6 +12,7 @@ import sys
 import os
 import logging
 import argparse
+import threading
 from pathlib import Path
 
 # Ensure project root is in path
@@ -72,11 +73,24 @@ def create_app_components():
 
 
 def run_gui(db, data_aggregator, prediction_engine):
-    """Launch the GUI application."""
-    from src.gui.app_window import SoccerPredictionsApp
+    """Launch the web-based UI in the browser."""
+    import webbrowser
+    from src.web.app import create_flask_app
 
-    app = SoccerPredictionsApp(db, data_aggregator, prediction_engine)
-    app.run()
+    flask_app = create_flask_app(db, data_aggregator, prediction_engine)
+    port = 5055
+    url = f"http://127.0.0.1:{port}"
+
+    logger = logging.getLogger(__name__)
+    logger.info(f"Starting web UI at {url}")
+    print(f"\n🌐 Soccer Predictions Pro — Web UI")
+    print(f"   Åbn i browser: {url}")
+    print(f"   Tryk Ctrl+C for at stoppe\n")
+
+    # Open browser after a short delay
+    threading.Timer(1.5, lambda: webbrowser.open(url)).start()
+
+    flask_app.run(host="127.0.0.1", port=port, debug=False, use_reloader=False)
 
 
 def run_cli(db, data_aggregator, prediction_engine, train: bool = False):

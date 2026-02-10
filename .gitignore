@@ -37,3 +37,4 @@ logs/*.log
 dist/
 build/
 *.egg-info/
+deploy/

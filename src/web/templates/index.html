@@ -1,0 +1,1783 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>⚽ Soccer Predictions Pro</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg-dark: #0f0f1a;
+            --bg-medium: #1a1a2e;
+            --bg-light: #16213e;
+            --bg-card: #1e2a4a;
+            --accent: #00d4ff;
+            --accent-green: #00e676;
+            --accent-red: #ff5252;
+            --accent-yellow: #ffd740;
+            --accent-orange: #ff9100;
+            --text-primary: #ffffff;
+            --text-secondary: #a0b4d0;
+            --text-muted: #5a6a8a;
+            --border: #2a3a5a;
+            --win-color: #00e676;
+            --draw-color: #ffd740;
+            --lose-color: #ff5252;
+        }
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* ── Sidebar ── */
+        .sidebar {
+            width: 220px;
+            min-width: 220px;
+            background: var(--bg-medium);
+            display: flex;
+            flex-direction: column;
+            padding: 0;
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            z-index: 100;
+            overflow-y: auto;
+        }
+        .sidebar-logo {
+            text-align: center;
+            padding: 20px 0 25px;
+        }
+        .sidebar-logo .icon { font-size: 32px; }
+        .sidebar-logo .title { font-size: 14px; font-weight: bold; color: var(--text-primary); }
+        .sidebar-logo .subtitle { font-size: 10px; color: var(--accent); }
+        .sidebar-sep {
+            height: 1px;
+            background: var(--border);
+            margin: 0 15px 8px;
+        }
+        .nav-btn {
+            display: block;
+            width: calc(100% - 16px);
+            margin: 2px 8px;
+            padding: 10px 14px;
+            background: transparent;
+            color: var(--text-secondary);
+            border: none;
+            border-radius: 8px;
+            text-align: left;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .nav-btn:hover { background: var(--bg-light); color: var(--text-primary); }
+        .nav-btn.active {
+            background: linear-gradient(135deg, var(--accent), #0066cc);
+            color: white;
+            font-weight: 600;
+        }
+        .sidebar-info {
+            margin-top: auto;
+            padding: 12px 15px;
+            border-top: 1px solid var(--border);
+        }
+        .sidebar-info p {
+            font-size: 10px;
+            color: var(--text-muted);
+            margin: 2px 0;
+        }
+
+        /* ── Content ── */
+        .content {
+            margin-left: 220px;
+            flex: 1;
+            padding: 20px 25px;
+            overflow-y: auto;
+            min-height: 100vh;
+        }
+
+        /* ── Cards ── */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 15px 18px;
+            margin-bottom: 10px;
+        }
+        .card-row { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 15px 18px;
+            flex: 1;
+            min-width: 140px;
+        }
+        .stat-card .label { font-size: 11px; color: var(--text-muted); }
+        .stat-card .value { font-size: 26px; font-weight: bold; color: var(--accent); margin: 4px 0; }
+
+        /* ── Headers ── */
+        h1 { font-size: 22px; color: var(--text-primary); margin-bottom: 15px; }
+        h2 { font-size: 16px; color: var(--text-primary); margin: 18px 0 8px; }
+        .header-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .muted { color: var(--text-muted); font-size: 12px; }
+        .secondary { color: var(--text-secondary); }
+
+        /* ── Buttons ── */
+        .btn {
+            padding: 8px 18px;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .btn-accent {
+            background: linear-gradient(135deg, var(--accent), #0088cc);
+            color: white;
+        }
+        .btn-accent:hover { filter: brightness(1.15); }
+        .btn-secondary {
+            background: var(--bg-light);
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+        }
+        .btn-secondary:hover { background: var(--bg-card); color: var(--text-primary); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-row { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+
+        /* ── Match cards ── */
+        .match-card {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 15px;
+            flex-wrap: wrap;
+        }
+        .match-status {
+            font-size: 11px;
+            font-weight: bold;
+            min-width: 100px;
+        }
+        .match-status.live { color: var(--accent-red); }
+        .match-status.ht { color: var(--accent-yellow); }
+        .match-status.finished { color: var(--accent-green); }
+        .match-status.scheduled { color: var(--text-secondary); }
+        .team-home { font-weight: bold; text-align: right; min-width: 180px; }
+        .team-away { font-weight: bold; text-align: left; min-width: 180px; }
+        .score {
+            font-size: 16px;
+            font-weight: bold;
+            padding: 2px 10px;
+            border-radius: 4px;
+            min-width: 60px;
+            text-align: center;
+        }
+        .score.has-score { background: var(--bg-light); }
+        .odds { font-size: 10px; color: var(--text-muted); margin-left: auto; }
+
+        /* ── Probability bar ── */
+        .prob-bar {
+            display: flex;
+            height: 8px;
+            border-radius: 4px;
+            overflow: hidden;
+            width: 200px;
+        }
+        .prob-bar .home { background: var(--win-color); }
+        .prob-bar .draw { background: var(--draw-color); }
+        .prob-bar .away { background: var(--lose-color); }
+
+        .prob-labels {
+            display: flex;
+            gap: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .prob-labels .home { color: var(--win-color); }
+        .prob-labels .draw { color: var(--draw-color); }
+        .prob-labels .away { color: var(--lose-color); }
+
+        /* ── Badge ── */
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: bold;
+        }
+        .badge-green { background: rgba(0,230,118,0.15); color: var(--accent-green); }
+
+        /* ── Huskeliste (remember list) ── */
+        .fab-remember {
+            position: fixed;
+            bottom: 28px;
+            right: 28px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #ff9100, #ff5252);
+            color: white;
+            border: none;
+            font-size: 26px;
+            cursor: pointer;
+            box-shadow: 0 4px 20px rgba(255,82,82,0.4);
+            z-index: 9000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
+        .fab-remember:hover { transform: scale(1.1); box-shadow: 0 6px 28px rgba(255,82,82,0.55); }
+        .fab-remember .fab-badge {
+            position: absolute;
+            top: -4px; right: -4px;
+            background: var(--accent);
+            color: #000;
+            font-size: 12px;
+            font-weight: bold;
+            min-width: 22px;
+            height: 22px;
+            border-radius: 11px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 5px;
+        }
+        .remember-popup {
+            position: fixed;
+            bottom: 100px;
+            right: 28px;
+            width: 420px;
+            max-height: 70vh;
+            background: var(--bg-medium);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            box-shadow: 0 8px 40px rgba(0,0,0,0.55);
+            z-index: 9001;
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .remember-popup.open { display: flex; }
+        .remember-popup-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg-light);
+        }
+        .remember-popup-header h3 { font-size: 15px; margin: 0; }
+        .remember-popup-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px 14px;
+        }
+        .remember-popup-body::-webkit-scrollbar { width: 6px; }
+        .remember-popup-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        .remember-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 8px;
+            transition: border-color 0.15s;
+        }
+        .remember-item:hover { border-color: var(--accent); }
+        .remember-item .ri-info { flex: 1; min-width: 0; }
+        .remember-item .ri-teams { font-weight: bold; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .remember-item .ri-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+        .remember-item .ri-pred { font-size: 12px; font-weight: bold; margin-top: 2px; }
+        .remember-item .ri-remove {
+            background: none;
+            border: none;
+            color: var(--accent-red);
+            font-size: 18px;
+            cursor: pointer;
+            padding: 4px;
+            flex-shrink: 0;
+        }
+        .remember-popup-footer {
+            padding: 10px 18px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            gap: 8px;
+        }
+        .btn-bookmark {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            font-size: 16px;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 6px;
+            transition: all 0.15s;
+            flex-shrink: 0;
+        }
+        .btn-bookmark:hover { border-color: var(--accent-orange); color: var(--accent-orange); }
+        .btn-bookmark.saved { border-color: var(--accent-orange); color: var(--accent-orange); background: rgba(255,145,0,0.12); }
+        .badge-yellow { background: rgba(255,215,64,0.15); color: var(--accent-yellow); }
+        .badge-red { background: rgba(255,82,82,0.15); color: var(--accent-red); }
+        .badge-accent { background: rgba(0,212,255,0.15); color: var(--accent); }
+
+        /* ── Table ── */
+        .data-table { width: 100%; border-collapse: collapse; }
+        .data-table th {
+            text-align: left;
+            padding: 8px 12px;
+            color: var(--accent);
+            font-size: 11px;
+            border-bottom: 1px solid var(--border);
+        }
+        .data-table td {
+            padding: 8px 12px;
+            font-size: 13px;
+            border-bottom: 1px solid rgba(42,58,90,0.3);
+        }
+
+        /* ── Progress bar ── */
+        .progress-bar {
+            height: 8px;
+            background: var(--bg-dark);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 4px;
+        }
+        .progress-bar .fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.5s;
+        }
+
+        /* ── Info / disclaimer ── */
+        .info-box {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin-bottom: 10px;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        .info-box.warning { color: var(--accent-yellow); }
+
+        /* ── Loading spinner ── */
+        .spinner {
+            display: inline-block;
+            width: 18px; height: 18px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            vertical-align: middle;
+            margin-right: 8px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .loading-msg {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        /* ── Source breakdown ── */
+        .source-row { display: flex; gap: 20px; flex-wrap: wrap; margin: 6px 0; }
+        .source-item .src-name { font-size: 11px; color: var(--text-muted); }
+        .source-item .src-pred { font-size: 13px; font-weight: bold; }
+        .source-item .src-extras { font-size: 10px; color: var(--text-muted); }
+
+        /* ── Value ── */
+        .value-tag {
+            font-weight: bold;
+            font-size: 12px;
+        }
+        .value-high { color: var(--accent-green); }
+        .value-medium { color: var(--accent-yellow); }
+        .value-low { color: var(--accent-red); }
+
+        /* ── Collapsible ── */
+        .collapse-content { display: none; }
+        .collapse-content.show { display: block; }
+
+        /* ── League header ── */
+        .league-header {
+            font-size: 14px;
+            font-weight: 600;
+            padding: 10px 0 4px;
+            color: var(--text-primary);
+        }
+
+        /* ── Status bar ── */
+        .status-bar {
+            position: fixed;
+            bottom: 0;
+            left: 220px;
+            right: 0;
+            background: var(--bg-medium);
+            border-top: 1px solid var(--border);
+            padding: 6px 20px;
+            font-size: 11px;
+            color: var(--text-muted);
+            z-index: 50;
+        }
+
+        /* ── Responsive ── */
+        @media (max-width: 800px) {
+            .sidebar { width: 60px; min-width: 60px; }
+            .sidebar .sidebar-logo .title, .sidebar .sidebar-logo .subtitle,
+            .sidebar-info, .nav-btn span { display: none; }
+            .nav-btn { text-align: center; padding: 10px 4px; font-size: 16px; }
+            .content { margin-left: 60px; }
+            .status-bar { left: 60px; }
+        }
+
+        /* ── Checkbox ── */
+        .checkbox-list label {
+            display: block;
+            padding: 4px 0;
+            font-size: 13px;
+            color: var(--text-primary);
+            cursor: pointer;
+        }
+        .checkbox-list input[type="checkbox"] {
+            accent-color: var(--accent);
+            margin-right: 8px;
+        }
+        input[type="text"], input[type="password"] {
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 13px;
+            font-family: 'Consolas', monospace;
+            width: 100%;
+            max-width: 500px;
+        }
+        input[type="text"]:focus { outline: 1px solid var(--accent); }
+
+        .odds-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin: 4px 0;
+        }
+        .odds-row .odds-val {
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        /* DS deeplink */
+        .deeplink {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-decoration: none;
+        }
+        .deeplink:hover { color: var(--accent); text-decoration: underline; }
+
+        /* ── Prediction result on match cards ── */
+        .pred-result {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 0 2px;
+            font-size: 13px;
+            font-weight: 600;
+            width: 100%;
+            border-top: 1px solid rgba(42,58,90,0.4);
+            margin-top: 6px;
+        }
+        .pred-result .pred-icon { font-size: 16px; }
+        .pred-hit .pred-text { color: var(--accent-green); }
+        .pred-miss .pred-text { color: var(--accent-red); }
+        .pred-none .pred-text { color: var(--text-muted); font-weight: normal; font-size: 11px; }
+        .pred-models {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            padding: 4px 0 0;
+        }
+        .pred-model-tag {
+            font-size: 11px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: rgba(42,58,90,0.3);
+        }
+        .pred-model-tag.hit { color: var(--accent-green); }
+        .pred-model-tag.miss { color: var(--accent-red); }
+        .pred-conf {
+            font-size: 11px;
+            font-weight: bold;
+            padding: 2px 8px;
+            border-radius: 10px;
+            background: rgba(0,212,255,0.15);
+            color: var(--accent);
+        }
+        .pred-source {
+            font-size: 10px;
+            color: var(--text-muted);
+            font-weight: normal;
+        }
+    </style>
+</head>
+<body>
+
+<!-- ═══ SIDEBAR ═══ -->
+<nav class="sidebar">
+    <div class="sidebar-logo">
+        <div class="icon">⚽</div>
+        <div class="title">Soccer Predictions</div>
+        <div class="subtitle">Pro Edition</div>
+    </div>
+    <div class="sidebar-sep"></div>
+
+    <button class="nav-btn active" onclick="showPage('dashboard')" id="nav-dashboard">📊 <span>Dashboard</span></button>
+    <button class="nav-btn" onclick="showPage('predictions')" id="nav-predictions">🎯 <span>AI Predictions</span></button>
+    <button class="nav-btn" onclick="showPage('ai_sites')" id="nav-ai_sites">🌐 <span>AI Sites</span></button>
+    <button class="nav-btn" onclick="showPage('danske_spil')" id="nav-danske_spil">🇩🇰 <span>Danske Spil</span></button>
+    <button class="nav-btn" onclick="showPage('comparison')" id="nav-comparison">📈 <span>Sammenligning</span></button>
+    <button class="nav-btn" onclick="showPage('live')" id="nav-live">🔴 <span>Live Scores</span></button>
+    <button class="nav-btn" onclick="showPage('suggestions')" id="nav-suggestions">💡 <span>Forslag</span></button>
+    <button class="nav-btn" onclick="showPage('history')" id="nav-history">📜 <span>Historik</span></button>
+    <button class="nav-btn" onclick="showPage('settings')" id="nav-settings">⚙️ <span>Indstillinger</span></button>
+
+    <div class="sidebar-info">
+        <div class="sidebar-sep"></div>
+        <p id="sidebar-db">📦 0 kampe i database</p>
+        <p id="sidebar-model">🤖 Modeller: –</p>
+        <p id="sidebar-time">🕐 Sidst opdateret: –</p>
+    </div>
+</nav>
+
+<!-- ═══ HUSKELISTE FAB + POPUP ═══ -->
+<button class="fab-remember" onclick="toggleRememberPopup()" title="Huskeliste">
+    📋
+    <span class="fab-badge" id="fab-count" style="display:none">0</span>
+</button>
+<div class="remember-popup" id="remember-popup">
+    <div class="remember-popup-header">
+        <h3>📋 Min Huskeliste</h3>
+        <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px" onclick="toggleRememberPopup()">✕ Luk</button>
+    </div>
+    <div class="remember-popup-body" id="remember-list">
+        <div class="muted" style="text-align:center;padding:30px 0">Ingen kampe tilføjet endnu.<br>Klik 📌 på en kamp for at huske den.</div>
+    </div>
+    <div class="remember-popup-footer">
+        <button class="btn btn-accent" style="flex:1;font-size:12px" onclick="copyRememberList()">📋 Kopiér liste</button>
+        <button class="btn btn-secondary" style="font-size:12px" onclick="clearRememberList()">🗑️ Ryd alle</button>
+    </div>
+</div>
+
+<!-- ═══ CONTENT ═══ -->
+<main class="content" id="main-content">
+
+    <!-- ── DASHBOARD ── -->
+    <section class="page" id="page-dashboard">
+        <div class="header-row">
+            <h1>📊 Dashboard - Dagens Kampe</h1>
+            <span class="muted" id="dash-date"></span>
+        </div>
+        <div class="btn-row">
+            <button class="btn btn-accent" onclick="refreshDashboard()">🔄 Opdater data</button>
+            <button class="btn btn-secondary" onclick="loadUpcoming()">📅 Kommende kampe</button>
+        </div>
+        <div class="card-row" id="dash-stats">
+            <div class="stat-card"><div class="label">⚽ Kampe i dag</div><div class="value" id="stat-total">–</div></div>
+            <div class="stat-card"><div class="label">🔴 Live nu</div><div class="value" id="stat-live">–</div></div>
+            <div class="stat-card"><div class="label">🎯 Predictions</div><div class="value" id="stat-pred">–</div></div>
+            <div class="stat-card"><div class="label">💎 Value bets</div><div class="value" id="stat-value">–</div></div>
+        </div>
+        <div id="dash-matches"><div class="loading-msg"><span class="spinner"></span> Indlæser kampe...</div></div>
+    </section>
+
+    <!-- ── PREDICTIONS ── -->
+    <section class="page" id="page-predictions" style="display:none">
+        <h1>🎯 AI Predictions</h1>
+        <div class="btn-row">
+            <button class="btn btn-accent" onclick="generatePredictions()">🧠 Generér predictions</button>
+            <button class="btn btn-secondary" onclick="startTraining()">🏋️ Træn modeller</button>
+            <span class="muted" id="pred-status"></span>
+        </div>
+        <div id="pred-container"><div class="loading-msg">Klik 'Generér predictions' for at starte</div></div>
+    </section>
+
+    <!-- ── AI SITES ── -->
+    <section class="page" id="page-ai_sites" style="display:none">
+        <h1>🌐 AI Sites – Consensus Predictions</h1>
+        <div class="btn-row">
+            <button class="btn btn-accent" onclick="fetchAiSites()">🔄 Hent fra AI-sider</button>
+            <span class="muted" id="ai-status"></span>
+        </div>
+        <div class="info-box">Kilder: AI-Goalie.com · BetsWithBots.com · SoccerTips.ai · FootballPredictions.ai</div>
+        <div id="ai-container"><div class="loading-msg">Klik '🔄 Hent fra AI-sider' for at hente predictions</div></div>
+    </section>
+
+    <!-- ── DANSKE SPIL ── -->
+    <section class="page" id="page-danske_spil" style="display:none">
+        <h1>🇩🇰 Konsensus & Danske Spil</h1>
+        <div class="btn-row">
+            <button class="btn btn-accent" onclick="fetchDanskeSpil()">🔄 Analysér alle kilder</button>
+            <span class="muted" id="ds-status"></span>
+        </div>
+        <div class="info-box">💡 Sammenligner automatisk AI-sites (4 kilder) og ML-modeller. Viser kampe hvor kilderne er ENIGE om udfald, og hvilke der kan spilles hos Danske Spil.</div>
+        <div class="info-box warning">⚠️ DISCLAIMER: Forudsigelser er kun til underholdning. Gambling kan være vanedannende. Spil ansvarligt. 18+ | stopspillet.dk | rofus.nu</div>
+        <div class="card-row" id="ds-summary"></div>
+        <div id="ds-container"><div class="loading-msg">Klik '🔄 Analysér alle kilder' for at starte</div></div>
+    </section>
+
+    <!-- ── COMPARISON ── -->
+    <section class="page" id="page-comparison" style="display:none">
+        <div class="header-row">
+            <h1>📈 Model Sammenligning</h1>
+            <button class="btn btn-accent" onclick="refreshComparison()">🔄 Opdater</button>
+        </div>
+        <div id="comparison-container"><div class="loading-msg">Træn modellerne først for at se sammenligning</div></div>
+    </section>
+
+    <!-- ── LIVE ── -->
+    <section class="page" id="page-live" style="display:none">
+        <div class="header-row">
+            <h1>🔴 Live Scores</h1>
+            <span class="muted">Auto-refresh: 30s</span>
+        </div>
+        <div class="btn-row">
+            <button class="btn btn-accent" onclick="refreshLive()">🔄 Opdater nu</button>
+        </div>
+        <div id="live-container"><div class="loading-msg"><span class="spinner"></span> Indlæser live kampe...</div></div>
+    </section>
+
+    <!-- ── SUGGESTIONS ── -->
+    <section class="page" id="page-suggestions" style="display:none">
+        <h1>💡 Intelligente Forslag</h1>
+        <div class="btn-row">
+            <button class="btn btn-accent" onclick="generateSuggestions()">🔄 Generér forslag</button>
+        </div>
+        <div class="info-box warning">⚠️ DISCLAIMER: Forudsigelser er kun til underholdning. Gambling kan være vanedannende. Spil ansvarligt.</div>
+        <div id="suggestions-container"><div class="loading-msg">Klik 'Generér forslag' for at se value bets</div></div>
+    </section>
+
+    <!-- ── HISTORY ── -->
+    <section class="page" id="page-history" style="display:none">
+        <h1>📜 Historisk Nøjagtighed</h1>
+        <div class="btn-row">
+            <button class="btn btn-accent" onclick="updateAndFetchHistory()">🔄 Opdater resultater</button>
+            <span class="muted" id="hist-status"></span>
+        </div>
+        <div class="info-box">💡 Alle predictions huskes automatisk. Her kan du se om de ramte eller ej, og hvor sikker modellen var.</div>
+        <div class="card-row" id="hist-summary"></div>
+        <div id="hist-by-source"></div>
+        <div id="hist-by-league"></div>
+        <div id="hist-by-date"></div>
+        <div id="hist-recent"></div>
+    </section>
+
+    <!-- ── SETTINGS ── -->
+    <section class="page" id="page-settings" style="display:none">
+        <h1>⚙️ Indstillinger</h1>
+
+        <div class="card">
+            <h2>🔑 API Nøgler (VALGFRIT - appen virker uden!)</h2>
+            <p class="secondary" style="margin:8px 0">✅ Appen bruger gratis API'er (ESPN, TheSportsDB) uden registrering. API nøgler herunder er helt valgfrie.</p>
+            <label class="secondary" style="display:block;margin:10px 0 4px">Football-Data.org API Key (valgfrit):</label>
+            <input type="text" id="fd-key" placeholder="Din API nøgle...">
+            <p class="muted" style="margin:4px 0 12px">Valgfrit: https://www.football-data.org/client/register</p>
+            <label class="secondary" style="display:block;margin:10px 0 4px">API-Football Key (valgfrit):</label>
+            <input type="text" id="af-key" placeholder="Din API nøgle...">
+            <p class="muted" style="margin:4px 0 12px">Valgfrit: https://dashboard.api-football.com/register</p>
+            <button class="btn btn-secondary" onclick="saveApiKeys()">💾 Gem API nøgler</button>
+        </div>
+
+        <div class="card" style="margin-top:15px">
+            <h2>🧠 ML Model Træning</h2>
+            <p class="secondary" style="margin:8px 0">Vælg ligaer til træning:</p>
+            <div class="checkbox-list" id="league-checkboxes"></div>
+            <div class="btn-row" style="margin-top:12px">
+                <button class="btn btn-accent" onclick="startTraining()">🏋️ Start Træning</button>
+                <span class="muted" id="training-status"></span>
+            </div>
+        </div>
+
+        <div class="card" style="margin-top:15px">
+            <h2>📦 Database</h2>
+            <p class="secondary" id="db-info">–</p>
+            <button class="btn btn-secondary" onclick="clearCache()" style="margin-top:8px">🗑️ Ryd cache</button>
+        </div>
+
+        <div class="card" style="margin-top:15px">
+            <h2>ℹ️ Om Soccer Predictions Pro</h2>
+            <p class="secondary">Version 2.0.0 | Python | Machine Learning | Web App</p>
+            <p class="muted">Models: XGBoost, Neural Network, Random Forest, Poisson, Ensemble</p>
+        </div>
+    </section>
+</main>
+
+<!-- ═══ STATUS BAR ═══ -->
+<div class="status-bar" id="status-bar">Klar</div>
+
+<script>
+// ═══════════════════════════════════════════
+// STATE & HELPERS
+// ═══════════════════════════════════════════
+let currentPage = 'dashboard';
+let matchesCache = [];
+let predictionsCache = {};
+let liveRefreshTimer = null;
+
+function setStatus(msg) {
+    document.getElementById('status-bar').textContent = msg;
+}
+
+function showPage(page) {
+    document.querySelectorAll('.page').forEach(p => p.style.display = 'none');
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('page-' + page).style.display = 'block';
+    document.getElementById('nav-' + page).classList.add('active');
+    currentPage = page;
+
+    // Auto-refresh live
+    if (page === 'live') {
+        refreshLive();
+        startLiveRefresh();
+    } else {
+        stopLiveRefresh();
+    }
+    // Auto-update history when switching to history page
+    if (page === 'history') {
+        updateAndFetchHistory();
+    }
+}
+
+function startLiveRefresh() {
+    stopLiveRefresh();
+    liveRefreshTimer = setInterval(refreshLive, 30000);
+}
+function stopLiveRefresh() {
+    if (liveRefreshTimer) { clearInterval(liveRefreshTimer); liveRefreshTimer = null; }
+}
+
+async function api(endpoint, opts = {}) {
+    try {
+        const res = await fetch('/api/' + endpoint, {
+            method: opts.method || 'GET',
+            headers: opts.body ? {'Content-Type': 'application/json'} : {},
+            body: opts.body ? JSON.stringify(opts.body) : undefined,
+        });
+        return await res.json();
+    } catch (e) {
+        console.error('API error:', e);
+        return { error: e.message };
+    }
+}
+
+function escHtml(s) {
+    if (!s) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function fmtPct(v) {
+    if (v == null) return '–';
+    if (v > 1) return v.toFixed(0) + '%';
+    return (v * 100).toFixed(0) + '%';
+}
+
+function outcomeLabel(o) {
+    const map = {HOME_WIN:'Hjemme', AWAY_WIN:'Ude', DRAW:'Uafgjort', 'Home Win':'Hjemme', 'Away Win':'Ude', Draw:'Uafgjort'};
+    return map[o] || o;
+}
+function outcomeColor(o) {
+    if (!o) return 'var(--text-secondary)';
+    if (o.includes('HOME') || o === 'Home Win' || o === '1') return 'var(--win-color)';
+    if (o.includes('AWAY') || o === 'Away Win' || o === '2') return 'var(--lose-color)';
+    if (o.includes('DRAW') || o === 'Draw' || o === 'X') return 'var(--draw-color)';
+    return 'var(--text-secondary)';
+}
+
+// ═══════════════════════════════════════════
+// DASHBOARD
+// ═══════════════════════════════════════════
+let _aiFetching = false;
+async function loadDashboard() {
+    setStatus('⏳ Indlæser data...');
+    const data = await api('matches');
+    if (data.error) { setStatus('❌ Fejl: ' + data.error); return; }
+    matchesCache = data.matches || [];
+    renderDashboard(matchesCache);
+    setStatus('✅ Data indlæst');
+    updateSidebarInfo();
+
+    // Auto-fetch AI predictions if there are finished matches without predictions
+    const finishedNoPred = matchesCache.filter(m => m.status === 'FINISHED' && !m.prediction);
+    if (finishedNoPred.length > 0 && !_aiFetching) {
+        _aiFetching = true;
+        setStatus('🤖 Henter AI-predictions til afsluttede kampe...');
+        try {
+            await api('ai_predictions');
+            // Reload matches now that AI cache is populated
+            const data2 = await api('matches');
+            if (!data2.error) {
+                matchesCache = data2.matches || [];
+                renderDashboard(matchesCache);
+            }
+        } catch(e) { console.log('AI auto-fetch failed:', e); }
+        _aiFetching = false;
+        setStatus('✅ Data indlæst');
+    }
+}
+
+async function refreshDashboard() {
+    setStatus('🔄 Opdaterer...');
+    const data = await api('matches?force=1');
+    if (data.error) { setStatus('❌ Fejl: ' + data.error); return; }
+    matchesCache = data.matches || [];
+    renderDashboard(matchesCache);
+    setStatus('✅ Opdateret');
+    updateSidebarInfo();
+}
+
+async function loadUpcoming() {
+    setStatus('📅 Indlæser kommende kampe...');
+    const data = await api('upcoming');
+    if (data.error) { setStatus('❌ Fejl: ' + data.error); return; }
+    const upcoming = data.matches || [];
+    matchesCache = matchesCache.concat(upcoming);
+    renderDashboard(matchesCache);
+    setStatus('✅ Kommende kampe indlæst');
+}
+
+function renderDashboard(matches) {
+    const container = document.getElementById('dash-matches');
+    if (!matches || !matches.length) {
+        container.innerHTML = '<div class="loading-msg">Ingen kampe fundet for i dag</div>';
+        return;
+    }
+    const live = matches.filter(m => ['IN_PLAY','HALFTIME','LIVE','1H','2H'].includes(m.status));
+    document.getElementById('stat-total').textContent = matches.length;
+    document.getElementById('stat-live').textContent = live.length;
+
+    // Group by league
+    const byLeague = {};
+    matches.forEach(m => {
+        const lc = m.league_code || 'Other';
+        (byLeague[lc] = byLeague[lc] || []).push(m);
+    });
+
+    let html = '';
+    for (const [lc, lm] of Object.entries(byLeague).sort()) {
+        const emoji = (m => m ? m.emoji||'🏟️' : '🏟️')(window.LEAGUES?.[lc]);
+        const name = (m => m ? m.name||lc : lc)(window.LEAGUES?.[lc]);
+        html += `<div class="league-header">${emoji} ${escHtml(name)}</div>`;
+        lm.forEach(m => { html += matchCardHtml(m); });
+    }
+    container.innerHTML = html;
+}
+
+function matchCardHtml(m) {
+    let statusText, statusClass;
+    const extra = (typeof m.extra_data === 'object' && m.extra_data) ? m.extra_data : {};
+    if (['IN_PLAY','LIVE','1H','2H'].includes(m.status)) {
+        statusText = `🔴 LIVE ${extra.elapsed||''}'`;
+        statusClass = 'live';
+    } else if (m.status === 'HALFTIME') {
+        statusText = '🟡 HALFTIME';
+        statusClass = 'ht';
+    } else if (m.status === 'FINISHED') {
+        statusText = '✅ SLUT';
+        statusClass = 'finished';
+    } else {
+        let t = '--:--';
+        try { t = new Date(m.match_date).toLocaleTimeString('da-DK', {hour:'2-digit',minute:'2-digit'}); } catch(e){}
+        statusText = '🕐 ' + t;
+        statusClass = 'scheduled';
+    }
+    const hs = m.home_score, as = m.away_score;
+    const scoreText = (hs != null && as != null) ? `${hs} - ${as}` : 'vs';
+    const scoreClass = (hs != null) ? 'has-score' : '';
+
+    let oddsHtml = '';
+    if (m.home_odds) oddsHtml += `1:${Number(m.home_odds).toFixed(2)} `;
+    if (m.draw_odds) oddsHtml += `X:${Number(m.draw_odds).toFixed(2)} `;
+    if (m.away_odds) oddsHtml += `2:${Number(m.away_odds).toFixed(2)}`;
+
+    // Prediction result for finished matches
+    let predHtml = '';
+    if (m.status === 'FINISHED' && m.prediction) {
+        const p = m.prediction;
+        const correct = p.is_correct;
+        const outcomeMap = {HOME_WIN:'Hjemme', AWAY_WIN:'Ude', DRAW:'Uafgjort'};
+        const predicted = outcomeMap[p.predicted_outcome] || p.predicted_outcome || '?';
+        const actual = outcomeMap[m.actual_outcome] || m.actual_outcome || '?';
+        const confVal = p.confidence ? (p.confidence > 1 ? p.confidence : p.confidence*100) : 0;
+        const confStr = confVal > 0 ? confVal.toFixed(0)+'%' : '';
+        const confBadge = confStr ? `<span class="pred-conf">${confStr} sikker</span>` : '';
+        const src = p.model ? `<span class="pred-source">${escHtml(p.model)}</span>` : '';
+
+        if (correct === true) {
+            predHtml = `<div class="pred-result pred-hit">
+                <span class="pred-icon">✅</span>
+                <span class="pred-text">HIT: ${predicted}</span>
+                ${confBadge} ${src}
+            </div>`;
+        } else if (correct === false) {
+            predHtml = `<div class="pred-result pred-miss">
+                <span class="pred-icon">❌</span>
+                <span class="pred-text">MISS: sagde ${predicted} → blev ${actual}</span>
+                ${confBadge} ${src}
+            </div>`;
+        }
+
+        // Per-model breakdown
+        if (m.prediction_models && m.prediction_models.length > 1) {
+            predHtml += `<div class="pred-models">`;
+            m.prediction_models.forEach(pm => {
+                if (!pm.predicted_outcome) return;
+                const ic = pm.is_correct;
+                const icon = ic === true ? '✅' : ic === false ? '❌' : '⚪';
+                const name = (pm.model||'').replace(/_/g,' ');
+                const pName = outcomeMap[pm.predicted_outcome] || pm.predicted_outcome;
+                predHtml += `<span class="pred-model-tag ${ic?'hit':'miss'}">${icon} ${name}: ${pName}</span>`;
+            });
+            predHtml += `</div>`;
+        }
+    } else if (m.status === 'FINISHED' && !m.prediction) {
+        predHtml = `<div class="pred-result pred-none"><span class="pred-text">Ingen prediction for denne kamp</span></div>`;
+    }
+
+    // Build bookmark data
+    const bkId = `${(m.home_team_name||'').trim()}|${(m.away_team_name||'').trim()}`;
+    const bkData = JSON.stringify({
+        id: bkId,
+        home: m.home_team_name||'',
+        away: m.away_team_name||'',
+        date: m.match_date||'',
+        status: m.status||'',
+        score: (hs!=null&&as!=null) ? `${hs}-${as}` : '',
+        odds: oddsHtml,
+        league: m.league_code||'',
+        page: 'Dashboard'
+    }).replace(/'/g, '&#39;');
+    const bkSaved = isRemembered(bkId) ? 'saved' : '';
+
+    return `<div class="card match-card">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;width:100%">
+            <button class="btn-bookmark ${bkSaved}" onclick="toggleRemember(this, '${bkId}', ${bkData.replace(/"/g, '&quot;')})" title="Tilføj til huskeliste">📌</button>
+            <span class="match-status ${statusClass}">${statusText}</span>
+            <span class="team-home">${escHtml(m.home_team_name)}</span>
+            <span class="score ${scoreClass}">${scoreText}</span>
+            <span class="team-away">${escHtml(m.away_team_name)}</span>
+            <span class="odds">${oddsHtml}</span>
+        </div>
+        ${predHtml}
+    </div>`;
+}
+
+// ═══════════════════════════════════════════
+// PREDICTIONS
+// ═══════════════════════════════════════════
+async function generatePredictions() {
+    const status = document.getElementById('pred-status');
+    const container = document.getElementById('pred-container');
+    status.textContent = '⏳ Genererer predictions...';
+    container.innerHTML = '<div class="loading-msg"><span class="spinner"></span> Kører ML modeller...</div>';
+    setStatus('🧠 Kører ML modeller...');
+
+    const data = await api('predictions', { method: 'POST' });
+    if (data.error) { status.textContent = '❌ Fejl: ' + data.error; return; }
+
+    predictionsCache = data.predictions || {};
+    const count = Object.keys(predictionsCache).length;
+    status.textContent = `✅ ${count} predictions genereret`;
+    setStatus('✅ Predictions klar');
+    document.getElementById('stat-pred').textContent = count;
+
+    renderPredictions(predictionsCache);
+}
+
+function renderPredictions(preds) {
+    const container = document.getElementById('pred-container');
+    if (!preds || !Object.keys(preds).length) {
+        container.innerHTML = '<div class="loading-msg">Ingen predictions genereret endnu</div>';
+        return;
+    }
+    let html = '';
+    let valueCount = 0;
+    for (const [matchKey, models] of Object.entries(preds)) {
+        const ens = models.find(p => p.model_name === 'ensemble');
+        html += `<div class="card">`;
+        html += `<div style="font-weight:bold;font-size:14px;margin-bottom:8px">⚽ ${escHtml(matchKey)}</div>`;
+        if (ens) {
+            const outcome = ens.predicted_outcome || '';
+            const conf = ens.confidence || 0;
+            const hp = ens.home_win_prob || 0.33, dp = ens.draw_prob || 0.33, ap = ens.away_win_prob || 0.34;
+            html += `<div style="display:flex;align-items:center;gap:15px;flex-wrap:wrap">`;
+            html += `<span style="font-weight:bold;color:${outcomeColor(outcome)}">Prediction: ${escHtml(outcomeLabel(outcome))}</span>`;
+            html += `<span class="badge badge-accent">${(conf*100).toFixed(0)}%</span>`;
+            html += `<div class="prob-labels"><span class="home">1: ${(hp*100).toFixed(0)}%</span><span class="draw">X: ${(dp*100).toFixed(0)}%</span><span class="away">2: ${(ap*100).toFixed(0)}%</span></div>`;
+            html += `<div class="prob-bar"><div class="home" style="width:${hp*100}%"></div><div class="draw" style="width:${dp*100}%"></div><div class="away" style="width:${ap*100}%"></div></div>`;
+            const val = ens.value_rating || 0;
+            if (val > 0) {
+                valueCount++;
+                const vc = val > 0.5 ? 'value-high' : val > 0.2 ? 'value-medium' : 'value-low';
+                html += `<span class="value-tag ${vc}">💎 Value: ${val.toFixed(2)}</span>`;
+            }
+            html += `</div>`;
+        }
+        // Individual models
+        const others = models.filter(p => p.model_name !== 'ensemble');
+        if (others.length) {
+            html += `<div style="display:flex;gap:15px;margin-top:8px;flex-wrap:wrap">`;
+            others.forEach(p => {
+                html += `<div style="font-size:12px"><span class="muted">📐 ${escHtml(p.model_name)}</span><br><span class="secondary">${escHtml(outcomeLabel(p.predicted_outcome))}</span></div>`;
+            });
+            html += `</div>`;
+        }
+        // Suggestion
+        const sug = (ens || models[0] || {}).suggestion;
+        if (sug) html += `<div style="margin-top:6px;font-size:12px;color:var(--accent-yellow)">💡 ${escHtml(sug)}</div>`;
+        html += `</div>`;
+    }
+    container.innerHTML = html;
+    document.getElementById('stat-value').textContent = valueCount;
+}
+
+// ═══════════════════════════════════════════
+// AI SITES
+// ═══════════════════════════════════════════
+async function fetchAiSites() {
+    const status = document.getElementById('ai-status');
+    const container = document.getElementById('ai-container');
+    status.textContent = '⏳ Henter fra 4 AI-sider… (ca. 30 sek)';
+    container.innerHTML = '<div class="loading-msg"><span class="spinner"></span> Henter AI predictions...</div>';
+    setStatus('Henter AI predictions…');
+
+    const data = await api('ai_predictions');
+    if (data.error) { status.textContent = '❌ Fejl: ' + data.error; return; }
+
+    const consensus = data.consensus || [];
+    const multi = consensus.filter(c => c.num_sources >= 2);
+    status.textContent = `✅ ${consensus.length} kampe · ${multi.length} med 2+ kilder`;
+    setStatus(`AI Sites: ${consensus.length} predictions hentet`);
+
+    renderAiSites(consensus);
+}
+
+function renderAiSites(consensus) {
+    const container = document.getElementById('ai-container');
+    if (!consensus.length) {
+        container.innerHTML = '<div class="loading-msg">Ingen AI predictions fundet i dag</div>';
+        return;
+    }
+    consensus.sort((a,b) => (b.num_sources - a.num_sources) || ((b.consensus_confidence||0) - (a.consensus_confidence||0)));
+    let html = '';
+    consensus.slice(0, 80).forEach(m => {
+        const aiId = `${(m.home_team||'').trim()}|${(m.away_team||'').trim()}`;
+        const winner = m.consensus_winner ? ({'1':'HOME_WIN','X':'DRAW','2':'AWAY_WIN'}[m.consensus_winner]||m.consensus_winner) : '';
+        const aiData = JSON.stringify({
+            id: aiId,
+            home: m.home_team||'',
+            away: m.away_team||'',
+            date: m.kickoff_time||'',
+            prediction: winner,
+            confidence: m.consensus_confidence||0,
+            sources: m.num_sources||0,
+            league: m.league||'',
+            page: 'AI Sites'
+        }).replace(/'/g, '&#39;');
+        const aiSaved = isRemembered(aiId) ? 'saved' : '';
+        html += `<div class="card">`;
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap">`;
+        html += `<span style="display:flex;align-items:center;gap:8px"><button class="btn-bookmark ${aiSaved}" onclick="toggleRemember(this, '${aiId}', ${aiData.replace(/"/g, '&quot;')})" title="Tilføj til huskeliste">📌</button><span style="font-weight:bold">⚽ ${escHtml(m.home_team)} vs ${escHtml(m.away_team)}</span></span>`;
+        let meta = [];
+        if (m.league) meta.push(m.league);
+        if (m.kickoff_time) meta.push('🕐 ' + m.kickoff_time);
+        meta.push(`📡 ${m.num_sources} kilder`);
+        html += `<span class="muted">${meta.join(' · ')}</span>`;
+        html += `</div>`;
+
+        // Probabilities
+        const hp = m.avg_home_win_pct, dp = m.avg_draw_pct, ap = m.avg_away_win_pct;
+        if (hp != null) {
+            html += `<div style="display:flex;align-items:center;gap:12px;margin-top:6px;flex-wrap:wrap">`;
+            html += `<div class="prob-labels">`;
+            if (hp != null) html += `<span class="home">1: ${hp.toFixed(0)}%</span>`;
+            if (dp != null) html += `<span class="draw">X: ${dp.toFixed(0)}%</span>`;
+            if (ap != null) html += `<span class="away">2: ${ap.toFixed(0)}%</span>`;
+            html += `</div>`;
+            const total = (hp||0)+(dp||0)+(ap||0);
+            if (total > 0) {
+                html += `<div class="prob-bar"><div class="home" style="width:${hp/total*100}%"></div><div class="draw" style="width:${(dp||0)/total*100}%"></div><div class="away" style="width:${ap/total*100}%"></div></div>`;
+            }
+            if (m.consensus_winner) {
+                const wm = {'1':`🏠 ${m.home_team}`,'2':`✈️ ${m.away_team}`,'X':'🤝 Uafgjort'};
+                let wt = `Prediction: ${wm[m.consensus_winner]||m.consensus_winner}`;
+                if (m.consensus_confidence) wt += ` (${m.consensus_confidence.toFixed(0)}%)`;
+                html += `<span style="font-weight:bold;color:${outcomeColor(m.consensus_winner)};margin-left:auto">${escHtml(wt)}</span>`;
+            }
+            html += `</div>`;
+        }
+
+        // Extras
+        let extras = [];
+        if (m.btts_consensus) extras.push('BTTS: ' + m.btts_consensus);
+        if (m.over_under_consensus) extras.push('O/U 2.5: ' + m.over_under_consensus);
+        if (m.sources?.length) extras.push('Fra: ' + m.sources.join(', '));
+        if (extras.length) html += `<div class="muted" style="margin-top:4px;font-size:11px">${escHtml(extras.join(' · '))}</div>`;
+
+        html += `</div>`;
+    });
+    container.innerHTML = html;
+}
+
+// ═══════════════════════════════════════════
+// DANSKE SPIL
+// ═══════════════════════════════════════════
+async function fetchDanskeSpil() {
+    const status = document.getElementById('ds-status');
+    const container = document.getElementById('ds-container');
+    const summary = document.getElementById('ds-summary');
+    status.textContent = '⏳ Henter fra alle kilder… (ca. 15-30 sek)';
+    container.innerHTML = '<div class="loading-msg"><span class="spinner"></span> Henter AI-sites + ML + Danske Spil…</div>';
+    setStatus('🔄 Henter AI-sites + ML + Danske Spil…');
+
+    const data = await api('consensus_danske_spil');
+    if (data.error) { status.textContent = '❌ Fejl: ' + data.error; container.innerHTML=''; return; }
+
+    const stats = data.stats || {};
+    const playable = data.playable || [];
+    const agreed = data.agreed || [];
+    const allC = data.all_consensus || [];
+
+    // Summary cards
+    summary.innerHTML = [
+        ['🌐 AI-sites', stats.ai_predictions||0, 'var(--accent)'],
+        ['🤖 ML Modeller', stats.ml_predictions||0, 'var(--accent)'],
+        ['🤝 Enige', stats.agreed||0, 'var(--accent-green)'],
+        ['🇩🇰 Spilbare', stats.playable||0, (stats.playable||0)>0?'var(--accent-green)':'var(--accent-red)'],
+    ].map(([label,val,col]) => `<div class="stat-card"><div class="label">${label}</div><div class="value" style="color:${col}">${val}</div></div>`).join('');
+
+    status.textContent = `✅ ${stats.agreed||0} enige · ${stats.playable||0} spilbare hos DS · ${stats.ds_events||0} DS kampe`;
+    setStatus(`Konsensus: ${stats.playable||0} spilbare kampe hos Danske Spil`);
+
+    let html = '';
+
+    // Section 1: Playable
+    if (playable.length) {
+        html += `<h2>🎯 Spilbare hos Danske Spil — kilderne er enige (${playable.length})</h2>`;
+        playable.forEach(e => { html += consensusCardHtml(e, true); });
+    }
+
+    // Section 2: Agreed not playable
+    const agreedNp = agreed.filter(x => !x.danske_spil);
+    if (agreedNp.length) {
+        html += `<h2>🤝 Kilderne er enige — ikke hos Danske Spil (${agreedNp.length})</h2>`;
+        agreedNp.slice(0,30).forEach(e => { html += consensusCardHtml(e, false); });
+    }
+
+    // Section 3: Rest (collapsible)
+    const rest = allC.filter(x => !x.agreed_outcome);
+    if (rest.length) {
+        html += `<h2 style="cursor:pointer" onclick="toggleRest()">▶ Vis kampe med kun 1 kilde / uenige (${rest.length})</h2>`;
+        html += `<div id="rest-section" class="collapse-content">`;
+        rest.slice(0,50).forEach(e => { html += consensusCardHtml(e, !!e.danske_spil); });
+        html += `</div>`;
+    }
+
+    if (!playable.length && !agreedNp.length) {
+        html += '<div class="loading-msg">Ingen konsensus-kampe fundet. Prøv at opdatere eller vent på nye kampe.</div>';
+    }
+
+    container.innerHTML = html;
+}
+
+function toggleRest() {
+    const el = document.getElementById('rest-section');
+    if (!el) return;
+    el.classList.toggle('show');
+    const h2 = el.previousElementSibling;
+    if (h2) h2.textContent = el.classList.contains('show')
+        ? h2.textContent.replace('▶','▼')
+        : h2.textContent.replace('▼','▶');
+}
+
+function consensusCardHtml(entry, showDs) {
+    const home = entry.home_team || '?';
+    const away = entry.away_team || '?';
+    const ds = entry.danske_spil;
+    const agreed = entry.agreed_outcome;
+    const allAgree = entry.all_agree;
+    const sources = entry.sources || [];
+
+    const outcomeLabels = {HOME_WIN:['Hjemme','var(--win-color)'], AWAY_WIN:['Ude','var(--lose-color)'], DRAW:['Uafgjort','var(--draw-color)']};
+
+    let agreeBadge = allAgree && ds ? '🎯' : agreed ? '🤝' : '⚪';
+    const csId = `${home.trim()}|${away.trim()}`;
+    const csData = JSON.stringify({
+        id: csId,
+        home: home,
+        away: away,
+        date: entry.kickoff_time||'',
+        prediction: agreed||'',
+        league: entry.league||'',
+        odds: ds ? `1:${(ds.home_odds||0).toFixed(2)} X:${(ds.draw_odds||0).toFixed(2)} 2:${(ds.away_odds||0).toFixed(2)}` : '',
+        page: 'Danske Spil'
+    }).replace(/'/g, '&#39;');
+    const csSaved = isRemembered(csId) ? 'saved' : '';
+    let html = `<div class="card">`;
+    // Top row
+    html += `<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap">`;
+    html += `<span style="display:flex;align-items:center;gap:8px"><button class="btn-bookmark ${csSaved}" onclick="toggleRemember(this, '${csId}', ${csData.replace(/"/g, '&quot;')})" title="Tilføj til huskeliste">📌</button><span style="font-weight:bold;font-size:14px">${agreeBadge} ${escHtml(home)} vs ${escHtml(away)}</span></span>`;
+    let meta = [];
+    if (entry.league) meta.push(entry.league);
+    if (entry.kickoff_time) {
+        try { const d = new Date(entry.kickoff_time); meta.push('🕐 ' + d.toLocaleDateString('da-DK',{day:'2-digit',month:'2-digit'}) + ' ' + d.toLocaleTimeString('da-DK',{hour:'2-digit',minute:'2-digit'})); } catch(e) { if (entry.kickoff_time.includes(':')) meta.push('🕐 '+entry.kickoff_time); }
+    }
+    html += `<span class="muted">${meta.join(' · ')}</span>`;
+    html += `</div>`;
+
+    // Source breakdown
+    html += `<div class="source-row">`;
+    sources.forEach(src => {
+        const icon = src.type === 'ai_consensus' ? '🌐' : '🤖';
+        const pred = src.prediction || '?';
+        const [pLabel, pColor] = outcomeLabels[pred] || [pred, 'var(--text-secondary)'];
+        let confTxt = '';
+        if (src.confidence) confTxt = src.confidence > 1 ? ` (${src.confidence.toFixed(0)}%)` : ` (${(src.confidence*100).toFixed(0)}%)`;
+        let nameTxt = `${icon} ${src.name||'?'}`;
+        if (src.num_sources) nameTxt += ` (${src.num_sources} sider)`;
+        let extras = [];
+        if (src.btts) extras.push('BTTS: '+src.btts);
+        if (src.over_under) extras.push('O/U: '+src.over_under);
+        html += `<div class="source-item"><div class="src-name">${escHtml(nameTxt)}</div>`;
+        html += `<div class="src-pred" style="color:${pColor}">${escHtml(pLabel)}${confTxt}</div>`;
+        if (extras.length) html += `<div class="src-extras">${escHtml(extras.join(' · '))}</div>`;
+        html += `</div>`;
+    });
+
+    // Agreement badge
+    if (agreed) {
+        const [aLabel, aColor] = outcomeLabels[agreed] || [agreed, 'var(--accent)'];
+        const aText = allAgree ? 'ALLE ENIGE' : 'FLERTAL';
+        html += `<div style="margin-left:auto;text-align:right"><span style="font-weight:bold;font-size:13px;color:${aColor}">✅ ${aText}: ${aLabel}</span></div>`;
+    }
+    html += `</div>`;
+
+    // DS odds
+    if (ds && showDs) {
+        html += `<div class="odds-row" style="margin-top:6px">`;
+        html += `<span style="font-weight:bold;color:var(--accent)">🇩🇰 Danske Spil Odds:</span>`;
+        if (ds.home_odds) html += `<span class="odds-val" style="color:var(--win-color)">1: ${Number(ds.home_odds).toFixed(2)}</span>`;
+        if (ds.draw_odds) html += `<span class="odds-val" style="color:var(--draw-color)">X: ${Number(ds.draw_odds).toFixed(2)}</span>`;
+        if (ds.away_odds) html += `<span class="odds-val" style="color:var(--lose-color)">2: ${Number(ds.away_odds).toFixed(2)}</span>`;
+        let oddsExtras = [];
+        if (ds.over_25_odds && ds.under_25_odds) oddsExtras.push(`O2.5: ${Number(ds.over_25_odds).toFixed(2)} / U2.5: ${Number(ds.under_25_odds).toFixed(2)}`);
+        if (ds.btts_yes_odds && ds.btts_no_odds) oddsExtras.push(`BTTS Ja: ${Number(ds.btts_yes_odds).toFixed(2)} / Nej: ${Number(ds.btts_no_odds).toFixed(2)}`);
+        if (oddsExtras.length) html += `<span class="muted" style="margin-left:auto">${oddsExtras.join(' | ')}</span>`;
+        html += `</div>`;
+
+        if (ds.deeplink) html += `<a class="deeplink" href="${escHtml(ds.deeplink)}" target="_blank">🔗 ${escHtml(ds.deeplink)}</a>`;
+    }
+    html += `</div>`;
+    return html;
+}
+
+// ═══════════════════════════════════════════
+// LIVE
+// ═══════════════════════════════════════════
+async function refreshLive() {
+    const container = document.getElementById('live-container');
+    const data = await api('live');
+    if (data.error) return;
+    const matches = data.matches || [];
+    const live = matches.filter(m => ['IN_PLAY','HALFTIME','LIVE','1H','2H','HT','PAUSED'].includes(m.status));
+
+    if (!live.length) {
+        container.innerHTML = `<div class="loading-msg" style="padding:60px 0">
+            <div style="font-size:40px;margin-bottom:10px">📺</div>
+            <div style="font-size:16px;color:var(--text-primary)">Ingen live kampe lige nu</div>
+            <div class="muted">Live kampe vises automatisk når de starter</div>
+        </div>`;
+        return;
+    }
+
+    let html = '';
+    live.forEach(m => {
+        const extra = (typeof m.extra_data === 'object' && m.extra_data) ? m.extra_data : {};
+        html += `<div class="card">`;
+        html += `<div class="muted">${escHtml(m.league_name || m.league_code || '')}</div>`;
+        html += `<div style="display:flex;align-items:center;gap:15px;margin-top:6px;flex-wrap:wrap">`;
+        html += `<span style="font-size:16px;font-weight:bold;min-width:180px;text-align:right">${escHtml(m.home_team_name)}</span>`;
+        html += `<span style="background:var(--accent-red);color:white;padding:4px 14px;border-radius:6px;font-size:18px;font-weight:bold">${m.home_score||0} - ${m.away_score||0}</span>`;
+        html += `<span style="font-size:16px;font-weight:bold;min-width:180px">${escHtml(m.away_team_name)}</span>`;
+        if (extra.elapsed) html += `<span style="color:var(--accent-yellow);font-weight:bold;margin-left:auto">⏱️ ${extra.elapsed}'</span>`;
+        html += `</div></div>`;
+    });
+    container.innerHTML = html;
+}
+
+// ═══════════════════════════════════════════
+// COMPARISON
+// ═══════════════════════════════════════════
+async function refreshComparison() {
+    const container = document.getElementById('comparison-container');
+    container.innerHTML = '<div class="loading-msg"><span class="spinner"></span> Indlæser...</div>';
+    const data = await api('comparison');
+    if (data.error) { container.innerHTML = '<div class="loading-msg">Fejl: ' + escHtml(data.error) + '</div>'; return; }
+
+    const perfs = data.performances || [];
+    if (!perfs.length) { container.innerHTML = '<div class="loading-msg">Træn modellerne først for at se sammenligning</div>'; return; }
+
+    let html = '<div class="card-row">';
+    perfs.forEach(p => {
+        const name = (p.model_name||'').replace(/_/g,' ');
+        const acc = p.accuracy || 0;
+        const trained = p.is_trained || acc > 0;
+        const color = acc > 0.5 ? 'var(--accent-green)' : acc > 0 ? 'var(--accent-yellow)' : 'var(--text-muted)';
+        html += `<div class="stat-card">
+            <div class="label">🤖 ${escHtml(name)}</div>
+            <div class="value" style="color:${color}">${acc > 0 ? (acc*100).toFixed(1)+'%' : (trained ? '✅' : '❌')}</div>
+            ${p.total_predictions ? `<div class="muted">${p.correct_predictions||0}/${p.total_predictions} korrekte</div>` : ''}
+        </div>`;
+    });
+    html += '</div>';
+
+    // Table
+    if (perfs.some(p => p.accuracy > 0)) {
+        html += `<div class="card" style="margin-top:15px"><h2>📊 Detaljeret Sammenligning</h2>
+        <table class="data-table"><thead><tr><th>Model</th><th>Accuracy</th><th>Predictions</th><th>Korrekte</th><th>Status</th></tr></thead><tbody>`;
+        perfs.sort((a,b) => (b.accuracy||0) - (a.accuracy||0)).forEach(p => {
+            html += `<tr><td>${escHtml((p.model_name||'').replace(/_/g,' '))}</td>
+                <td>${p.accuracy > 0 ? (p.accuracy*100).toFixed(1)+'%' : '–'}</td>
+                <td>${p.total_predictions||0}</td>
+                <td>${p.correct_predictions||0}</td>
+                <td>${(p.is_trained || p.accuracy > 0) ? '✅' : '❌'}</td></tr>`;
+        });
+        html += `</tbody></table></div>`;
+    }
+    container.innerHTML = html;
+}
+
+// ═══════════════════════════════════════════
+// SUGGESTIONS
+// ═══════════════════════════════════════════
+async function generateSuggestions() {
+    const container = document.getElementById('suggestions-container');
+    container.innerHTML = '<div class="loading-msg"><span class="spinner"></span> Genererer forslag...</div>';
+    setStatus('🧠 Genererer forslag...');
+
+    // Ensure predictions exist
+    if (!Object.keys(predictionsCache).length) {
+        const data = await api('predictions', { method: 'POST' });
+        if (data.predictions) predictionsCache = data.predictions;
+    }
+
+    const data = await api('suggestions');
+    if (data.error) { container.innerHTML = '<div class="loading-msg">Fejl: ' + escHtml(data.error) + '</div>'; return; }
+    const sugs = data.suggestions || [];
+
+    if (!sugs.length) {
+        container.innerHTML = `<div class="loading-msg" style="padding:40px">
+            <div style="font-size:40px;margin-bottom:10px">🔍</div>
+            <div style="font-size:16px;color:var(--text-primary)">Ingen value bets fundet i dag</div>
+            <div class="muted">Prøv igen når der er flere kampe</div>
+        </div>`;
+        setStatus('Ingen value bets fundet');
+        return;
+    }
+
+    let html = `<div class="card"><span style="font-weight:bold;font-size:16px;color:var(--accent-green)">💎 ${sugs.length} Value Bets Fundet</span></div>`;
+    sugs.forEach((s, i) => {
+        const val = s.value_rating || 0;
+        const stars = val > 0.5 ? '⭐⭐⭐' : val > 0.2 ? '⭐⭐' : '⭐';
+        const vlabel = val > 0.5 ? 'HIGH VALUE' : val > 0.2 ? 'MEDIUM VALUE' : 'LOW VALUE';
+        const vc = val > 0.5 ? 'value-high' : val > 0.2 ? 'value-medium' : 'value-low';
+
+        html += `<div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap">
+                <span><span style="font-size:16px;font-weight:bold;color:var(--accent)">#${i+1}</span>
+                <span style="font-weight:bold;margin-left:10px">⚽ ${escHtml(s.match_key)}</span></span>
+                <span class="value-tag ${vc}">${stars} ${vlabel}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:15px;margin-top:8px;flex-wrap:wrap">
+                <span>Prediction: ${escHtml(outcomeLabel(s.predicted_outcome))}</span>
+                <span class="badge badge-accent">${((s.confidence||0)*100).toFixed(0)}%</span>
+                <div class="prob-labels">
+                    <span class="home">1: ${((s.home_win_prob||0)*100).toFixed(0)}%</span>
+                    <span class="draw">X: ${((s.draw_prob||0)*100).toFixed(0)}%</span>
+                    <span class="away">2: ${((s.away_win_prob||0)*100).toFixed(0)}%</span>
+                </div>
+                <span class="value-tag ${vc}" style="margin-left:auto">Value: ${val.toFixed(2)}</span>
+            </div>
+            ${s.suggestion ? `<div style="margin-top:6px;font-size:12px;color:var(--accent-yellow)">💡 ${escHtml(s.suggestion)}</div>` : ''}
+        </div>`;
+    });
+    container.innerHTML = html;
+    setStatus(`💎 ${sugs.length} value bets fundet`);
+}
+
+// ═══════════════════════════════════════════
+// HISTORY
+// ═══════════════════════════════════════════
+let _histUpdating = false;
+
+async function updateAndFetchHistory() {
+    if (_histUpdating) return;
+    _histUpdating = true;
+    const status = document.getElementById('hist-status');
+    status.textContent = '⏳ Opdaterer resultater fra afsluttede kampe...';
+    setStatus('📜 Opdaterer historik med færdige kampe...');
+    try {
+        const data = await fetch('/api/history/update', { method: 'POST' }).then(r => r.json());
+        if (data.error) { status.textContent = '❌ Fejl: ' + data.error; _histUpdating = false; return; }
+        const newMsg = data.new_saved > 0 ? ` (${data.new_saved} nye resultater gemt)` : '';
+        const timeMsg = data.last_update ? ` — sidst opdateret kl. ${data.last_update}` : '';
+        renderHistory(data);
+        status.textContent = `✅ Historik opdateret${newMsg}${timeMsg}`;
+        setStatus(`📜 Historik opdateret${newMsg}`);
+    } catch (e) {
+        status.textContent = '❌ Fejl: ' + e.message;
+    }
+    _histUpdating = false;
+}
+
+async function fetchHistory() {
+    const status = document.getElementById('hist-status');
+    status.textContent = '⏳ Beregner historik...';
+    setStatus('📜 Beregner historisk nøjagtighed...');
+
+    const data = await api('history');
+    if (data.error) { status.textContent = '❌ Fejl: ' + data.error; return; }
+    renderHistory(data);
+}
+
+function renderHistory(data) {
+    const summary = data.summary || {};
+    const results = data.results || [];
+    const overall = summary.overall || {};
+    const bySource = summary.by_source || [];
+    const byLeague = summary.by_league || [];
+    const byDate = summary.by_date || [];
+
+    const totalP = overall.total || 0;
+    const totalC = overall.correct || 0;
+    const avgConf = overall.avg_confidence || 0;
+    const overallAcc = totalP > 0 ? (totalC/totalP*100) : 0;
+
+    // Summary cards
+    document.getElementById('hist-summary').innerHTML = [
+        ['📊 Total Predictions', totalP, 'var(--accent)'],
+        ['✅ Korrekte', totalC, 'var(--accent-green)'],
+        ['❌ Forkerte', totalP-totalC, 'var(--accent-red)'],
+        ['🎯 Nøjagtighed', totalP > 0 ? overallAcc.toFixed(1)+'%' : '-', overallAcc>=50?'var(--accent-green)':overallAcc>=35?'var(--accent-yellow)':'var(--accent-red)'],
+        ['📈 Gns. Konfidens', totalP > 0 ? (avgConf*100).toFixed(0)+'%' : '-', 'var(--accent)'],
+    ].map(([l,v,c]) => `<div class="stat-card"><div class="label">${l}</div><div class="value" style="color:${c}">${v}</div></div>`).join('');
+
+    // By source
+    let sHtml = '<h2>🤖 Nøjagtighed per Kilde</h2>';
+    if (bySource.length) {
+        bySource.sort((a,b) => (b.correct/(b.total||1)) - (a.correct/(a.total||1)));
+        bySource.forEach(s => {
+            const acc = s.total > 0 ? (s.correct/s.total*100) : 0;
+            const color = acc>=50?'var(--accent-green)':acc>=35?'var(--accent-yellow)':'var(--accent-red)';
+            const emoji = acc>=50?'🟢':acc>=35?'🟡':'🔴';
+            const avgC = s.avg_confidence ? (s.avg_confidence*100).toFixed(0)+'%' : '-';
+            sHtml += `<div class="card">
+                <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                    <span style="font-weight:bold;min-width:220px">${emoji} ${escHtml(s.source||'Ukendt')}</span>
+                    <span style="font-size:20px;font-weight:bold;color:${color}">${acc.toFixed(1)}%</span>
+                    <span class="muted">${s.correct}/${s.total} korrekte</span>
+                    <span class="muted">(gns. konfidens: ${avgC})</span>
+                </div>
+                <div class="progress-bar" style="margin-top:6px"><div class="fill" style="width:${acc}%;background:${color}"></div></div>
+            </div>`;
+        });
+    } else {
+        sHtml += '<div class="card"><p class="secondary" style="padding:15px">📭 Ingen historiske data endnu. Gå til Dashboard og vent til kampe er slut — predictions gemmes automatisk.</p></div>';
+    }
+    document.getElementById('hist-by-source').innerHTML = sHtml;
+
+    // By league
+    let lHtml = '<h2>🏆 Nøjagtighed per Liga</h2>';
+    if (byLeague.length) {
+        byLeague.sort((a,b) => (b.correct/(b.total||1)) - (a.correct/(a.total||1)));
+        byLeague.forEach(l => {
+            const acc = l.total > 0 ? (l.correct/l.total*100) : 0;
+            const color = acc>=50?'var(--accent-green)':acc>=35?'var(--accent-yellow)':'var(--accent-red)';
+            const li = window.LEAGUES?.[l.league_code] || {};
+            lHtml += `<div class="card" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                <span style="font-weight:bold;min-width:200px">${li.emoji||'🏟️'} ${escHtml(li.name||l.league_code||'Ukendt')}</span>
+                <span style="font-size:16px;font-weight:bold;color:${color}">${acc.toFixed(1)}%</span>
+                <span class="muted">(${l.correct}/${l.total})</span>
+                ${l.avg_confidence ? `<span class="muted">gns. konf: ${(l.avg_confidence*100).toFixed(0)}%</span>` : ''}
+            </div>`;
+        });
+    }
+    document.getElementById('hist-by-league').innerHTML = lHtml;
+
+    // By date
+    let dHtml = '';
+    if (byDate.length) {
+        dHtml = '<h2>📅 Per Dag</h2><div style="display:flex;flex-wrap:wrap;gap:8px">';
+        byDate.forEach(d => {
+            const acc = d.total > 0 ? (d.correct/d.total*100) : 0;
+            const color = acc>=50?'var(--accent-green)':acc>=35?'var(--accent-yellow)':'var(--accent-red)';
+            dHtml += `<div class="card" style="min-width:140px;text-align:center;padding:10px">
+                <div class="muted" style="font-size:12px">${d.day}</div>
+                <div style="font-size:18px;font-weight:bold;color:${color}">${acc.toFixed(0)}%</div>
+                <div class="muted" style="font-size:11px">${d.correct}/${d.total}</div>
+            </div>`;
+        });
+        dHtml += '</div>';
+    }
+    document.getElementById('hist-by-date').innerHTML = dHtml;
+
+    // Recent results table
+    let rHtml = '<h2>📋 Alle Predictions</h2>';
+    if (results.length) {
+        const oc = {HOME_WIN:'Hjemme ⬅️',DRAW:'Uafgjort ➡️↔️',AWAY_WIN:'Ude ➡️'};
+        rHtml += `<table class="data-table"><thead><tr>
+            <th>Dato</th><th>Kamp</th><th>Resultat</th><th>Prediction</th><th>Konfidens</th><th>Kilde</th><th>✓/✗</th>
+        </tr></thead><tbody>`;
+        results.forEach(r => {
+            const check = r.is_correct ? '✅' : '❌';
+            const confPct = r.confidence ? (r.confidence > 1 ? r.confidence.toFixed(0) : (r.confidence*100).toFixed(0)) + '%' : '-';
+            const matchDate = r.match_date ? r.match_date.split('T')[0] : '-';
+            const predText = oc[r.predicted_outcome] || r.predicted_outcome || '-';
+            const actualText = oc[r.actual_outcome] || r.actual_outcome || '-';
+            const rowColor = r.is_correct ? 'rgba(0,220,130,0.08)' : 'rgba(255,77,77,0.08)';
+            rHtml += `<tr style="background:${rowColor}">
+                <td class="muted">${matchDate}</td>
+                <td>${escHtml(r.home_team)} vs ${escHtml(r.away_team)}</td>
+                <td style="font-weight:bold">${r.home_score != null ? r.home_score+'-'+r.away_score : '-'}</td>
+                <td style="color:var(--accent)">${predText}</td>
+                <td style="font-weight:bold">${confPct}</td>
+                <td class="muted" style="font-size:12px">${escHtml(r.source||'-')}</td>
+                <td>${check}</td>
+            </tr>`;
+        });
+        rHtml += `</tbody></table>`;
+    } else {
+        rHtml += '<div class="card"><p class="secondary" style="padding:15px">📭 Ingen resultater gemt endnu.</p></div>';
+    }
+    document.getElementById('hist-recent').innerHTML = rHtml;
+
+    document.getElementById('hist-status').textContent = totalP > 0
+        ? `✅ ${totalP} predictions — ${overallAcc.toFixed(1)}% korrekte (gns. konfidens: ${(avgConf*100).toFixed(0)}%)`
+        : 'ℹ️ Ingen predictions endnu';
+    setStatus(totalP > 0 ? `📜 Historik: ${overallAcc.toFixed(1)}% nøjagtighed (${totalC}/${totalP})` : '📜 Historik indlæst');
+}
+
+// ═══════════════════════════════════════════
+// SETTINGS
+// ═══════════════════════════════════════════
+async function startTraining() {
+    const status = document.getElementById('training-status');
+    if (status) status.textContent = '⏳ Starter træning...';
+    setStatus('🏋️ Træner ML modeller...');
+
+    const data = await api('train', { method: 'POST' });
+    if (data.error) {
+        if (status) status.textContent = '❌ Fejl: ' + data.error;
+        return;
+    }
+    const results = data.results || {};
+    const txt = Object.entries(results).map(([k,v]) => `${k}: ${(v*100).toFixed(1)}%`).join(' | ');
+    if (status) status.textContent = '✅ Trænet! ' + txt;
+    setStatus('✅ Modeller trænet!');
+    updateSidebarInfo();
+}
+
+async function saveApiKeys() {
+    const fd = document.getElementById('fd-key').value.trim();
+    const af = document.getElementById('af-key').value.trim();
+    await api('save_keys', { method: 'POST', body: { fd_key: fd, af_key: af } });
+    alert('✅ API nøgler gemt for denne session.');
+}
+
+async function clearCache() {
+    await api('clear_cache', { method: 'POST' });
+    alert('✅ Cache ryddet.');
+}
+
+async function updateSidebarInfo() {
+    const data = await api('status');
+    if (data.error) return;
+    document.getElementById('sidebar-db').textContent = `📦 ${data.match_count||0} kampe i database`;
+    document.getElementById('sidebar-model').textContent = `🤖 Modeller: ${data.is_trained ? '✅ Trænet' : '❌ Ikke trænet'}`;
+    document.getElementById('sidebar-time').textContent = `🕐 Sidst opdateret: ${new Date().toLocaleTimeString('da-DK')}`;
+    if (document.getElementById('db-info')) {
+        document.getElementById('db-info').textContent = `Kampe: ${data.match_count||0} | Predictions: ${data.prediction_count||0}`;
+    }
+}
+
+// ═══════════════════════════════════════════
+// HUSKELISTE (REMEMBER LIST)
+// ═══════════════════════════════════════════
+const REMEMBER_KEY = 'soccer_remember_list';
+
+function getRememberList() {
+    try { return JSON.parse(localStorage.getItem(REMEMBER_KEY) || '[]'); } catch(e) { return []; }
+}
+function saveRememberList(list) {
+    localStorage.setItem(REMEMBER_KEY, JSON.stringify(list));
+    updateFabBadge();
+    renderRememberPopup();
+}
+function isRemembered(id) {
+    return getRememberList().some(x => x.id === id);
+}
+function toggleRemember(btn, id, data) {
+    let list = getRememberList();
+    const idx = list.findIndex(x => x.id === id);
+    if (idx >= 0) {
+        list.splice(idx, 1);
+        btn.classList.remove('saved');
+    } else {
+        data.added_at = new Date().toLocaleTimeString('da-DK', {hour:'2-digit',minute:'2-digit'});
+        list.push(data);
+        btn.classList.add('saved');
+    }
+    saveRememberList(list);
+}
+function removeRemembered(id) {
+    let list = getRememberList().filter(x => x.id !== id);
+    saveRememberList(list);
+    // Update any visible bookmark buttons
+    document.querySelectorAll('.btn-bookmark.saved').forEach(b => {
+        if (b.onclick && b.onclick.toString().includes(id)) b.classList.remove('saved');
+    });
+}
+function clearRememberList() {
+    if (!confirm('Ryd hele huskelisten?')) return;
+    localStorage.removeItem(REMEMBER_KEY);
+    updateFabBadge();
+    renderRememberPopup();
+    document.querySelectorAll('.btn-bookmark.saved').forEach(b => b.classList.remove('saved'));
+}
+function toggleRememberPopup() {
+    const popup = document.getElementById('remember-popup');
+    popup.classList.toggle('open');
+    if (popup.classList.contains('open')) renderRememberPopup();
+}
+function updateFabBadge() {
+    const list = getRememberList();
+    const badge = document.getElementById('fab-count');
+    if (list.length > 0) {
+        badge.textContent = list.length;
+        badge.style.display = 'flex';
+    } else {
+        badge.style.display = 'none';
+    }
+}
+function renderRememberPopup() {
+    const list = getRememberList();
+    const container = document.getElementById('remember-list');
+    if (!list.length) {
+        container.innerHTML = '<div class="muted" style="text-align:center;padding:30px 0">Ingen kampe tilføjet endnu.<br>Klik 📌 på en kamp for at huske den.</div>';
+        return;
+    }
+    const outcomeLabels = {HOME_WIN:'Hjemme ⬅️', AWAY_WIN:'Ude ➡️', DRAW:'Uafgjort ↔️'};
+    let html = '';
+    list.forEach(item => {
+        let metaParts = [];
+        if (item.page) metaParts.push(`📍 ${item.page}`);
+        if (item.league) metaParts.push(item.league);
+        if (item.date) {
+            try {
+                const d = new Date(item.date);
+                if (!isNaN(d)) metaParts.push('🕐 ' + d.toLocaleTimeString('da-DK',{hour:'2-digit',minute:'2-digit'}));
+                else if (item.date.includes(':')) metaParts.push('🕐 ' + item.date);
+            } catch(e) {}
+        }
+        if (item.added_at) metaParts.push(`tilføjet ${item.added_at}`);
+        let predLine = '';
+        if (item.prediction) {
+            const lbl = outcomeLabels[item.prediction] || item.prediction;
+            predLine = `<div class="ri-pred" style="color:var(--accent-green)">🎯 ${lbl}`;
+            if (item.confidence && item.confidence > 0) {
+                const c = item.confidence > 1 ? item.confidence : item.confidence * 100;
+                predLine += ` (${c.toFixed(0)}%)`;
+            }
+            predLine += `</div>`;
+        }
+        if (item.odds) predLine += `<div class="ri-meta">💰 ${item.odds}</div>`;
+        if (item.score) predLine += `<div class="ri-meta">📊 Resultat: ${item.score}</div>`;
+        html += `<div class="remember-item">
+            <div class="ri-info">
+                <div class="ri-teams">⚽ ${escHtml(item.home)} vs ${escHtml(item.away)}</div>
+                <div class="ri-meta">${metaParts.join(' · ')}</div>
+                ${predLine}
+            </div>
+            <button class="ri-remove" onclick="removeRemembered('${item.id.replace(/'/g,'\\\'')}')" title="Fjern">✕</button>
+        </div>`;
+    });
+    container.innerHTML = html;
+}
+function copyRememberList() {
+    const list = getRememberList();
+    if (!list.length) { alert('Huskelisten er tom.'); return; }
+    const outcomeLabels = {HOME_WIN:'Hjemme', AWAY_WIN:'Ude', DRAW:'Uafgjort'};
+    let text = '📋 Min Huskeliste\n' + '─'.repeat(30) + '\n';
+    list.forEach((item, i) => {
+        text += `${i+1}. ${item.home} vs ${item.away}`;
+        if (item.prediction) text += ` → ${outcomeLabels[item.prediction]||item.prediction}`;
+        if (item.confidence && item.confidence > 0) {
+            const c = item.confidence > 1 ? item.confidence : item.confidence * 100;
+            text += ` (${c.toFixed(0)}%)`;
+        }
+        if (item.odds) text += ` [${item.odds}]`;
+        if (item.page) text += ` (${item.page})`;
+        text += '\n';
+    });
+    navigator.clipboard.writeText(text).then(() => alert('✅ Kopieret til udklipsholder!'));
+}
+// Init badge on load
+updateFabBadge();
+
+// ═══════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════
+window.LEAGUES = {};
+(async function init() {
+    // Set date
+    document.getElementById('dash-date').textContent = new Date().toLocaleDateString('da-DK', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
+
+    // Load leagues
+    const cfg = await api('config');
+    if (cfg.leagues) {
+        window.LEAGUES = cfg.leagues;
+        // Populate checkboxes
+        const cb = document.getElementById('league-checkboxes');
+        if (cb) {
+            cb.innerHTML = Object.entries(cfg.leagues).map(([code, info]) =>
+                `<label><input type="checkbox" value="${code}" checked> ${info.emoji} ${escHtml(info.name)}</label>`
+            ).join('');
+        }
+    }
+
+    // Load dashboard
+    loadDashboard();
+
+    // Auto-refresh every 60s
+    setInterval(() => {
+        if (currentPage === 'dashboard') loadDashboard();
+        updateSidebarInfo();
+    }, 60000);
+})();
+</script>
+</body>
+</html>

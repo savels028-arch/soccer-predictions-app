@@ -222,7 +222,7 @@ class ConfidenceMeter(tk.Canvas):
 
 
 class ScrollableFrame(tk.Frame):
-    """Scrollable frame container."""
+    """Scrollable frame container with macOS trackpad + mousewheel support."""
     def __init__(self, parent, **kwargs):
         bg = kwargs.pop("bg", C["bg_dark"])
         super().__init__(parent, bg=bg)
@@ -243,7 +243,7 @@ class ScrollableFrame(tk.Frame):
         self.canvas.pack(side="left", fill="both", expand=True)
         self.scrollbar.pack(side="right", fill="y")
 
-        # Bind mouse wheel
+        # Bind mouse wheel — works on macOS, Windows, and Linux
         self.canvas.bind("<Enter>", self._bind_mousewheel)
         self.canvas.bind("<Leave>", self._unbind_mousewheel)
 
@@ -254,22 +254,37 @@ class ScrollableFrame(tk.Frame):
         self.canvas.itemconfig(self.canvas_window, width=event.width)
 
     def _bind_mousewheel(self, event):
-        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
-        self.canvas.bind_all("<Button-4>", self._on_mousewheel)
-        self.canvas.bind_all("<Button-5>", self._on_mousewheel)
+        import platform
+        system = platform.system()
+        if system == "Darwin":
+            # macOS — trackpad and mouse wheel
+            self.canvas.bind_all("<MouseWheel>", self._on_mousewheel_mac)
+        elif system == "Windows":
+            self.canvas.bind_all("<MouseWheel>", self._on_mousewheel_win)
+        else:
+            # Linux
+            self.canvas.bind_all("<Button-4>", self._on_mousewheel_linux)
+            self.canvas.bind_all("<Button-5>", self._on_mousewheel_linux)
 
     def _unbind_mousewheel(self, event):
         self.canvas.unbind_all("<MouseWheel>")
         self.canvas.unbind_all("<Button-4>")
         self.canvas.unbind_all("<Button-5>")
 
-    def _on_mousewheel(self, event):
+    def _on_mousewheel_mac(self, event):
+        """macOS: event.delta is small integers (e.g. -1, 1, -3, 3 for trackpad)."""
+        self.canvas.yview_scroll(int(-1 * event.delta), "units")
+
+    def _on_mousewheel_win(self, event):
+        """Windows: event.delta is typically 120 or -120."""
+        self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    def _on_mousewheel_linux(self, event):
+        """Linux: Button-4 = scroll up, Button-5 = scroll down."""
         if event.num == 4:
             self.canvas.yview_scroll(-1, "units")
         elif event.num == 5:
             self.canvas.yview_scroll(1, "units")
-        else:
-            self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
 
 class StatusBar(tk.Frame):

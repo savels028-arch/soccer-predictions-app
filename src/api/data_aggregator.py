@@ -14,6 +14,7 @@ from config.settings import LEAGUES, DATA_SETTINGS
 from src.api.free_football_client import FreeFootballClient
 from src.api.csv_football_client import FootballDataCSVClient
 from src.api.prediction_scraper import PredictionScraper
+from src.api.danske_spil_client import DanskeSpilClient
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,7 @@ class DataAggregator:
         self.free_client = FreeFootballClient()
         self.csv_client = FootballDataCSVClient()
         self.prediction_scraper = PredictionScraper()
+        self.danske_spil = DanskeSpilClient()
 
     # ──────────────────────────────────────────
     # MAIN DATA FETCH
@@ -200,6 +202,249 @@ class DataAggregator:
             self.db.set_cache(cache_key, consensus,
                               DATA_SETTINGS["cache_ttl_minutes"])
         return consensus
+
+    # ──────────────────────────────────────────
+    # DANSKE SPIL ODDS
+    # ──────────────────────────────────────────
+    def fetch_danske_spil_odds(self, force_refresh: bool = False) -> List[Dict]:
+        """
+        Hent alle tilgængelige fodboldkampe med odds fra Danske Spil.
+        Returns list of event dicts with 1X2, O/U, BTTS odds.
+        """
+        cache_key = f"danske_spil_odds_{date.today().isoformat()}"
+
+        if not force_refresh:
+            cached = self.db.get_cache(cache_key)
+            if cached:
+                logger.info("Returning cached Danske Spil odds")
+                return cached
+
+        try:
+            events = self.danske_spil.get_all_football_odds()
+            logger.info(f"Got {len(events)} events from Danske Spil")
+        except Exception as e:
+            logger.error(f"Danske Spil scraper error: {e}")
+            events = []
+
+        if events:
+            self.db.set_cache(cache_key, events,
+                              DATA_SETTINGS["cache_ttl_minutes"])
+        return events
+
+    def match_predictions_with_danske_spil(
+        self,
+        predictions: List[Dict],
+        force_refresh: bool = False,
+    ) -> List[Dict]:
+        """
+        Match appens predictions med Danske Spil odds.
+        Returnerer predictions beriget med danske_spil-info.
+        """
+        ds_events = self.fetch_danske_spil_odds(force_refresh=force_refresh)
+        return self.danske_spil.match_predictions_with_odds(predictions, ds_events)
+
+    def build_consensus_with_danske_spil(
+        self,
+        prediction_engine=None,
+        matches: List[Dict] = None,
+        force_refresh: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Automatisk konsensus-analyse:
+        1. Hent AI-site predictions (consensus fra 4 sider)
+        2. Hent ML-model predictions (ensemble)
+        3. Find kampe hvor BEGGE kilder er enige om udfald
+        4. Krydsreferér med Danske Spil odds
+        5. Beregn value bets
+
+        Returns dict med:
+          - all_consensus: alle kampe med source-agreement
+          - playable: kun dem der er hos Danske Spil
+          - stats: opsummering
+        """
+        import re
+
+        # ── 1. AI site consensus ──
+        ai_consensus = self.fetch_ai_predictions(force_refresh=force_refresh)
+        logger.info(f"Konsensus: {len(ai_consensus)} AI-site predictions")
+
+        # ── 2. ML ensemble predictions ──
+        ml_predictions = {}
+        if prediction_engine and matches:
+            try:
+                all_preds = prediction_engine.predict_all_matches(matches)
+                for match_key, preds in all_preds.items():
+                    ensemble = next((p for p in preds if p.get("model_name") == "ensemble"), None)
+                    if ensemble:
+                        ml_predictions[self._norm_key(
+                            ensemble.get("home_team", ""),
+                            ensemble.get("away_team", "")
+                        )] = ensemble
+            except Exception as e:
+                logger.warning(f"ML predictions fejl: {e}")
+
+        logger.info(f"Konsensus: {len(ml_predictions)} ML ensemble predictions")
+
+        # ── 3. Danske Spil odds ──
+        ds_events = self.fetch_danske_spil_odds(force_refresh=force_refresh)
+        ds_index = {}
+        for ev in ds_events:
+            key = self._norm_key(ev.get("home_team", ""), ev.get("away_team", ""))
+            if key:
+                ds_index[key] = ev
+
+        logger.info(f"Konsensus: {len(ds_events)} Danske Spil events")
+
+        # ── 4. Byg samlet konsensus ──
+        combined = {}
+
+        # Tilføj AI consensus
+        for ai in ai_consensus:
+            key = self._norm_key(ai.get("home_team", ""), ai.get("away_team", ""))
+            if not key:
+                continue
+            combined[key] = {
+                "home_team": ai.get("home_team", ""),
+                "away_team": ai.get("away_team", ""),
+                "league": ai.get("league", ""),
+                "kickoff_time": ai.get("kickoff_time", ""),
+                "sources": [],
+                "ai_consensus": ai,
+                "ml_ensemble": None,
+                "danske_spil": None,
+                "agreement_level": 0,
+                "agreed_outcome": None,
+            }
+            # AI site predictions
+            winner = ai.get("consensus_winner")
+            if winner:
+                outcome = {"1": "HOME_WIN", "X": "DRAW", "2": "AWAY_WIN"}.get(winner, winner)
+                combined[key]["sources"].append({
+                    "name": "AI Sites",
+                    "type": "ai_consensus",
+                    "prediction": outcome,
+                    "confidence": ai.get("consensus_confidence"),
+                    "num_sources": ai.get("num_sources", 0),
+                    "home_pct": ai.get("avg_home_win_pct"),
+                    "draw_pct": ai.get("avg_draw_pct"),
+                    "away_pct": ai.get("avg_away_win_pct"),
+                    "btts": ai.get("btts_consensus"),
+                    "over_under": ai.get("over_under_consensus"),
+                    "sites": ai.get("sources", []),
+                })
+
+        # Tilføj ML ensemble
+        for key, ens in ml_predictions.items():
+            if key not in combined:
+                combined[key] = {
+                    "home_team": ens.get("home_team", ""),
+                    "away_team": ens.get("away_team", ""),
+                    "league": ens.get("league_code", ""),
+                    "kickoff_time": "",
+                    "sources": [],
+                    "ai_consensus": None,
+                    "ml_ensemble": None,
+                    "danske_spil": None,
+                    "agreement_level": 0,
+                    "agreed_outcome": None,
+                }
+            combined[key]["ml_ensemble"] = ens
+            combined[key]["sources"].append({
+                "name": "ML Ensemble",
+                "type": "ml_ensemble",
+                "prediction": ens.get("predicted_outcome"),
+                "confidence": ens.get("confidence"),
+                "home_pct": ens.get("home_win_prob"),
+                "draw_pct": ens.get("draw_prob"),
+                "away_pct": ens.get("away_win_prob"),
+                "suggestion": ens.get("suggestion", ""),
+            })
+
+        # ── 5. Beregn enighed og match med DS ──
+        all_consensus = []
+        for key, entry in combined.items():
+            sources = entry["sources"]
+            predictions_by_source = [s["prediction"] for s in sources if s.get("prediction")]
+
+            # Find enighed
+            if len(predictions_by_source) >= 2:
+                from collections import Counter
+                counts = Counter(predictions_by_source)
+                most_common_outcome, most_common_count = counts.most_common(1)[0]
+                entry["agreement_level"] = most_common_count
+                entry["agreed_outcome"] = most_common_outcome if most_common_count >= 2 else None
+                entry["all_agree"] = most_common_count == len(predictions_by_source)
+            elif len(predictions_by_source) == 1:
+                entry["agreement_level"] = 1
+                entry["agreed_outcome"] = predictions_by_source[0]
+                entry["all_agree"] = False
+            else:
+                entry["agreement_level"] = 0
+                entry["agreed_outcome"] = None
+                entry["all_agree"] = False
+
+            # Match med Danske Spil (direkte + fuzzy)
+            ds_match = ds_index.get(key)
+            if not ds_match:
+                ds_match = self.danske_spil._fuzzy_find(key, ds_index)
+            if ds_match:
+                entry["danske_spil"] = ds_match
+
+            all_consensus.append(entry)
+
+        # Sortér: enige + spilbare først, dernæst enige, dernæst resten
+        all_consensus.sort(key=lambda x: (
+            -(1 if x["danske_spil"] else 0),
+            -(x["agreement_level"]),
+            -(1 if x["all_agree"] else 0),
+        ))
+
+        playable = [x for x in all_consensus if x["danske_spil"] and x["agreed_outcome"]]
+        agreed = [x for x in all_consensus if x["agreed_outcome"]]
+
+        stats = {
+            "total_matches": len(all_consensus),
+            "ai_predictions": len(ai_consensus),
+            "ml_predictions": len(ml_predictions),
+            "ds_events": len(ds_events),
+            "agreed": len(agreed),
+            "playable": len(playable),
+            "playable_agree_all": sum(1 for x in playable if x.get("all_agree")),
+        }
+        logger.info(
+            "Konsensus færdig: %d kampe, %d enige, %d spilbare hos DS",
+            stats["total_matches"], stats["agreed"], stats["playable"]
+        )
+
+        return {
+            "all_consensus": all_consensus,
+            "playable": playable,
+            "agreed": agreed,
+            "stats": stats,
+        }
+
+    @staticmethod
+    def _norm_key(home: str, away: str) -> str:
+        """Normaliseret match-key for cross-source matching."""
+        import re
+
+        def _n(name: str) -> str:
+            if not name:
+                return ""
+            n = name.strip().lower()
+            for sfx in (" fc", " sc", " cf", " bc", " fk", " sk"):
+                if n.endswith(sfx):
+                    n = n[: -len(sfx)].strip()
+            for pfx in ("fc ", "sc ", "fk ", "sk ", "ac ", "as "):
+                if n.startswith(pfx):
+                    n = n[len(pfx):].strip()
+            n = (n.replace("ü", "u").replace("ö", "o").replace("é", "e")
+                  .replace("á", "a").replace("ñ", "n").replace("ç", "c"))
+            n = re.sub(r"[^\w\s]", "", n)
+            return re.sub(r"\s+", " ", n).strip()
+
+        h, a = _n(home), _n(away)
+        return f"{h}_vs_{a}" if h and a else ""
 
     def fetch_ai_predictions_raw(self, force_refresh: bool = False) -> List[Dict]:
         """

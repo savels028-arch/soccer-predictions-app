@@ -79,9 +79,11 @@ class SoccerPredictionsApp:
         self._build_dashboard_page()
         self._build_predictions_page()
         self._build_ai_sites_page()
+        self._build_danske_spil_page()
         self._build_comparison_page()
         self._build_live_page()
         self._build_suggestions_page()
+        self._build_history_page()
         self._build_settings_page()
 
         # Show dashboard by default
@@ -112,9 +114,11 @@ class SoccerPredictionsApp:
             ("dashboard",   "📊  Dashboard",     "Oversigt & dagens kampe"),
             ("predictions", "🎯  AI Predictions", "ML model predictions"),
             ("ai_sites",    "🌐  AI Sites",       "Predictions fra 4 AI-sider"),
+            ("danske_spil", "🇩🇰  Danske Spil",   "Spil hos Danske Spil"),
             ("comparison",  "📈  Sammenligning",  "Sammenlign modeller"),
             ("live",        "🔴  Live Scores",    "Live kampresultater"),
             ("suggestions", "💡  Forslag",        "Betting forslag"),
+            ("history",     "📜  Historik",       "Historisk nøjagtighed"),
             ("settings",    "⚙️  Indstillinger",  "API keys & træning"),
         ]
 
@@ -283,7 +287,11 @@ class SoccerPredictionsApp:
             time_str = "--:--"
 
         if status in ("IN_PLAY", "LIVE", "1H", "2H"):
-            elapsed = match.get("extra_data", {}).get("elapsed", "")
+            extra = match.get("extra_data", {})
+            if isinstance(extra, dict):
+                elapsed = extra.get("elapsed", "")
+            else:
+                elapsed = ""
             status_text = f"🔴 LIVE {elapsed}'"
             status_color = C["accent_red"]
         elif status == "HALFTIME":
@@ -681,7 +689,8 @@ class SoccerPredictionsApp:
             away = match.get("away_team_name", "?")
             hs = match.get("home_score", 0)
             aws = match.get("away_score", 0)
-            elapsed = match.get("extra_data", {}).get("elapsed", "")
+            extra = match.get("extra_data", {})
+            elapsed = extra.get("elapsed", "") if isinstance(extra, dict) else ""
 
             tk.Label(score_row, text=home, font=("Segoe UI", 14, "bold"),
                     bg=C["bg_card"], fg=C["text_primary"],
@@ -869,6 +878,367 @@ class SoccerPredictionsApp:
                          anchor="w").pack(fill="x", pady=(3, 0))
 
     # ═══════════════════════════════════════════
+    # DANSKE SPIL PAGE – Konsensus + Spilbare
+    # ═══════════════════════════════════════════
+    def _build_danske_spil_page(self):
+        page = StyledFrame(self.content_frame)
+        self.pages["danske_spil"] = page
+
+        scroll = ScrollableFrame(page)
+        scroll.pack(fill="both", expand=True)
+        container = scroll.scrollable_frame
+
+        # Header
+        header = StyledFrame(container)
+        header.pack(fill="x", padx=20, pady=(20, 10))
+        HeaderLabel(header, text="🇩🇰 Konsensus & Danske Spil").pack(side="left")
+
+        # Controls
+        ctrl = StyledFrame(container)
+        ctrl.pack(fill="x", padx=20, pady=(0, 10))
+        AccentButton(ctrl, text="🔄  Analysér alle kilder",
+                     command=self._fetch_danske_spil).pack(side="left")
+        self.ds_status = StyledLabel(ctrl, text="", font=("Segoe UI", 10))
+        self.ds_status.pack(side="left", padx=20)
+
+        # Info card
+        info_card = CardFrame(container)
+        info_card.pack(fill="x", padx=20, pady=(0, 10))
+        tk.Label(info_card,
+                 text="💡 Sammenligner automatisk AI-sites (4 kilder) og ML-modeller. "
+                      "Viser kampe hvor kilderne er ENIGE om udfald, og hvilke der kan spilles hos Danske Spil.",
+                 font=("Segoe UI", 9), bg=C["bg_card"], fg=C["text_muted"],
+                 wraplength=900).pack(padx=10, pady=5)
+
+        # Disclaimer
+        disc_card = CardFrame(container)
+        disc_card.pack(fill="x", padx=20, pady=(0, 10))
+        tk.Label(disc_card,
+                 text="⚠️ DISCLAIMER: Forudsigelser er kun til underholdning. "
+                      "Gambling kan være vanedannende. Spil ansvarligt. 18+ | stopspillet.dk | rofus.nu",
+                 font=("Segoe UI", 9), bg=C["bg_card"], fg=C["accent_yellow"],
+                 wraplength=900).pack()
+
+        # Summary cards row
+        self.ds_summary_frame = StyledFrame(container)
+        self.ds_summary_frame.pack(fill="x", padx=20, pady=(0, 10))
+
+        # Results container
+        self.ds_container = StyledFrame(container)
+        self.ds_container.pack(fill="both", expand=True, padx=20, pady=10)
+
+        StyledLabel(self.ds_container,
+                    text="Klik '🔄 Analysér alle kilder' for at starte",
+                    font=("Segoe UI", 12)).pack(pady=40)
+
+    def _fetch_danske_spil(self):
+        """Hent alle kilder, beregn konsensus, match med Danske Spil."""
+        self.ds_status.configure(text="⏳ Henter fra alle kilder… (ca. 15-30 sek)")
+        self.status_bar.set_status("🔄 Henter AI-sites + ML + Danske Spil…")
+
+        def _worker():
+            try:
+                result = self.data.build_consensus_with_danske_spil(
+                    prediction_engine=self.engine,
+                    matches=self.matches_cache if self.matches_cache else None,
+                    force_refresh=True,
+                )
+                self.root.after(0, lambda: self._populate_danske_spil(result))
+            except Exception as e:
+                logger.error(f"Consensus+DS fetch error: {e}")
+                self.root.after(0, lambda: self.ds_status.configure(
+                    text=f"❌ Fejl: {e}"))
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _populate_danske_spil(self, result: Dict):
+        """Populér konsensus + Danske Spil siden."""
+        # Clear
+        for w in self.ds_container.winfo_children():
+            w.destroy()
+        for w in self.ds_summary_frame.winfo_children():
+            w.destroy()
+
+        stats = result.get("stats", {})
+        playable = result.get("playable", [])
+        agreed = result.get("agreed", [])
+        all_matches = result.get("all_consensus", [])
+
+        # ── Summary cards ──
+        summaries = [
+            ("🌐 AI-sites", str(stats.get("ai_predictions", 0)), C["accent"]),
+            ("🤖 ML Modeller", str(stats.get("ml_predictions", 0)), C["accent"]),
+            ("🤝 Enige", str(stats.get("agreed", 0)), C["accent_green"]),
+            ("🇩🇰 Spilbare", str(stats.get("playable", 0)),
+             C["accent_green"] if stats.get("playable", 0) > 0 else C["accent_red"]),
+        ]
+        for title, value, color in summaries:
+            card = CardFrame(self.ds_summary_frame)
+            card.pack(side="left", fill="x", expand=True, padx=(0, 10), pady=5)
+            tk.Label(card, text=title, font=("Segoe UI", 9),
+                     bg=C["bg_card"], fg=C["text_muted"]).pack(anchor="w")
+            tk.Label(card, text=value, font=("Segoe UI", 22, "bold"),
+                     bg=C["bg_card"], fg=color).pack(anchor="w", pady=(5, 0))
+
+        self.ds_status.configure(
+            text=f"✅ {stats.get('agreed', 0)} enige · "
+                 f"{stats.get('playable', 0)} spilbare hos DS · "
+                 f"{stats.get('ds_events', 0)} DS kampe"
+        )
+        self.status_bar.set_status(
+            f"Konsensus: {stats.get('playable', 0)} spilbare kampe hos Danske Spil"
+        )
+
+        # ── SEKTION 1: Spilbare hos Danske Spil (kilderne er enige) ──
+        if playable:
+            sec_hdr = StyledFrame(self.ds_container)
+            sec_hdr.pack(fill="x", pady=(10, 5))
+            SubHeaderLabel(sec_hdr,
+                          text=f"🎯 Spilbare hos Danske Spil — kilderne er enige ({len(playable)})").pack(side="left")
+
+            for entry in playable:
+                self._create_consensus_card(self.ds_container, entry, show_ds=True)
+
+        # ── SEKTION 2: Enige men ikke hos DS ──
+        agreed_not_playable = [x for x in agreed if not x.get("danske_spil")]
+        if agreed_not_playable:
+            sec_hdr2 = StyledFrame(self.ds_container)
+            sec_hdr2.pack(fill="x", pady=(20, 5))
+            SubHeaderLabel(sec_hdr2,
+                          text=f"🤝 Kilderne er enige — ikke hos Danske Spil ({len(agreed_not_playable)})").pack(side="left")
+
+            for entry in agreed_not_playable[:30]:
+                self._create_consensus_card(self.ds_container, entry, show_ds=False)
+
+        # ── SEKTION 3: Kun 1 kilde / uenige ──
+        rest = [x for x in all_matches if not x.get("agreed_outcome")]
+        if rest:
+            sec_hdr3 = StyledFrame(self.ds_container)
+            sec_hdr3.pack(fill="x", pady=(20, 5))
+
+            # Collapsible: vis kun header, ikke alle kort
+            show_rest_var = tk.BooleanVar(value=False)
+            rest_toggle = SecondaryButton(
+                sec_hdr3,
+                text=f"▶ Vis kampe med kun 1 kilde / uenige ({len(rest)})",
+                command=lambda: self._toggle_rest_section(rest, rest_frame, rest_toggle, show_rest_var),
+            )
+            rest_toggle.pack(side="left")
+
+            rest_frame = StyledFrame(self.ds_container)
+            rest_frame.pack(fill="x")
+
+        if not playable and not agreed_not_playable:
+            StyledLabel(self.ds_container,
+                        text="Ingen konsensus-kampe fundet. Prøv at opdatere eller vent på nye kampe.",
+                        font=("Segoe UI", 12)).pack(pady=40)
+
+    def _toggle_rest_section(self, rest, frame, button, var):
+        """Toggle vis/skjul af uenige kampe."""
+        if var.get():
+            for w in frame.winfo_children():
+                w.destroy()
+            button.config(text=f"▶ Vis kampe med kun 1 kilde / uenige ({len(rest)})")
+            var.set(False)
+        else:
+            for entry in rest[:50]:
+                self._create_consensus_card(frame, entry, show_ds=bool(entry.get("danske_spil")))
+            button.config(text=f"▼ Skjul kampe med kun 1 kilde / uenige ({len(rest)})")
+            var.set(True)
+
+    def _create_consensus_card(self, parent, entry: Dict, show_ds: bool):
+        """Opret et kort for en konsensus-kamp."""
+        card = CardFrame(parent)
+        card.pack(fill="x", pady=4)
+
+        home = entry.get("home_team", "?")
+        away = entry.get("away_team", "?")
+        ds = entry.get("danske_spil")
+        agreed = entry.get("agreed_outcome")
+        all_agree = entry.get("all_agree", False)
+        sources = entry.get("sources", [])
+
+        # ── Top row: kamp + enigheds-badge ──
+        top = StyledFrame(card, bg=C["bg_card"])
+        top.pack(fill="x")
+
+        agree_icon = "🎯" if all_agree and ds else "🤝" if agreed else "⚪"
+        title = f"{agree_icon} {home}  vs  {away}"
+        tk.Label(top, text=title, font=("Segoe UI", 12, "bold"),
+                 bg=C["bg_card"], fg=C["text_primary"]).pack(side="left")
+
+        # Meta info
+        meta_parts = []
+        league = entry.get("league", "")
+        if league:
+            meta_parts.append(league)
+        kickoff = entry.get("kickoff_time", "")
+        if kickoff:
+            try:
+                dt = datetime.fromisoformat(kickoff.replace("Z", "+00:00"))
+                meta_parts.append(f"🕐 {dt.strftime('%d/%m %H:%M')}")
+            except Exception:
+                if ":" in str(kickoff):
+                    meta_parts.append(f"🕐 {kickoff}")
+        if meta_parts:
+            tk.Label(top, text="  ·  ".join(meta_parts), font=("Segoe UI", 9),
+                     bg=C["bg_card"], fg=C["text_muted"]).pack(side="right")
+
+        # ── Source breakdown row ──
+        src_row = StyledFrame(card, bg=C["bg_card"])
+        src_row.pack(fill="x", pady=(5, 0))
+
+        outcome_labels = {
+            "HOME_WIN": ("Hjemme", C["win_color"]),
+            "AWAY_WIN": ("Ude", C["lose_color"]),
+            "DRAW": ("Uafgjort", C["draw_color"]),
+        }
+
+        for src in sources:
+            src_frame = StyledFrame(src_row, bg=C["bg_card"])
+            src_frame.pack(side="left", padx=(0, 15))
+
+            src_icon = "🌐" if src["type"] == "ai_consensus" else "🤖"
+            src_name = src.get("name", "?")
+            pred = src.get("prediction", "?")
+            conf = src.get("confidence")
+            pred_label, pred_color = outcome_labels.get(pred, (pred, C["text_secondary"]))
+
+            conf_text = ""
+            if conf:
+                conf_text = f" ({conf:.0f}%)" if conf > 1 else f" ({conf:.0%})"
+
+            # Source name + num_sources for AI
+            name_text = f"{src_icon} {src_name}"
+            if src.get("num_sources"):
+                name_text += f" ({src['num_sources']} sider)"
+
+            tk.Label(src_frame, text=name_text, font=("Segoe UI", 9),
+                     bg=C["bg_card"], fg=C["text_muted"]).pack(anchor="w")
+            tk.Label(src_frame, text=f"{pred_label}{conf_text}",
+                     font=("Segoe UI", 10, "bold"),
+                     bg=C["bg_card"], fg=pred_color).pack(anchor="w")
+
+            # BTTS + O/U for AI
+            extras = []
+            if src.get("btts"):
+                extras.append(f"BTTS: {src['btts']}")
+            if src.get("over_under"):
+                extras.append(f"O/U: {src['over_under']}")
+            if extras:
+                tk.Label(src_frame, text=" · ".join(extras), font=("Segoe UI", 8),
+                         bg=C["bg_card"], fg=C["text_muted"]).pack(anchor="w")
+
+        # ── Agreement badge ──
+        if agreed:
+            agree_label, agree_color = outcome_labels.get(agreed, (agreed, C["accent"]))
+            badge_frame = StyledFrame(src_row, bg=C["bg_card"])
+            badge_frame.pack(side="right")
+            agree_text = "ALLE ENIGE" if all_agree else "FLERTAL"
+            tk.Label(badge_frame, text=f"✅ {agree_text}: {agree_label}",
+                     font=("Segoe UI", 11, "bold"),
+                     bg=C["bg_card"], fg=agree_color).pack()
+
+        # ── Danske Spil odds ──
+        if ds and show_ds:
+            ds_row = StyledFrame(card, bg=C["bg_card"])
+            ds_row.pack(fill="x", pady=(5, 0))
+
+            tk.Label(ds_row, text="🇩🇰 Danske Spil Odds:",
+                     font=("Segoe UI", 10, "bold"), bg=C["bg_card"],
+                     fg=C["accent"]).pack(side="left")
+
+            h_odds = ds.get("home_odds")
+            d_odds = ds.get("draw_odds")
+            a_odds = ds.get("away_odds")
+
+            if h_odds:
+                tk.Label(ds_row, text=f"  1: {h_odds:.2f}",
+                         font=("Segoe UI", 10, "bold"), bg=C["bg_card"],
+                         fg=C["win_color"]).pack(side="left", padx=(10, 0))
+            if d_odds:
+                tk.Label(ds_row, text=f"  X: {d_odds:.2f}",
+                         font=("Segoe UI", 10, "bold"), bg=C["bg_card"],
+                         fg=C["draw_color"]).pack(side="left", padx=(5, 0))
+            if a_odds:
+                tk.Label(ds_row, text=f"  2: {a_odds:.2f}",
+                         font=("Segoe UI", 10, "bold"), bg=C["bg_card"],
+                         fg=C["lose_color"]).pack(side="left", padx=(5, 0))
+
+            # Extra odds
+            extras = []
+            ou_o, ou_u = ds.get("over_25_odds"), ds.get("under_25_odds")
+            btts_y, btts_n = ds.get("btts_yes_odds"), ds.get("btts_no_odds")
+            if ou_o and ou_u:
+                extras.append(f"O2.5: {ou_o:.2f} / U2.5: {ou_u:.2f}")
+            if btts_y and btts_n:
+                extras.append(f"BTTS Ja: {btts_y:.2f} / Nej: {btts_n:.2f}")
+            if extras:
+                tk.Label(ds_row, text="  |  ".join(extras), font=("Segoe UI", 9),
+                         bg=C["bg_card"], fg=C["text_secondary"]).pack(side="right")
+
+            # ── Value beregning ──
+            if agreed and h_odds and d_odds and a_odds:
+                # Find bedste probability for det enige udfald
+                ai = entry.get("ai_consensus")
+                ml = entry.get("ml_ensemble")
+
+                h_pct = d_pct = a_pct = None
+                if ai:
+                    h_pct = ai.get("avg_home_win_pct")
+                    d_pct = ai.get("avg_draw_pct")
+                    a_pct = ai.get("avg_away_win_pct")
+                elif ml:
+                    h_pct = ml.get("home_win_prob")
+                    d_pct = ml.get("draw_prob")
+                    a_pct = ml.get("away_win_prob")
+
+                if h_pct is not None and a_pct is not None:
+                    value_info = self._calc_ds_value(
+                        h_pct, d_pct, a_pct,
+                        h_odds, d_odds, a_odds, home, away
+                    )
+                    if value_info:
+                        val_row = StyledFrame(card, bg=C["bg_card"])
+                        val_row.pack(fill="x", pady=(3, 0))
+                        tk.Label(val_row, text=value_info,
+                                 font=("Segoe UI", 10, "bold"),
+                                 bg=C["bg_card"], fg=C["accent_green"]).pack(side="left")
+
+            # Deeplink
+            deeplink = ds.get("deeplink")
+            if deeplink:
+                tk.Label(card, text=f"🔗 {deeplink}", font=("Segoe UI", 8),
+                         bg=C["bg_card"], fg=C["text_muted"],
+                         cursor="hand2", anchor="w").pack(fill="x", pady=(3, 0))
+
+    def _calc_ds_value(self, h_pct, d_pct, a_pct, h_odds, d_odds, a_odds, home, away):
+        """Beregn value bets baseret på AI-sandsynlighed vs DS-odds."""
+        try:
+            # Normalisér til 0-1 hvis procenter
+            hp = h_pct / 100.0 if h_pct > 1 else h_pct
+            dp = (d_pct / 100.0 if d_pct > 1 else d_pct) if d_pct else 0
+            ap = a_pct / 100.0 if a_pct > 1 else a_pct
+
+            values = []
+            if h_odds > 0:
+                ev_h = hp * h_odds
+                if ev_h > 1.05:
+                    values.append(f"💚 {home} VALUE (EV: {ev_h:.2f})")
+            if d_odds > 0 and dp > 0:
+                ev_d = dp * d_odds
+                if ev_d > 1.10:
+                    values.append(f"🟡 Uafgjort VALUE (EV: {ev_d:.2f})")
+            if a_odds > 0:
+                ev_a = ap * a_odds
+                if ev_a > 1.05:
+                    values.append(f"💚 {away} VALUE (EV: {ev_a:.2f})")
+
+            return " | ".join(values) if values else None
+        except Exception:
+            return None
+
+    # ═══════════════════════════════════════════
     # SUGGESTIONS PAGE
     # ═══════════════════════════════════════════
     def _build_suggestions_page(self):
@@ -1004,6 +1374,253 @@ class SoccerPredictionsApp:
                         font=("Segoe UI", 9), bg=C["bg_card"],
                         fg=C["accent_yellow"], anchor="w",
                         wraplength=800).pack(fill="x")
+
+    # ═══════════════════════════════════════════
+    # HISTORY PAGE – Historisk nøjagtighed
+    # ═══════════════════════════════════════════
+    def _build_history_page(self):
+        page = StyledFrame(self.content_frame)
+        self.pages["history"] = page
+
+        scroll = ScrollableFrame(page)
+        scroll.pack(fill="both", expand=True)
+        container = scroll.scrollable_frame
+
+        # Header
+        header = StyledFrame(container)
+        header.pack(fill="x", padx=20, pady=(20, 10))
+        HeaderLabel(header, text="📜 Historisk Nøjagtighed").pack(side="left")
+
+        # Refresh
+        ctrl = StyledFrame(container)
+        ctrl.pack(fill="x", padx=20, pady=(0, 10))
+        AccentButton(ctrl, text="🔄  Opdater historik",
+                     command=self._fetch_history).pack(side="left")
+        self.hist_status = StyledLabel(ctrl, text="", font=("Segoe UI", 10))
+        self.hist_status.pack(side="left", padx=20)
+
+        # Info
+        info_card = CardFrame(container)
+        info_card.pack(fill="x", padx=20, pady=(0, 10))
+        tk.Label(info_card,
+                 text="💡 Viser hvor mange af dine predictions der gik hjem, fordelt på model og liga. "
+                      "Data beregnes ved at sammenligne predicted_outcome med de faktiske slutresultater.",
+                 font=("Segoe UI", 9), bg=C["bg_card"], fg=C["text_muted"],
+                 wraplength=900).pack(padx=10, pady=5)
+
+        # ── Summary cards row ──
+        self.hist_summary_frame = StyledFrame(container)
+        self.hist_summary_frame.pack(fill="x", padx=20, pady=(0, 10))
+
+        # ── Model accuracy section ──
+        SubHeaderLabel(container, text="🤖 Nøjagtighed per Model").pack(anchor="w", padx=20, pady=(10, 5))
+        self.hist_models_frame = StyledFrame(container)
+        self.hist_models_frame.pack(fill="x", padx=20, pady=(0, 10))
+
+        # ── League accuracy section ──
+        SubHeaderLabel(container, text="🏆 Nøjagtighed per Liga").pack(anchor="w", padx=20, pady=(10, 5))
+        self.hist_leagues_frame = StyledFrame(container)
+        self.hist_leagues_frame.pack(fill="x", padx=20, pady=(0, 10))
+
+        # ── Recent verified predictions ──
+        SubHeaderLabel(container, text="📋 Seneste Verificerede Predictions").pack(anchor="w", padx=20, pady=(10, 5))
+        self.hist_recent_frame = StyledFrame(container)
+        self.hist_recent_frame.pack(fill="x", padx=20, pady=(0, 20))
+
+    def _fetch_history(self):
+        """Hent historisk nøjagtighed fra databasen."""
+        self.hist_status.config(text="⏳ Beregner historik...")
+        self.status_bar.set_status("📜 Beregner historisk nøjagtighed...")
+
+        def fetch():
+            try:
+                accuracy_data = self.db.get_prediction_accuracy()
+                self.root.after(0, lambda: self._populate_history(accuracy_data))
+            except Exception as e:
+                logger.error("Historik fejl: %s", e)
+                self.root.after(0, lambda: self.hist_status.config(text=f"❌ Fejl: {e}"))
+
+        threading.Thread(target=fetch, daemon=True).start()
+
+    def _populate_history(self, data: Dict):
+        """Populer historik-siden med data."""
+        # Clear existing
+        for frame in (self.hist_summary_frame, self.hist_models_frame,
+                      self.hist_leagues_frame, self.hist_recent_frame):
+            for w in frame.winfo_children():
+                w.destroy()
+
+        by_model = data.get("by_model_crosscheck", [])
+        by_league = data.get("by_league", [])
+        recent = data.get("recent_predictions", [])
+        model_perf = data.get("model_performance", [])
+
+        # ── Compute totals ──
+        total_preds = sum(m.get("total", 0) for m in by_model)
+        total_correct = sum(m.get("correct", 0) for m in by_model)
+        overall_acc = (total_correct / total_preds * 100) if total_preds > 0 else 0
+
+        # ── Summary cards ──
+        summaries = [
+            ("📊 Total Predictions", str(total_preds), C["accent"]),
+            ("✅ Korrekte", str(total_correct), C["accent_green"]),
+            ("❌ Forkerte", str(total_preds - total_correct), C["accent_red"]),
+            ("🎯 Samlet Nøjagtighed", f"{overall_acc:.1f}%",
+             C["accent_green"] if overall_acc >= 50 else C["accent_yellow"] if overall_acc >= 35 else C["accent_red"]),
+        ]
+
+        for title, value, color in summaries:
+            card = CardFrame(self.hist_summary_frame)
+            card.pack(side="left", fill="x", expand=True, padx=(0, 10), pady=5)
+            tk.Label(card, text=title, font=("Segoe UI", 9),
+                     bg=C["bg_card"], fg=C["text_muted"]).pack(anchor="w")
+            tk.Label(card, text=value, font=("Segoe UI", 22, "bold"),
+                     bg=C["bg_card"], fg=color).pack(anchor="w", pady=(5, 0))
+
+        if total_preds == 0:
+            self.hist_status.config(text="ℹ️ Ingen verificerede predictions endnu. "
+                                        "Kør predictions på kampe, vent til de er færdige, og opdater igen.")
+            no_data = CardFrame(self.hist_models_frame)
+            no_data.pack(fill="x", pady=5)
+            tk.Label(no_data,
+                     text="📭 Ingen historiske data endnu.\n\n"
+                          "Predictions gemmes automatisk når du bruger AI Predictions eller ML modeller.\n"
+                          "Når kampene er færdigspillet, kan nøjagtigheden beregnes her.\n\n"
+                          "Tip: Træn modellerne under ⚙️ Indstillinger, lav predictions, "
+                          "og kom tilbage efter kampene er slut.",
+                     font=("Segoe UI", 11), bg=C["bg_card"], fg=C["text_secondary"],
+                     justify="left", wraplength=700).pack(padx=20, pady=20)
+
+            # Show model_performance from training if available
+            if model_perf:
+                SubHeaderLabel(self.hist_models_frame,
+                              text="🏋️ Model Træningsnøjagtighed (test-data)").pack(anchor="w", pady=(10, 5))
+                for mp in model_perf:
+                    card = CardFrame(self.hist_models_frame)
+                    card.pack(fill="x", pady=3)
+                    row = StyledFrame(card, bg=C["bg_card"])
+                    row.pack(fill="x")
+                    name = mp.get("model_name", "?")
+                    acc = mp.get("accuracy", 0) * 100
+                    total_t = mp.get("total_predictions", 0)
+                    correct_t = mp.get("correct_predictions", 0)
+                    emoji = "🟢" if acc >= 50 else "🟡" if acc >= 35 else "🔴"
+                    tk.Label(row, text=f"{emoji} {name}", font=("Segoe UI", 12, "bold"),
+                             bg=C["bg_card"], fg=C["text_primary"], width=20, anchor="w").pack(side="left")
+                    tk.Label(row, text=f"{acc:.1f}%", font=("Segoe UI", 14, "bold"),
+                             bg=C["bg_card"],
+                             fg=C["accent_green"] if acc >= 50 else C["accent_yellow"]).pack(side="left", padx=10)
+                    tk.Label(row, text=f"({correct_t}/{total_t} på test-data)",
+                             font=("Segoe UI", 9), bg=C["bg_card"], fg=C["text_muted"]).pack(side="left")
+
+            self.status_bar.set_status("📜 Historik indlæst (ingen verificerede endnu)")
+            return
+
+        # ── Model accuracy bars ──
+        for model in sorted(by_model, key=lambda m: m.get("correct", 0) / max(m.get("total", 1), 1), reverse=True):
+            card = CardFrame(self.hist_models_frame)
+            card.pack(fill="x", pady=3)
+
+            row = StyledFrame(card, bg=C["bg_card"])
+            row.pack(fill="x")
+
+            name = model.get("model_name", "?")
+            total = model.get("total", 0)
+            correct = model.get("correct", 0)
+            acc = (correct / total * 100) if total > 0 else 0
+            avg_conf = model.get("avg_confidence", 0)
+            if avg_conf:
+                avg_conf *= 100
+
+            emoji = "🟢" if acc >= 50 else "🟡" if acc >= 35 else "🔴"
+            color = C["accent_green"] if acc >= 50 else C["accent_yellow"] if acc >= 35 else C["accent_red"]
+
+            tk.Label(row, text=f"{emoji} {name}", font=("Segoe UI", 12, "bold"),
+                     bg=C["bg_card"], fg=C["text_primary"], width=20, anchor="w").pack(side="left")
+            tk.Label(row, text=f"{acc:.1f}%", font=("Segoe UI", 16, "bold"),
+                     bg=C["bg_card"], fg=color).pack(side="left", padx=10)
+            tk.Label(row, text=f"{correct}/{total} korrekte", font=("Segoe UI", 10),
+                     bg=C["bg_card"], fg=C["text_secondary"]).pack(side="left", padx=10)
+            if avg_conf:
+                tk.Label(row, text=f"(avg konfidens: {avg_conf:.0f}%)", font=("Segoe UI", 9),
+                         bg=C["bg_card"], fg=C["text_muted"]).pack(side="left")
+
+            # Progress bar
+            bar_frame = StyledFrame(card, bg=C["bg_card"])
+            bar_frame.pack(fill="x", pady=(5, 0))
+            bar_canvas = tk.Canvas(bar_frame, height=10, bg=C["bg_dark"], highlightthickness=0)
+            bar_canvas.pack(fill="x")
+            bar_canvas.update_idletasks()
+            w = max(bar_canvas.winfo_width(), 400)
+            filled = int(w * acc / 100)
+            bar_canvas.create_rectangle(0, 0, filled, 10, fill=color, outline="")
+
+        # ── League accuracy ──
+        for league in sorted(by_league, key=lambda l: l.get("correct", 0) / max(l.get("total", 1), 1), reverse=True):
+            lc = league.get("league_code", "?")
+            league_info = LEAGUES.get(lc, {})
+            league_name = league_info.get("name", lc)
+            league_emoji = league_info.get("emoji", "🏟️")
+            total = league.get("total", 0)
+            correct = league.get("correct", 0)
+            acc = (correct / total * 100) if total > 0 else 0
+            color = C["accent_green"] if acc >= 50 else C["accent_yellow"] if acc >= 35 else C["accent_red"]
+
+            card = CardFrame(self.hist_leagues_frame)
+            card.pack(fill="x", pady=2)
+            row = StyledFrame(card, bg=C["bg_card"])
+            row.pack(fill="x")
+
+            tk.Label(row, text=f"{league_emoji} {league_name}", font=("Segoe UI", 11, "bold"),
+                     bg=C["bg_card"], fg=C["text_primary"], width=25, anchor="w").pack(side="left")
+            tk.Label(row, text=f"{acc:.1f}%", font=("Segoe UI", 13, "bold"),
+                     bg=C["bg_card"], fg=color).pack(side="left", padx=10)
+            tk.Label(row, text=f"({correct}/{total})", font=("Segoe UI", 9),
+                     bg=C["bg_card"], fg=C["text_muted"]).pack(side="left")
+
+        # ── Recent verified predictions ──
+        if recent:
+            # Table header
+            hdr = CardFrame(self.hist_recent_frame)
+            hdr.pack(fill="x", pady=(0, 2))
+            hdr_row = StyledFrame(hdr, bg=C["bg_card"])
+            hdr_row.pack(fill="x")
+            for txt, w in [("Kamp", 28), ("Prediction", 12), ("Resultat", 8), ("✓/✗", 4)]:
+                tk.Label(hdr_row, text=txt, font=("Segoe UI", 9, "bold"),
+                         bg=C["bg_card"], fg=C["text_muted"], width=w, anchor="w").pack(side="left")
+
+            for pred in recent[:50]:
+                card = CardFrame(self.hist_recent_frame)
+                card.pack(fill="x", pady=1)
+                row = StyledFrame(card, bg=C["bg_card"])
+                row.pack(fill="x")
+
+                home = pred.get("home_team", "?")
+                away = pred.get("away_team", "?")
+                hs = pred.get("home_score", "?")
+                aws = pred.get("away_score", "?")
+                predicted = pred.get("predicted_outcome", "?")
+                is_correct = pred.get("is_correct", 0)
+
+                outcome_map = {"HOME_WIN": "Hjemme", "DRAW": "Uafgjort", "AWAY_WIN": "Ude"}
+                pred_text = outcome_map.get(predicted, predicted)
+
+                match_text = f"{home} vs {away}"
+                result_text = f"{hs}-{aws}"
+                check = "✅" if is_correct else "❌"
+                check_color = C["accent_green"] if is_correct else C["accent_red"]
+
+                tk.Label(row, text=match_text, font=("Segoe UI", 10),
+                         bg=C["bg_card"], fg=C["text_primary"], width=28, anchor="w").pack(side="left")
+                tk.Label(row, text=pred_text, font=("Segoe UI", 10),
+                         bg=C["bg_card"], fg=C["accent"], width=12, anchor="w").pack(side="left")
+                tk.Label(row, text=result_text, font=("Segoe UI", 10, "bold"),
+                         bg=C["bg_card"], fg=C["text_primary"], width=8, anchor="w").pack(side="left")
+                tk.Label(row, text=check, font=("Segoe UI", 12),
+                         bg=C["bg_card"], fg=check_color, width=4).pack(side="left")
+
+        self.hist_status.config(text=f"✅ {total_preds} predictions verificeret — {overall_acc:.1f}% korrekte")
+        self.status_bar.set_status(f"📜 Historik: {overall_acc:.1f}% nøjagtighed ({total_correct}/{total_preds})")
 
     # ═══════════════════════════════════════════
     # SETTINGS PAGE
