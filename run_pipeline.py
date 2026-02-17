@@ -60,6 +60,13 @@ try:
 except ImportError:
     HAS_API_FOOTBALL = False
 
+# Optional: FlashScore
+try:
+    from src.scrapers.flashscore_scraper import FlashScoreScraper
+    HAS_FLASHSCORE = True
+except ImportError:
+    HAS_FLASHSCORE = False
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
@@ -223,6 +230,7 @@ class PredictionPipeline:
 
         self.csv_client = CSVFootballClient() if HAS_CSV else None
         self.api_football = ApiFootballClient() if HAS_API_FOOTBALL else None
+        self.flashscore = FlashScoreScraper() if HAS_FLASHSCORE else None
 
         # Collected data during pipeline run
         self._matches: List[dict] = []
@@ -279,6 +287,40 @@ class PredictionPipeline:
                         all_matches.append(m)
         except Exception as e:
             log.warning(f"  TheSportsDB failed: {e}")
+
+        # FlashScore: today + tomorrow
+        if self.flashscore:
+            try:
+                fs_today = self.flashscore.fetch_todays_matches()
+                log.info(f"  FlashScore today: {len(fs_today)} matches")
+                for fm in fs_today:
+                    fh = fm.get("homeTeam", "")
+                    fa = fm.get("awayTeam", "")
+                    existing = find_match_in_list(fh, fa, all_matches)
+                    if existing:
+                        # Enrich with FlashScore ID + live data
+                        existing["flashscoreId"] = fm.get("flashscore_id", "")
+                        if fm.get("status") == "LIVE":
+                            existing["status"] = "LIVE"
+                            existing["minute"] = fm.get("minute", "")
+                        if fm.get("homeScore") is not None:
+                            existing["home_score"] = fm["homeScore"]
+                            existing["away_score"] = fm.get("awayScore")
+                    else:
+                        # New match not in ESPN — add it
+                        all_matches.append({
+                            "home_team_name": fh,
+                            "away_team_name": fa,
+                            "home_score": fm.get("homeScore"),
+                            "away_score": fm.get("awayScore"),
+                            "status": fm.get("status", "SCHEDULED"),
+                            "league_name": fm.get("league", ""),
+                            "match_date": date.today().isoformat(),
+                            "flashscoreId": fm.get("flashscore_id", ""),
+                            "source": "flashscore",
+                        })
+            except Exception as e:
+                log.warning(f"  FlashScore failed: {e}")
 
         # Deduplicate
         seen = set()
@@ -367,6 +409,45 @@ class PredictionPipeline:
                         log.error(f"  Failed to write odds for {oh} vs {oa}: {e}")
 
             log.info(f"  Matched {matched}/{len(odds)} odds to our matches")
+
+            # FlashScore odds as fallback for matches without Danske Spil odds
+            if self.flashscore:
+                fs_odds_count = 0
+                for m in self._matches:
+                    mid = match_id(
+                        m.get("match_date", ""),
+                        m.get("home_team_name", m.get("home_team", "")),
+                        m.get("away_team_name", m.get("away_team", "")),
+                    )
+                    fs_id = m.get("flashscoreId", "")
+                    # Only fetch FlashScore odds if no Danske Spil odds matched
+                    if fs_id and not find_match_in_list(
+                        m.get("home_team_name", m.get("home_team", "")),
+                        m.get("away_team_name", m.get("away_team", "")),
+                        odds
+                    ):
+                        try:
+                            fs_odds = self.flashscore.fetch_odds(fs_id)
+                            if fs_odds and fs_odds.get("average"):
+                                avg = fs_odds["average"]
+                                ho = avg.get("home", 0)
+                                do_ = avg.get("draw", 0)
+                                ao = avg.get("away", 0)
+                                if ho and do_ and ao:
+                                    self.fs.update_match_odds(mid, {
+                                        "home_odds": ho, "draw_odds": do_, "away_odds": ao,
+                                    })
+                                    total = 1/ho + 1/do_ + 1/ao
+                                    self.fs.add_prediction(mid, "flashscore_market", {
+                                        "home": round(1/ho / total, 4),
+                                        "draw": round(1/do_ / total, 4),
+                                        "away": round(1/ao / total, 4),
+                                    }, odds_at_scrape={"home": ho, "draw": do_, "away": ao})
+                                    fs_odds_count += 1
+                        except Exception as e:
+                            log.debug(f"  FlashScore odds for {fs_id} failed: {e}")
+                log.info(f"  FlashScore fallback odds: {fs_odds_count} matches")
+
             return odds
 
         except Exception as e:
@@ -997,6 +1078,7 @@ class PredictionPipeline:
             confidence = round(ens[best] * 100)
 
             ai_preds.append({
+                "matchId": mid,
                 "home_team": pred["home_team"],
                 "away_team": pred["away_team"],
                 "league": pred["league"],

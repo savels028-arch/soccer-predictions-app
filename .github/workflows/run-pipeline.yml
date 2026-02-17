@@ -1,0 +1,75 @@
+name: Run ML Pipeline
+
+on:
+  schedule:
+    # Pre-match run: 08:00 UTC daily (09:00 CET)
+    - cron: "0 8 * * *"
+    # Post-match evaluation: 22:00 UTC daily (23:00 CET)
+    - cron: "0 22 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Pipeline mode"
+        required: false
+        default: "full"
+        type: choice
+        options:
+          - full
+          - evaluate-only
+          - odds-only
+          - train
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write Firebase service account
+        run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > service-account.json
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Determine pipeline mode
+        id: mode
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "args=--${{ github.event.inputs.mode }}" >> $GITHUB_OUTPUT
+          elif [ "$(date -u +%H)" -ge 20 ]; then
+            echo "args=--evaluate-only" >> $GITHUB_OUTPUT
+          else
+            echo "args=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run pipeline
+        run: python run_pipeline.py ${{ steps.mode.outputs.args }} --verbose
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: service-account.json
+
+      - name: Trigger cron update
+        if: success()
+        run: |
+          curl -s -X GET \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://www.aibets.dk/api/cron/update-predictions" \
+            -o /dev/null -w "Cron response: %{http_code}\n"
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-logs-${{ github.run_number }}
+          path: logs/
+          retention-days: 7
