@@ -38,3 +38,4 @@ dist/
 build/
 *.egg-info/
 deploy/
+service-account.json
