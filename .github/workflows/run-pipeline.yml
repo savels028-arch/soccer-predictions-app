@@ -46,7 +46,12 @@ jobs:
         id: mode
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "args=--${{ github.event.inputs.mode }}" >> $GITHUB_OUTPUT
+            MODE="${{ github.event.inputs.mode }}"
+            if [ "$MODE" = "full" ]; then
+              echo "args=" >> $GITHUB_OUTPUT
+            else
+              echo "args=--$MODE" >> $GITHUB_OUTPUT
+            fi
           elif [ "$(date -u +%H)" -ge 20 ]; then
             echo "args=--evaluate-only" >> $GITHUB_OUTPUT
           else

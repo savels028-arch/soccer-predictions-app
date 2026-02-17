@@ -6,6 +6,9 @@
 requests>=2.31.0
 numpy>=1.24.0
 
+# Firebase
+firebase-admin>=6.2.0
+
 # Database
 # sqlite3 is built-in to Python
 
