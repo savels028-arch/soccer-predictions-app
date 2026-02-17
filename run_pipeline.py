@@ -706,10 +706,16 @@ class PredictionPipeline:
         """Compute disagreement / meta-features for each match."""
         log.info("── Stage 5: Computing meta-features ──")
         count = 0
+        quota_errors = 0
 
         for m in self._matches:
             if m.get("status") not in ("SCHEDULED", "IN_PLAY", "pre"):
                 continue
+
+            # Skip remaining if quota exceeded
+            if quota_errors >= 2:
+                log.warning("  Skipping remaining meta-features due to quota limits")
+                break
 
             home = m.get("home_team_name", m.get("home_team", ""))
             away = m.get("away_team_name", m.get("away_team", ""))
@@ -777,7 +783,12 @@ class PredictionPipeline:
                 count += 1
 
             except Exception as e:
-                log.error(f"  Meta-features failed for {home} vs {away}: {e}")
+                err_str = str(e)
+                if "429" in err_str or "Quota" in err_str or "quota" in err_str:
+                    quota_errors += 1
+                    log.warning(f"  Quota exceeded for {home} vs {away}, will skip if persistent")
+                else:
+                    log.error(f"  Meta-features failed for {home} vs {away}: {e}")
 
         log.info(f"  Computed meta-features for {count} matches")
 
