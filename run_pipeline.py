@@ -855,8 +855,8 @@ class PredictionPipeline:
                 "edge": round(edge_val * 100, 1),
             })
 
-        # Sort by edge (value) then confidence
-        candidates.sort(key=lambda c: (c["edge"], c["confidence"]), reverse=True)
+        # Sort by confidence (safety-first), then edge
+        candidates.sort(key=lambda c: (c["confidence"], c["edge"]), reverse=True)
         picks = candidates[:4]
 
         if picks:
