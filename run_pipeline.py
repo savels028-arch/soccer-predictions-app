@@ -856,7 +856,11 @@ class PredictionPipeline:
         log.info(f"  {len(finished)} finished matches to evaluate")
 
         results_saved = 0
+        quota_errors = 0
         for m in finished:
+            if quota_errors >= 2:
+                log.warning("  Skipping remaining evaluations due to quota limits")
+                break
             home = m.get("home_team_name", m.get("home_team", ""))
             away = m.get("away_team_name", m.get("away_team", ""))
             hs = m.get("home_score")
@@ -876,7 +880,12 @@ class PredictionPipeline:
 
             # Save to legacy prediction_results collection
             # Use the ensemble prediction if available
-            model_out = self.fs.get_match(mid)
+            try:
+                model_out = self.fs.get_match(mid)
+            except Exception as e:
+                if "429" in str(e) or "Quota" in str(e):
+                    quota_errors += 1
+                continue
             if model_out:
                 # Look for model output
                 mo_doc = self.fs.db.collection("model_outputs").document(mid).get()
@@ -986,8 +995,10 @@ class PredictionPipeline:
                     if src not in source_results:
                         source_results[src] = []
                     source_results[src].append((probs, actual))
-            except Exception:
-                pass
+            except Exception as e:
+                if "429" in str(e) or "Quota" in str(e):
+                    log.warning("  Quota hit in Stage 8 — using partial data")
+                    break
 
         # Calculate metrics per source
         for source, results in source_results.items():
