@@ -54,6 +54,12 @@ class PredictionEngine:
         # Try to load pre-trained models
         self._load_models()
 
+        # Q4: Calibrate Poisson with real data
+        try:
+            self.poisson.calibrate(db_manager)
+        except Exception as e:
+            logger.warning(f"Poisson calibration skipped: {e}")
+
     def _load_models(self):
         """Load pre-trained models from disk."""
         any_loaded = False
@@ -126,8 +132,8 @@ class PredictionEngine:
                         if stats.get("matches_played", 0) >= 3:
                             self.db.upsert_team_stats(stats)
 
-            # Build training data
-            X, y = self.feature_engineer.build_training_data(all_matches, self.db)
+            # Build training data (Q5: returns dates too for temporal ordering)
+            X, y, dates = self.feature_engineer.build_training_data(all_matches, self.db)
 
             if len(X) < 50:
                 logger.warning(f"Not enough training data: {len(X)} samples")

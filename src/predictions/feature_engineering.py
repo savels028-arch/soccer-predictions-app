@@ -31,6 +31,9 @@ class FeatureEngineer:
         "home_points_per_game", "away_points_per_game",
         "odds_home", "odds_draw", "odds_away",
         "implied_prob_home", "implied_prob_draw", "implied_prob_away",
+        "has_real_odds",
+        "ai_consensus_home", "ai_consensus_draw", "ai_consensus_away",
+        "ai_num_sources", "ai_agreement",
     ]
 
     @staticmethod
@@ -60,7 +63,8 @@ class FeatureEngineer:
                               h2h: List[Dict] = None,
                               home_odds: float = None,
                               draw_odds: float = None,
-                              away_odds: float = None) -> np.ndarray:
+                              away_odds: float = None,
+                              ai_predictions: List[Dict] = None) -> np.ndarray:
         """
         Build a feature vector for a single match prediction.
 
@@ -71,6 +75,7 @@ class FeatureEngineer:
             home_odds: Decimal odds for home win
             draw_odds: Decimal odds for draw
             away_odds: Decimal odds for away win
+            ai_predictions: List of AI-site prediction dicts with home/draw/away probs
 
         Returns:
             1D numpy array of features
@@ -167,29 +172,70 @@ class FeatureEngineer:
         a_ppg = (away_stats.get("wins", 0) * 3 + away_stats.get("draws", 0)) / a_mp
         features.extend([h_ppg, a_ppg])
 
-        # ── Odds features ──
-        features.append(home_odds or 2.5)
-        features.append(draw_odds or 3.3)
-        features.append(away_odds or 3.0)
-        features.append(cls.implied_probability(home_odds))
-        features.append(cls.implied_probability(draw_odds))
-        features.append(cls.implied_probability(away_odds))
+        # ── Odds features (Q1 fix: use 0 when missing, add has_real_odds flag) ──
+        has_real_odds = 1.0 if (home_odds and home_odds > 1.0 and
+                                draw_odds and draw_odds > 1.0 and
+                                away_odds and away_odds > 1.0) else 0.0
+        features.append(home_odds if has_real_odds else 0.0)
+        features.append(draw_odds if has_real_odds else 0.0)
+        features.append(away_odds if has_real_odds else 0.0)
+        features.append(cls.implied_probability(home_odds) if has_real_odds else 0.33)
+        features.append(cls.implied_probability(draw_odds) if has_real_odds else 0.33)
+        features.append(cls.implied_probability(away_odds) if has_real_odds else 0.33)
+        features.append(has_real_odds)
+
+        # ── AI consensus features (Q3: use AI-site predictions as ML input) ──
+        ai_predictions = ai_predictions or []
+        if ai_predictions:
+            ai_home = np.mean([p.get("home", p.get("home_win_pct", 0.33)) for p in ai_predictions])
+            ai_draw = np.mean([p.get("draw", p.get("draw_pct", 0.33)) for p in ai_predictions])
+            ai_away = np.mean([p.get("away", p.get("away_win_pct", 0.33)) for p in ai_predictions])
+            # Normalize to sum to 1
+            ai_total = ai_home + ai_draw + ai_away
+            if ai_total > 0:
+                ai_home /= ai_total
+                ai_draw /= ai_total
+                ai_away /= ai_total
+            # Agreement: how many sources agree on the winner
+            winners = []
+            for p in ai_predictions:
+                h = p.get("home", p.get("home_win_pct", 0))
+                d = p.get("draw", p.get("draw_pct", 0))
+                a = p.get("away", p.get("away_win_pct", 0))
+                best = max(h, d, a)
+                if best == h:
+                    winners.append("home")
+                elif best == a:
+                    winners.append("away")
+                else:
+                    winners.append("draw")
+            from collections import Counter
+            most_common_count = Counter(winners).most_common(1)[0][1]
+            agreement = most_common_count / len(ai_predictions)
+            features.extend([ai_home, ai_draw, ai_away, float(len(ai_predictions)), agreement])
+        else:
+            features.extend([0.33, 0.33, 0.33, 0.0, 0.0])
 
         return np.array(features, dtype=np.float64)
 
     @classmethod
-    def build_training_data(cls, matches: List[Dict], db_manager) -> Tuple[np.ndarray, np.ndarray]:
+    def build_training_data(cls, matches: List[Dict], db_manager) -> Tuple[np.ndarray, np.ndarray, List[str]]:
         """
         Build training dataset from historical matches.
 
         Returns:
             X: feature matrix (n_samples, n_features)
             y: labels (0=home_win, 1=draw, 2=away_win)
+            dates: list of match_date strings for temporal ordering (Q5)
         """
         X_list = []
         y_list = []
+        date_list = []
 
-        for match in matches:
+        # Q5: Sort matches by date for temporal split later
+        sorted_matches = sorted(matches, key=lambda m: m.get("match_date", ""))
+
+        for match in sorted_matches:
             if match.get("home_score") is None or match.get("away_score") is None:
                 continue
             if match.get("status") != "FINISHED":
@@ -236,6 +282,7 @@ class FeatureEngineer:
 
                 X_list.append(features)
                 y_list.append(label)
+                date_list.append(match.get("match_date", ""))
 
             except Exception as e:
                 logger.error(f"Feature engineering error: {e}")
@@ -243,6 +290,6 @@ class FeatureEngineer:
 
         if not X_list:
             logger.warning("No training data could be built")
-            return np.empty((0, len(cls.FEATURE_NAMES))), np.empty(0)
+            return np.empty((0, len(cls.FEATURE_NAMES))), np.empty(0), []
 
-        return np.array(X_list), np.array(y_list)
+        return np.array(X_list), np.array(y_list), date_list

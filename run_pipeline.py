@@ -570,10 +570,15 @@ class PredictionPipeline:
         log.info("── Stage 4: Running ML predictions ──")
 
         if not self.engine.is_trained:
-            log.warning("  ML models not trained. Attempting to load from disk...")
-            if not self.engine.is_trained:
-                log.warning("  No trained models found. Run with --train first.")
-                log.warning("  Skipping ML predictions.")
+            log.warning("  ML models not trained. Attempting to retrain...")
+            try:
+                results = self.train_models()
+                if not results or not self.engine.is_trained:
+                    log.warning("  Retraining failed. Skipping ML predictions.")
+                    return {}
+                log.info("  Retraining successful, continuing with predictions.")
+            except Exception as e:
+                log.error(f"  Retraining failed: {e}")
                 return {}
 
         upcoming = [m for m in self._matches
@@ -601,10 +606,28 @@ class PredictionPipeline:
                 # Get H2H
                 h2h = self.db.get_h2h(home, away) or []
 
-                # Build features
+                # Q3: Gather AI-site predictions for this match as ML features
+                ai_for_match = []
+                for ai_pred in self._ai_preds:
+                    ai_h = ai_pred.get("home_team", "")
+                    ai_a = ai_pred.get("away_team", "")
+                    if fuzzy_match_teams(home, ai_h) and fuzzy_match_teams(away, ai_a):
+                        h_pct = ai_pred.get("home_win_pct", 0)
+                        d_pct = ai_pred.get("draw_pct", 0)
+                        a_pct = ai_pred.get("away_win_pct", 0)
+                        total = (h_pct or 0) + (d_pct or 0) + (a_pct or 0)
+                        if total > 0:
+                            ai_for_match.append({
+                                "home": (h_pct or 0) / total,
+                                "draw": (d_pct or 0) / total,
+                                "away": (a_pct or 0) / total,
+                            })
+
+                # Build features (with AI consensus)
                 features = self.feature_eng.build_match_features(
                     home_stats, away_stats, h2h,
                     home_odds=home_odds, draw_odds=draw_odds, away_odds=away_odds,
+                    ai_predictions=ai_for_match if ai_for_match else None,
                 )
 
                 # Run all models

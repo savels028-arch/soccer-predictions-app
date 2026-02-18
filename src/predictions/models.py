@@ -64,8 +64,17 @@ class BaseModel:
                     pickle.dump(self.scaler, f)
             logger.info(f"Model {self.name} saved to {self.model_path}")
 
+    def _expected_features(self) -> int:
+        """Get expected feature count from FeatureEngineer."""
+        try:
+            from .feature_engineering import FeatureEngineer
+            return len(FeatureEngineer.FEATURE_NAMES)
+        except Exception:
+            return 0
+
     def load(self) -> bool:
         """Load model and scaler from disk."""
+        expected = self._expected_features()
         if self.model_path.exists():
             try:
                 with open(self.model_path, 'rb') as f:
@@ -73,6 +82,17 @@ class BaseModel:
                 if self.scaler_path.exists():
                     with open(self.scaler_path, 'rb') as f:
                         self.scaler = pickle.load(f)
+                # Check feature dimension matches current expected count
+                if expected > 0 and self.scaler and hasattr(self.scaler, 'n_features_in_'):
+                    if self.scaler.n_features_in_ != expected:
+                        logger.warning(
+                            f"Model {self.name} has {self.scaler.n_features_in_} features "
+                            f"but expected {expected}. Needs retraining."
+                        )
+                        self.model = None
+                        self.scaler = StandardScaler() if HAS_SKLEARN else None
+                        self.is_trained = False
+                        return False
                 self.is_trained = True
                 logger.info(f"Model {self.name} loaded from disk")
                 return True
@@ -97,14 +117,19 @@ class XGBoostModel(BaseModel):
             return 0.0
 
         X_scaled = self.scaler.fit_transform(X) if self.scaler else X
-        X_train, X_test, y_train, y_test = train_test_split(
-            X_scaled, y, test_size=ML_SETTINGS["test_size"],
-            random_state=ML_SETTINGS["random_state"], stratify=y
-        )
+
+        # Q5: Temporal split — data is already sorted by date,
+        # take last 20% as test set (no future leakage)
+        split_idx = int(len(X_scaled) * (1 - ML_SETTINGS["test_size"]))
+        X_train, X_test = X_scaled[:split_idx], X_scaled[split_idx:]
+        y_train, y_test = y[:split_idx], y[split_idx:]
 
         xgb_params = ML_SETTINGS["xgboost"]
 
         if HAS_XGBOOST:
+            # Q2: Compute sample weights for class balance
+            from sklearn.utils.class_weight import compute_sample_weight
+            sample_weights = compute_sample_weight('balanced', y_train)
             self.model = xgb.XGBClassifier(
                 n_estimators=xgb_params["n_estimators"],
                 max_depth=xgb_params["max_depth"],
@@ -118,6 +143,7 @@ class XGBoostModel(BaseModel):
                 use_label_encoder=False,
             )
         else:
+            sample_weights = None
             self.model = GradientBoostingClassifier(
                 n_estimators=xgb_params["n_estimators"],
                 max_depth=xgb_params["max_depth"],
@@ -126,7 +152,7 @@ class XGBoostModel(BaseModel):
                 random_state=ML_SETTINGS["random_state"],
             )
 
-        self.model.fit(X_train, y_train)
+        self.model.fit(X_train, y_train, sample_weight=sample_weights)
         y_pred = self.model.predict(X_test)
         self.accuracy = accuracy_score(y_test, y_pred)
         self.is_trained = True
@@ -155,10 +181,10 @@ class NeuralNetworkModel(BaseModel):
             if HAS_SKLEARN:
                 from sklearn.neural_network import MLPClassifier
                 X_scaled = self.scaler.fit_transform(X) if self.scaler else X
-                X_train, X_test, y_train, y_test = train_test_split(
-                    X_scaled, y, test_size=ML_SETTINGS["test_size"],
-                    random_state=ML_SETTINGS["random_state"], stratify=y
-                )
+                # Q5: Temporal split
+                split_idx = int(len(X_scaled) * (1 - ML_SETTINGS["test_size"]))
+                X_train, X_test = X_scaled[:split_idx], X_scaled[split_idx:]
+                y_train, y_test = y[:split_idx], y[split_idx:]
                 nn_params = ML_SETTINGS["neural_network"]
                 self.model = MLPClassifier(
                     hidden_layer_sizes=tuple(nn_params["hidden_layers"]),
@@ -177,10 +203,10 @@ class NeuralNetworkModel(BaseModel):
 
         nn_params = ML_SETTINGS["neural_network"]
         X_scaled = self.scaler.fit_transform(X) if self.scaler else X
-        X_train, X_test, y_train, y_test = train_test_split(
-            X_scaled, y, test_size=ML_SETTINGS["test_size"],
-            random_state=ML_SETTINGS["random_state"], stratify=y
-        )
+        # Q5: Temporal split
+        split_idx = int(len(X_scaled) * (1 - ML_SETTINGS["test_size"]))
+        X_train, X_test = X_scaled[:split_idx], X_scaled[split_idx:]
+        y_train, y_test = y[:split_idx], y[split_idx:]
 
         model = keras.Sequential([
             keras.layers.Input(shape=(X.shape[1],)),
@@ -223,6 +249,7 @@ class NeuralNetworkModel(BaseModel):
         return self.accuracy
 
     def load(self) -> bool:
+        expected = self._expected_features()
         model_file = self.model_path
         if model_file.exists() and HAS_TF:
             try:
@@ -230,6 +257,17 @@ class NeuralNetworkModel(BaseModel):
                 if self.scaler_path.exists():
                     with open(self.scaler_path, 'rb') as f:
                         self.scaler = pickle.load(f)
+                # Check feature dimension
+                if expected > 0 and self.scaler and hasattr(self.scaler, 'n_features_in_'):
+                    if self.scaler.n_features_in_ != expected:
+                        logger.warning(
+                            f"NN model has {self.scaler.n_features_in_} features "
+                            f"but expected {expected}. Needs retraining."
+                        )
+                        self.model = None
+                        self.scaler = StandardScaler() if HAS_SKLEARN else None
+                        self.is_trained = False
+                        return False
                 self.is_trained = True
                 return True
             except Exception as e:
@@ -261,16 +299,17 @@ class RandomForestModel(BaseModel):
             return 0.0
 
         X_scaled = self.scaler.fit_transform(X) if self.scaler else X
-        X_train, X_test, y_train, y_test = train_test_split(
-            X_scaled, y, test_size=ML_SETTINGS["test_size"],
-            random_state=ML_SETTINGS["random_state"], stratify=y
-        )
+        # Q5: Temporal split
+        split_idx = int(len(X_scaled) * (1 - ML_SETTINGS["test_size"]))
+        X_train, X_test = X_scaled[:split_idx], X_scaled[split_idx:]
+        y_train, y_test = y[:split_idx], y[split_idx:]
 
         self.model = RandomForestClassifier(
             n_estimators=300,
             max_depth=10,
             min_samples_split=5,
             min_samples_leaf=2,
+            class_weight='balanced',  # Q2: Handle imbalanced classes
             random_state=ML_SETTINGS["random_state"],
             n_jobs=-1,
         )
@@ -329,8 +368,34 @@ class PoissonModel:
 
     def __init__(self):
         self.name = "poisson"
-        self.avg_home_goals = 1.5
+        self.avg_home_goals = 1.5  # defaults, updated by calibrate()
         self.avg_away_goals = 1.2
+
+    def calibrate(self, db_manager, league_codes: List[str] = None):
+        """Q4: Compute real league average goals from historical data."""
+        try:
+            leagues = league_codes or ["PL", "PD", "BL1", "SA", "FL1"]
+            total_home = 0
+            total_away = 0
+            total_matches = 0
+            for lc in leagues:
+                matches = db_manager.get_finished_matches(lc)
+                for m in (matches or []):
+                    hs = m.get("home_score")
+                    aws = m.get("away_score")
+                    if hs is not None and aws is not None:
+                        total_home += hs
+                        total_away += aws
+                        total_matches += 1
+            if total_matches >= 50:
+                self.avg_home_goals = total_home / total_matches
+                self.avg_away_goals = total_away / total_matches
+                logger.info(f"Poisson calibrated: home={self.avg_home_goals:.2f}, "
+                            f"away={self.avg_away_goals:.2f} from {total_matches} matches")
+            else:
+                logger.info(f"Poisson: only {total_matches} matches, keeping defaults")
+        except Exception as e:
+            logger.warning(f"Poisson calibration failed, keeping defaults: {e}")
 
     def predict_score(self, home_attack: float, home_defense: float,
                       away_attack: float, away_defense: float) -> Tuple[float, float]:
