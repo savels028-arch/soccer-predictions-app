@@ -6,6 +6,8 @@ on:
     - cron: "0 8 * * *"
     # Post-match evaluation: 22:00 UTC daily (23:00 CET)
     - cron: "0 22 * * *"
+    # Weekly retrain with feedback loop: Monday 06:00 UTC (07:00 CET)
+    - cron: "0 6 * * 1"
   workflow_dispatch:
     inputs:
       mode:
@@ -52,6 +54,9 @@ jobs:
             else
               echo "args=--$MODE" >> $GITHUB_OUTPUT
             fi
+          elif [ "$(date -u +%H)" -lt 7 ]; then
+            # Monday 06:00 UTC — dedicated retrain run
+            echo "args=--train" >> $GITHUB_OUTPUT
           elif [ "$(date -u +%H)" -ge 20 ]; then
             echo "args=--evaluate-only" >> $GITHUB_OUTPUT
           else

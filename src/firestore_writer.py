@@ -380,3 +380,31 @@ class FirestoreWriter:
         """Calculate log loss for a single prediction."""
         p = max(probs.get(actual.lower(), 0.33), 1e-15)
         return -math.log(p)
+
+    # ──────────────────────────────────────
+    # FEEDBACK LOOP — data for ML retraining
+    # ──────────────────────────────────────
+
+    def get_all_prediction_results(self, limit: int = 2000) -> List[Dict]:
+        """Download prediction_results from Firestore for ML retraining.
+
+        Returns list of dicts with matchDate, homeTeam, awayTeam, leagueCode,
+        homeScore, awayScore, actualOutcome, predictedOutcome, confidence, isCorrect.
+        """
+        snap = self.db.collection("prediction_results") \
+            .order_by("matchDate", direction=firestore.Query.DESCENDING) \
+            .limit(limit) \
+            .get()
+        results = []
+        for doc in snap:
+            results.append(doc.to_dict())
+        log.info(f"Downloaded {len(results)} prediction_results for retraining")
+        return results
+
+    def get_source_metrics(self) -> Dict[str, Dict]:
+        """Get full metrics (accuracy, brierScore, weight) for all sources."""
+        snap = self.db.collection("sources").get()
+        metrics = {}
+        for doc in snap:
+            metrics[doc.id] = doc.to_dict()
+        return metrics

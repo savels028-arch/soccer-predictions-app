@@ -551,12 +551,21 @@ class PredictionPipeline:
     # ──────────────────────────────────────
 
     def train_models(self):
-        """Train ML models on historical data."""
-        log.info("── Training ML models ──")
+        """Train ML models on historical data + Firestore prediction_results (feedback loop)."""
+        log.info("── Training ML models (with feedback loop) ──")
         try:
+            # Download accumulated prediction results from Firestore for retraining
+            feedback_matches = []
+            try:
+                feedback_matches = self.fs.get_all_prediction_results(limit=2000)
+                log.info(f"  Loaded {len(feedback_matches)} prediction_results for feedback")
+            except Exception as e:
+                log.warning(f"  Could not load prediction_results for feedback: {e}")
+
             results = self.engine.train_models(
                 league_codes=["PL", "PD", "BL1", "SA", "FL1"],
-                callback=lambda t, msg: log.info(f"  [{t}] {msg}")
+                callback=lambda t, msg: log.info(f"  [{t}] {msg}"),
+                extra_matches=feedback_matches,
             )
             log.info(f"  Training results: {results}")
             return results
@@ -564,6 +573,65 @@ class PredictionPipeline:
             log.error(f"  Training failed: {e}")
             traceback.print_exc()
             return {}
+
+    def _get_dynamic_weights(self) -> Dict[str, float]:
+        """Get ensemble weights based on recent model accuracy from Firestore sources.
+
+        Falls back to defaults if no source data is available.
+        """
+        if not hasattr(self, '_dynamic_weights_cache'):
+            defaults = {"xgboost": 0.40, "neural_network": 0.35, "random_forest": 0.25}
+            try:
+                metrics = self.fs.get_source_metrics()
+                # Map source names to model names
+                name_map = {
+                    "ml_xgboost": "xgboost",
+                    "ml_neural_network": "neural_network",
+                    "ml_random_forest": "random_forest",
+                }
+                raw_weights = {}
+                for src_name, model_name in name_map.items():
+                    src = metrics.get(src_name, {})
+                    acc = src.get("accuracy", 0)
+                    brier = src.get("brierScore", 0.5)
+                    total = src.get("totalPredictions", 0)
+                    if total >= 5 and acc > 0:
+                        # Weight = inverse Brier * accuracy (rewards calibration + correctness)
+                        raw_weights[model_name] = max((1.0 - brier) * acc, 0.01)
+                    else:
+                        raw_weights[model_name] = defaults.get(model_name, 0.25)
+
+                # Normalize to sum to 1
+                total_w = sum(raw_weights.values())
+                if total_w > 0:
+                    self._dynamic_weights_cache = {k: round(v / total_w, 4) for k, v in raw_weights.items()}
+                else:
+                    self._dynamic_weights_cache = defaults
+
+                log.info(f"  Dynamic ensemble weights: {self._dynamic_weights_cache}")
+            except Exception as e:
+                log.warning(f"  Could not compute dynamic weights: {e}. Using defaults.")
+                self._dynamic_weights_cache = defaults
+
+        return self._dynamic_weights_cache
+
+    def _should_retrain(self) -> bool:
+        """Check if models should be retrained (weekly or if model files are stale)."""
+        try:
+            from pathlib import Path
+            model_file = Path("data/models/xgboost_model.pkl")
+            if not model_file.exists():
+                log.info("  No model file found — will retrain")
+                return True
+            # Retrain if model file is older than 7 days
+            import time
+            age_days = (time.time() - model_file.stat().st_mtime) / 86400
+            if age_days > 7:
+                log.info(f"  Models are {age_days:.1f} days old — will retrain")
+                return True
+            return False
+        except Exception:
+            return False
 
     def run_ml_predictions(self) -> Dict[str, dict]:
         """Run ML ensemble on all upcoming matches."""
@@ -655,8 +723,8 @@ class PredictionPipeline:
                 if not model_results:
                     continue
 
-                # Ensemble: weighted average
-                weights = {"xgboost": 0.40, "neural_network": 0.35, "random_forest": 0.25}
+                # Ensemble: dynamic weights from source performance (feedback loop)
+                weights = self._get_dynamic_weights()
                 ensemble = {"home": 0.0, "draw": 0.0, "away": 0.0}
                 total_weight = 0.0
                 for model_name, probs in model_results.items():
@@ -1187,12 +1255,17 @@ class PredictionPipeline:
         """Full pipeline: fetch → scrape → predict → evaluate → cache."""
         start = datetime.now()
         log.info("╔════════════════════════════════════════╗")
-        log.info("║   AIBets Prediction Pipeline v2.0     ║")
+        log.info("║   AIBets Prediction Pipeline v3.0     ║")
         log.info(f"║   {start.strftime('%Y-%m-%d %H:%M:%S')}                  ║")
         log.info("╚════════════════════════════════════════╝")
 
         # Stage 1: Fetch matches
         self.fetch_matches()
+
+        # Auto-retrain if models not trained or older than 7 days (feedback loop)
+        if not self.engine.is_trained or self._should_retrain():
+            log.info("── Auto-retrain triggered ──")
+            self.train_models()
 
         # Stage 2: Fetch real odds
         self.fetch_odds()

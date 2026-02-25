@@ -81,13 +81,15 @@ class PredictionEngine:
     # TRAINING
     # ──────────────────────────────────────────
     def train_models(self, league_codes: List[str] = None,
-                     callback=None) -> Dict[str, float]:
+                     callback=None, extra_matches: List[Dict] = None) -> Dict[str, float]:
         """
-        Train all ML models on historical data.
+        Train all ML models on historical data + accumulated prediction results.
 
         Args:
             league_codes: List of league codes to train on
             callback: Optional callback function for progress updates
+            extra_matches: Additional evaluated matches (from Firestore prediction_results)
+                           to incorporate as training data (feedback loop)
 
         Returns:
             Dict of model_name -> accuracy
@@ -103,7 +105,7 @@ class PredictionEngine:
             if callback:
                 callback("status", "Collecting training data...")
 
-            # Collect historical data
+            # Collect historical data from APIs
             all_matches = []
             leagues = league_codes or ["PL", "PD", "BL1", "SA", "FL1"]
 
@@ -117,6 +119,46 @@ class PredictionEngine:
 
                     matches_prev = self.data_aggregator.fetch_historical_matches(league_code, 2024)
                     all_matches.extend(matches_prev)
+
+                    # Also include 2026 data if available
+                    try:
+                        matches_2026 = self.data_aggregator.fetch_historical_matches(league_code, 2026)
+                        all_matches.extend(matches_2026)
+                    except Exception:
+                        pass
+
+            # ── FEEDBACK LOOP: incorporate prediction_results as extra training data ──
+            feedback_count = 0
+            if extra_matches:
+                seen_keys = set()
+                # Deduplicate against existing matches
+                for m in all_matches:
+                    key = f"{m.get('match_date', '')[:10]}_{m.get('home_team_name', '')}_{m.get('away_team_name', '')}".lower()
+                    seen_keys.add(key)
+
+                for r in extra_matches:
+                    hs = r.get("homeScore")
+                    aws = r.get("awayScore")
+                    if hs is None or aws is None:
+                        continue
+                    key = f"{r.get('matchDate', '')}_{r.get('homeTeam', '')}_{r.get('awayTeam', '')}".lower()
+                    if key in seen_keys:
+                        continue
+                    seen_keys.add(key)
+                    all_matches.append({
+                        "home_team_name": r.get("homeTeam", ""),
+                        "away_team_name": r.get("awayTeam", ""),
+                        "league_code": r.get("leagueCode", ""),
+                        "home_score": int(hs),
+                        "away_score": int(aws),
+                        "match_date": r.get("matchDate", ""),
+                        "status": "FINISHED",
+                        "season": 2025,
+                    })
+                    feedback_count += 1
+                logger.info(f"Feedback loop: added {feedback_count} unique prediction_results to training data")
+                if callback:
+                    callback("status", f"Added {feedback_count} feedback matches to training set")
 
             if callback:
                 callback("status", f"Building features from {len(all_matches)} matches...")
@@ -143,7 +185,7 @@ class PredictionEngine:
                 return {}
 
             if callback:
-                callback("status", f"Training on {len(X)} matches...")
+                callback("status", f"Training on {len(X)} matches ({feedback_count} from feedback)...")
 
             # Class distribution
             unique, counts = np.unique(y, return_counts=True)
