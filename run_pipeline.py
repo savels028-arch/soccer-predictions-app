@@ -1282,14 +1282,20 @@ class PredictionPipeline:
         # Stage 6: Daily coupon
         self.build_daily_coupon()
 
-        # Stage 7: Evaluate finished
-        self.evaluate_finished()
-
-        # Stage 8: Source performance
-        self.update_source_performance()
-
-        # Stage 9: Legacy cache for frontend
+        # ── Write cache BEFORE evaluate (critical: ensures predictions reach frontend even if quota runs out) ──
         self.write_legacy_cache()
+
+        # Stage 7: Evaluate finished (may hit Firestore quota — non-fatal)
+        try:
+            self.evaluate_finished()
+        except Exception as e:
+            log.warning(f"  Evaluate finished failed (quota?): {e}")
+
+        # Stage 8: Source performance (may hit quota — non-fatal)
+        try:
+            self.update_source_performance()
+        except Exception as e:
+            log.warning(f"  Source performance update failed (quota?): {e}")
 
         elapsed = (datetime.now() - start).total_seconds()
         log.info("═══════════════════════════════════════")
