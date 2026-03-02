@@ -163,7 +163,23 @@ class PredictionEngine:
             if callback:
                 callback("status", f"Building features from {len(all_matches)} matches...")
 
-            # Compute team stats first
+            # Insert all matches into local DB first
+            # (critical on ephemeral runners like GH Actions where SQLite starts empty)
+            inserted = 0
+            for match in all_matches:
+                if match.get("status") == "FINISHED" and match.get("home_score") is not None:
+                    try:
+                        if not match.get("api_id"):
+                            match["api_id"] = abs(hash(
+                                f"{match.get('league_code','')}_{match.get('season','')}_{match.get('match_date','')}_{match.get('home_team_name','')}_{match.get('away_team_name','')}"
+                            )) % 10000000
+                        self.db.upsert_match(match)
+                        inserted += 1
+                    except Exception:
+                        pass
+            logger.info(f"Inserted {inserted} matches into local DB for stats computation")
+
+            # Compute team stats from the now-populated local DB
             for match in all_matches:
                 if match.get("status") == "FINISHED" and match.get("home_score") is not None:
                     for team_name in [match["home_team_name"], match["away_team_name"]]:

@@ -46,6 +46,7 @@ from src.api.free_football_client import FreeFootballClient
 from src.database.db_manager import DatabaseManager
 from src.predictions.prediction_engine import PredictionEngine
 from src.predictions.feature_engineering import FeatureEngineer
+from src.api.data_aggregator import DataAggregator
 
 # Optional: CSV + API-Football
 try:
@@ -225,7 +226,8 @@ class PredictionPipeline:
         self.espn = FreeFootballClient()
         self.scraper = PredictionScraper()
         self.danske_spil = DanskeSpilClient()
-        self.engine = PredictionEngine(db_manager=self.db)
+        self._data_agg = DataAggregator(db_manager=self.db)
+        self.engine = PredictionEngine(db_manager=self.db, data_aggregator=self._data_agg)
         self.feature_eng = FeatureEngineer()
 
         self.csv_client = CSVFootballClient() if HAS_CSV else None
