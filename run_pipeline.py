@@ -260,8 +260,8 @@ class PredictionPipeline:
         log.info("── Stage 1: Fetching matches ──")
         all_matches = []
 
-        # ESPN: today + tomorrow + past 2 days, per league
-        for delta in [-2, -1, 0, 1]:
+        # ESPN: past 2 days + today + 3 days ahead, per league
+        for delta in [-2, -1, 0, 1, 2, 3]:
             d = date.today() + timedelta(days=delta)
             d_str = d.strftime("%Y-%m-%d")
             for league in self.ESPN_LEAGUES:
