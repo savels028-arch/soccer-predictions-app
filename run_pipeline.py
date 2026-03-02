@@ -563,7 +563,7 @@ class PredictionPipeline:
                 log.warning(f"  Could not load prediction_results for feedback: {e}")
 
             results = self.engine.train_models(
-                league_codes=["PL", "PD", "BL1", "SA", "FL1"],
+                league_codes=["PL", "PD", "BL1", "SA", "FL1", "DED", "PPL"],
                 callback=lambda t, msg: log.info(f"  [{t}] {msg}"),
                 extra_matches=feedback_matches,
             )

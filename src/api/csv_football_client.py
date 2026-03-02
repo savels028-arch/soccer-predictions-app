@@ -46,6 +46,7 @@ class FootballDataCSVClient:
 
     # Season codes: 2024/25 = "2425", 2023/24 = "2324", etc.
     AVAILABLE_SEASONS = [
+        (2025, "2526"),
         (2024, "2425"),
         (2023, "2324"),
         (2022, "2223"),

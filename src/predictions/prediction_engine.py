@@ -107,7 +107,7 @@ class PredictionEngine:
 
             # Collect historical data from APIs
             all_matches = []
-            leagues = league_codes or ["PL", "PD", "BL1", "SA", "FL1"]
+            leagues = league_codes or ["PL", "PD", "BL1", "SA", "FL1", "DED", "PPL"]
 
             for i, league_code in enumerate(leagues):
                 if callback:
