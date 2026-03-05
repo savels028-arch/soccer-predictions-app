@@ -360,14 +360,29 @@ class FeatureEngineerV2(FeatureEngineer):
         # Weighted form (6) — exponentially-weighted last 3/5/10
         "home_form_w3", "home_form_w5", "home_form_w10",
         "away_form_w3", "away_form_w5", "away_form_w10",
-        # CSV extra_data averages (6)
+        # CSV extra_data averages (10)
         "home_shots_on_target_avg", "away_shots_on_target_avg",
         "home_corners_avg", "away_corners_avg",
         "home_cards_avg", "away_cards_avg",
+        "home_total_shots_avg", "away_total_shots_avg",
+        "home_fouls_avg", "away_fouls_avg",
         # Days since last match (2)
         "home_days_rest", "away_days_rest",
         # Goal trend: last-5 avg minus season avg (1)
         "goal_trend_diff",
+        # League encoding (10 — one-hot for top leagues)
+        "league_PL", "league_PD", "league_BL1", "league_SA", "league_FL1",
+        "league_CL", "league_EL", "league_DED", "league_PPL", "league_BSA",
+        # Season progress / matchday (2)
+        "season_progress", "matchday_norm",
+        # Kickoff features (2)
+        "kickoff_hour_sin", "kickoff_hour_cos",
+        # Bookmaker overround (1)
+        "overround",
+        # H2H recency-weighted (2)
+        "h2h_home_win_recency", "h2h_away_win_recency",
+        # Strength of schedule — opponent ELO weighted form (2)
+        "home_sos", "away_sos",
     ]
 
     FEATURE_NAMES = FeatureEngineer.FEATURE_NAMES + EXTRA_FEATURE_NAMES
@@ -408,15 +423,21 @@ class FeatureEngineerV2(FeatureEngineer):
                                  away_days_rest: float = 7.0,
                                  home_recent_goals_avg: float = None,
                                  away_recent_goals_avg: float = None,
-                                 is_training: bool = False) -> np.ndarray:
-        """Build 60-feature vector: 42 v1 features + 18 v2 features."""
+                                 is_training: bool = False,
+                                 league_code: str = "",
+                                 matchday: int = 0,
+                                 total_matchdays: int = 38,
+                                 match_datetime: str = "",
+                                 home_sos: float = 0.0,
+                                 away_sos: float = 0.0) -> np.ndarray:
+        """Build feature vector: 42 v1 features + v2 extra features."""
 
         # Build base v1 features — mask AI features during training
         if is_training:
             base = cls.build_match_features(
                 home_stats, away_stats, h2h,
                 home_odds, draw_odds, away_odds,
-                ai_predictions=None,  # mask AI during training to avoid distribution mismatch
+                ai_predictions=None,
             )
         else:
             base = cls.build_match_features(
@@ -427,7 +448,7 @@ class FeatureEngineerV2(FeatureEngineer):
 
         extra = []
 
-        # ── ELO ratings ──
+        # ── ELO ratings (3) ──
         home_name = home_stats.get("team_name", "")
         away_name = away_stats.get("team_name", "")
         if elo_tracker:
@@ -438,7 +459,7 @@ class FeatureEngineerV2(FeatureEngineer):
             a_elo = 1500.0
         extra.extend([h_elo / 1000.0, a_elo / 1000.0, (h_elo - a_elo) / 400.0])
 
-        # ── Weighted form ──
+        # ── Weighted form (6) ──
         hf = home_form_list or []
         af = away_form_list or []
         extra.append(cls.weighted_form(hf, 3))
@@ -448,7 +469,7 @@ class FeatureEngineerV2(FeatureEngineer):
         extra.append(cls.weighted_form(af, 5))
         extra.append(cls.weighted_form(af, 10))
 
-        # ── CSV extra_data averages ──
+        # ── CSV extra_data averages (10) — expanded with total shots + fouls ──
         he = home_extra or {}
         ae = away_extra or {}
         extra.append(he.get("avg_shots_on_target", 0.0))
@@ -457,12 +478,16 @@ class FeatureEngineerV2(FeatureEngineer):
         extra.append(ae.get("avg_corners", 0.0))
         extra.append(he.get("avg_cards", 0.0))
         extra.append(ae.get("avg_cards", 0.0))
+        extra.append(he.get("avg_total_shots", 0.0))
+        extra.append(ae.get("avg_total_shots", 0.0))
+        extra.append(he.get("avg_fouls", 0.0))
+        extra.append(ae.get("avg_fouls", 0.0))
 
-        # ── Days rest ──
-        extra.append(min(home_days_rest, 30.0) / 7.0)  # normalise to weeks
+        # ── Days rest (2) ──
+        extra.append(min(home_days_rest, 30.0) / 7.0)
         extra.append(min(away_days_rest, 30.0) / 7.0)
 
-        # ── Goal trend diff ──
+        # ── Goal trend diff (1) ──
         h_season_avg = home_stats.get("avg_goals_scored", 1.3)
         a_season_avg = away_stats.get("avg_goals_scored", 1.2)
         h_recent = home_recent_goals_avg if home_recent_goals_avg is not None else h_season_avg
@@ -470,14 +495,82 @@ class FeatureEngineerV2(FeatureEngineer):
         goal_trend = (h_recent - h_season_avg) - (a_recent - a_season_avg)
         extra.append(round(goal_trend, 4))
 
+        # ── League one-hot encoding (10) ──
+        league_codes = ["PL", "PD", "BL1", "SA", "FL1", "CL", "EL", "DED", "PPL", "BSA"]
+        for lc in league_codes:
+            extra.append(1.0 if league_code == lc else 0.0)
+
+        # ── Season progress / matchday (2) ──
+        if matchday > 0 and total_matchdays > 0:
+            extra.append(matchday / total_matchdays)  # season_progress
+            extra.append(matchday / 38.0)             # matchday_norm (38 = standard league)
+        else:
+            extra.append(0.5)
+            extra.append(0.5)
+
+        # ── Kickoff hour as cyclical sin/cos (2) ──
+        kickoff_hour = 15.0  # default
+        if match_datetime:
+            try:
+                dt = datetime.fromisoformat(match_datetime[:19].replace("Z", ""))
+                kickoff_hour = dt.hour + dt.minute / 60.0
+            except Exception:
+                pass
+        extra.append(math.sin(2 * math.pi * kickoff_hour / 24.0))
+        extra.append(math.cos(2 * math.pi * kickoff_hour / 24.0))
+
+        # ── Bookmaker overround (1) ──
+        if (home_odds and home_odds > 1.0 and
+                draw_odds and draw_odds > 1.0 and
+                away_odds and away_odds > 1.0):
+            overround = (1/home_odds + 1/draw_odds + 1/away_odds) - 1.0
+        else:
+            overround = 0.05  # typical ~5%
+        extra.append(round(overround, 4))
+
+        # ── H2H recency-weighted wins (2) ──
+        h2h = h2h or []
+        h2h_home_recency = 0.0
+        h2h_away_recency = 0.0
+        h2h_weight_sum = 0.0
+        decay = 0.85
+        for i, match in enumerate(h2h):
+            w = decay ** i
+            hs = match.get("home_score", 0) or 0
+            aws = match.get("away_score", 0) or 0
+            mh = match.get("home_team", "")
+            if mh == home_name:
+                if hs > aws:
+                    h2h_home_recency += w
+                elif hs < aws:
+                    h2h_away_recency += w
+            else:
+                if aws > hs:
+                    h2h_home_recency += w
+                elif aws < hs:
+                    h2h_away_recency += w
+            h2h_weight_sum += w
+        if h2h_weight_sum > 0:
+            extra.append(h2h_home_recency / h2h_weight_sum)
+            extra.append(h2h_away_recency / h2h_weight_sum)
+        else:
+            extra.append(0.5)
+            extra.append(0.5)
+
+        # ── Strength of Schedule (2) ──
+        extra.append(home_sos)
+        extra.append(away_sos)
+
         return np.concatenate([base, np.array(extra, dtype=np.float64)])
 
     @classmethod
     def compute_csv_extra_averages(cls, matches: List[Dict], team_name: str) -> Dict:
-        """Compute average shots-on-target, corners, cards from CSV extra_data for a team."""
+        """Compute average shots-on-target, corners, cards, total shots, fouls from CSV extra_data."""
         sot_sum = 0.0
         corner_sum = 0.0
         card_sum = 0.0
+        total_shots_sum = 0.0
+        fouls_sum = 0.0
         count = 0
 
         for m in matches:
@@ -491,17 +584,23 @@ class FeatureEngineerV2(FeatureEngineer):
                 cor = ed.get("home_corners")
                 yel = ed.get("home_yellow", 0) or 0
                 red = ed.get("home_red", 0) or 0
+                ts = ed.get("home_shots", ed.get("home_total_shots"))
+                fl = ed.get("home_fouls")
             elif a == team_name:
                 sot = ed.get("away_shots_target")
                 cor = ed.get("away_corners")
                 yel = ed.get("away_yellow", 0) or 0
                 red = ed.get("away_red", 0) or 0
+                ts = ed.get("away_shots", ed.get("away_total_shots"))
+                fl = ed.get("away_fouls")
             else:
                 continue
             if sot is not None:
                 sot_sum += sot
                 corner_sum += (cor or 0)
                 card_sum += yel + red
+                total_shots_sum += (ts or 0)
+                fouls_sum += (fl or 0)
                 count += 1
 
         if count == 0:
@@ -510,6 +609,8 @@ class FeatureEngineerV2(FeatureEngineer):
             "avg_shots_on_target": round(sot_sum / count, 2),
             "avg_corners": round(corner_sum / count, 2),
             "avg_cards": round(card_sum / count, 2),
+            "avg_total_shots": round(total_shots_sum / count, 2),
+            "avg_fouls": round(fouls_sum / count, 2),
         }
 
     @classmethod
@@ -580,6 +681,36 @@ class FeatureEngineerV2(FeatureEngineer):
             if len(goals) >= n:
                 break
         return sum(goals) / len(goals) if goals else None
+
+    @classmethod
+    def compute_sos(cls, matches: List[Dict], team_name: str,
+                    elo_tracker: 'EloTracker' = None, n: int = 10) -> float:
+        """Strength of Schedule: avg opponent ELO-weighted result over last n matches.
+        High value = good results against strong opponents.
+        """
+        if not elo_tracker:
+            return 0.0
+        scores = []
+        for m in reversed(matches):
+            hs = m.get("home_score")
+            aws = m.get("away_score")
+            if hs is None or aws is None or m.get("status") != "FINISHED":
+                continue
+            h = m.get("home_team_name", "")
+            a = m.get("away_team_name", "")
+            if h == team_name:
+                opp_elo = elo_tracker.get(a) / 1500.0  # normalise
+                gs, gc = int(hs), int(aws)
+            elif a == team_name:
+                opp_elo = elo_tracker.get(h) / 1500.0
+                gs, gc = int(aws), int(hs)
+            else:
+                continue
+            result = 1.0 if gs > gc else (0.5 if gs == gc else 0.0)
+            scores.append(result * opp_elo)
+            if len(scores) >= n:
+                break
+        return sum(scores) / len(scores) if scores else 0.0
 
     @classmethod
     def build_training_data_v2(cls, matches: List[Dict], db_manager,
@@ -660,6 +791,12 @@ class FeatureEngineerV2(FeatureEngineer):
                     home_recent_goals_avg=cls.compute_recent_goals_avg(past, home_name),
                     away_recent_goals_avg=cls.compute_recent_goals_avg(past, away_name),
                     is_training=True,
+                    league_code=league_code,
+                    matchday=match.get("matchday", 0),
+                    total_matchdays=38,
+                    match_datetime=match_date,
+                    home_sos=cls.compute_sos(past, home_name, elo_copy),
+                    away_sos=cls.compute_sos(past, away_name, elo_copy),
                 )
 
                 hs = match["home_score"]

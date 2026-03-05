@@ -321,14 +321,23 @@ class DatabaseManager:
             """, (str(days),))
         return [dict(row) for row in cursor.fetchall()]
 
-    def get_team_matches(self, team_name: str, limit: int = 20) -> List[Dict]:
+    def get_team_matches(self, team_name: str, limit: int = 20, before_date: str = None) -> List[Dict]:
         cursor = self.conn.cursor()
-        cursor.execute("""
-            SELECT * FROM matches
-            WHERE (home_team_name = ? OR away_team_name = ?)
-            AND status = 'FINISHED'
-            ORDER BY match_date DESC LIMIT ?
-        """, (team_name, team_name, limit))
+        if before_date:
+            cursor.execute("""
+                SELECT * FROM matches
+                WHERE (home_team_name = ? OR away_team_name = ?)
+                AND status = 'FINISHED'
+                AND DATE(match_date) < DATE(?)
+                ORDER BY match_date DESC LIMIT ?
+            """, (team_name, team_name, before_date, limit))
+        else:
+            cursor.execute("""
+                SELECT * FROM matches
+                WHERE (home_team_name = ? OR away_team_name = ?)
+                AND status = 'FINISHED'
+                ORDER BY match_date DESC LIMIT ?
+            """, (team_name, team_name, limit))
         return [dict(row) for row in cursor.fetchall()]
 
     def get_live_matches(self) -> List[Dict]:
@@ -568,9 +577,10 @@ class DatabaseManager:
     # ──────────────────────────────────────────────
     # STATISTICS COMPUTATION
     # ──────────────────────────────────────────────
-    def compute_team_stats_from_matches(self, team_name: str, league_code: str, season: int) -> Dict:
+    def compute_team_stats_from_matches(self, team_name: str, league_code: str, season: int,
+                                          before_date: str = None) -> Dict:
         """Compute stats from stored match data."""
-        matches = self.get_team_matches(team_name, limit=100)
+        matches = self.get_team_matches(team_name, limit=100, before_date=before_date)
         matches = [m for m in matches if m.get("league_code") == league_code and m.get("season") == season]
 
         stats = {

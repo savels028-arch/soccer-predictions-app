@@ -109,8 +109,24 @@ ML_SETTINGS_V2 = {
         "min_samples_split": 4,
         "min_samples_leaf": 2,
     },
+    "lightgbm": {
+        "n_estimators": 300,
+        "max_depth": 7,
+        "learning_rate": 0.05,
+        "subsample": 0.85,
+        "colsample_bytree": 0.8,
+        "reg_alpha": 0.1,
+        "reg_lambda": 1.0,
+        "min_child_samples": 20,
+        "num_leaves": 31,
+    },
     "ensemble": {
-        "weights": {"xgboost": 0.40, "neural_network": 0.30, "random_forest": 0.30},
+        "weights": {
+            "xgboost": 0.30,
+            "neural_network": 0.25,
+            "random_forest": 0.20,
+            "lightgbm": 0.25,
+        },
         "use_stacking": True,
     },
     "coupon": {

@@ -32,6 +32,7 @@ import math
 import logging
 import argparse
 import traceback
+import numpy as np
 from datetime import datetime, date, timedelta
 from typing import Dict, List, Optional, Any, Tuple
 
@@ -75,6 +76,12 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 log = logging.getLogger("pipeline")
+
+
+def _current_season() -> int:
+    """Dynamic season: August+ = current year, else previous year."""
+    now = date.today()
+    return now.year if now.month >= 7 else now.year - 1
 
 
 # ─── Team name matching ─────────────────────
@@ -272,6 +279,10 @@ class PredictionPipeline:
             "results_saved_v2": 0,
             "coupons_evaluated": 0,
             "sources_updated": 0,
+        }
+        self._stats_v2 = {
+            "ml_predictions": 0,
+            "results_saved": 0,
         }
 
     # ──────────────────────────────────────
@@ -721,16 +732,17 @@ class PredictionPipeline:
             mid = match_id(m.get("match_date", ""), home, away)
 
             try:
-                # Get odds for this match (from Danske Spil)
+                # Get odds for this match (from Danske Spil) — pass None when missing
                 od = find_match_in_list(home, away, self._odds)
-                home_odds = od.get("home_odds", 2.5) if od else 2.5
-                draw_odds = od.get("draw_odds", 3.3) if od else 3.3  
-                away_odds = od.get("away_odds", 3.0) if od else 3.0
+                home_odds = od.get("home_odds") if od else None
+                draw_odds = od.get("draw_odds") if od else None
+                away_odds = od.get("away_odds") if od else None
 
-                # Get team stats
+                # Get team stats — dynamic season
                 league = m.get("league_code", m.get("league", "PL"))
-                home_stats = self.db.compute_team_stats_from_matches(home, league, 2025) or {}
-                away_stats = self.db.compute_team_stats_from_matches(away, league, 2025) or {}
+                current_season = _current_season()
+                home_stats = self.db.compute_team_stats_from_matches(home, league, current_season) or {}
+                away_stats = self.db.compute_team_stats_from_matches(away, league, current_season) or {}
 
                 # Get H2H
                 h2h = self.db.get_h2h(home, away) or []
@@ -758,6 +770,10 @@ class PredictionPipeline:
                     home_odds=home_odds, draw_odds=draw_odds, away_odds=away_odds,
                     ai_predictions=ai_for_match if ai_for_match else None,
                 )
+
+                # NaN guard for prediction features
+                if np.any(np.isnan(features)) or np.any(np.isinf(features)):
+                    features = np.nan_to_num(features, nan=0.0, posinf=0.0, neginf=0.0)
 
                 # Run all models
                 model_results = {}
@@ -801,7 +817,7 @@ class PredictionPipeline:
 
                 # Calculate edge vs market
                 edge = {}
-                if od:
+                if od and home_odds and draw_odds and away_odds:
                     ho, do_, ao = home_odds, draw_odds, away_odds
                     if ho > 0 and do_ > 0 and ao > 0:
                         total_impl = 1/ho + 1/do_ + 1/ao
@@ -859,13 +875,14 @@ class PredictionPipeline:
                 mid = match_id(m.get("match_date", ""), home, away)
                 try:
                     od = find_match_in_list(home, away, self._odds)
-                    home_odds = od.get("home_odds", 2.5) if od else 2.5
-                    draw_odds = od.get("draw_odds", 3.3) if od else 3.3
-                    away_odds = od.get("away_odds", 3.0) if od else 3.0
+                    home_odds = od.get("home_odds") if od else None
+                    draw_odds = od.get("draw_odds") if od else None
+                    away_odds = od.get("away_odds") if od else None
 
                     league = m.get("league_code", m.get("league", "PL"))
-                    home_stats = self.db.compute_team_stats_from_matches(home, league, 2025) or {}
-                    away_stats = self.db.compute_team_stats_from_matches(away, league, 2025) or {}
+                    current_season = _current_season()
+                    home_stats = self.db.compute_team_stats_from_matches(home, league, current_season) or {}
+                    away_stats = self.db.compute_team_stats_from_matches(away, league, current_season) or {}
                     h2h = self.db.get_h2h(home, away) or []
 
                     # v2 extra data
@@ -911,7 +928,17 @@ class PredictionPipeline:
                         home_recent_goals_avg=home_goals_avg,
                         away_recent_goals_avg=away_goals_avg,
                         is_training=False,
+                        league_code=league,
+                        matchday=m.get("matchday", 0),
+                        total_matchdays=38,
+                        match_datetime=match_date,
+                        home_sos=FeatureEngineerV2.compute_sos(home_matches, home, self.engine_v2.elo_tracker),
+                        away_sos=FeatureEngineerV2.compute_sos(away_matches, away, self.engine_v2.elo_tracker),
                     )
+
+                    # NaN guard for prediction features
+                    if np.any(np.isnan(features_v2)) or np.any(np.isinf(features_v2)):
+                        features_v2 = np.nan_to_num(features_v2, nan=0.0, posinf=0.0, neginf=0.0)
 
                     # Run v2 models
                     model_results_v2 = {}
@@ -934,12 +961,35 @@ class PredictionPipeline:
 
                     # Stacking ensemble or weighted average
                     if self.engine_v2.stacking and self.engine_v2.stacking.is_trained:
-                        ensemble_v2 = self.engine_v2.stacking.predict_proba(features_v2.reshape(1, -1))
-                        if ensemble_v2 is None:
-                            # fallback to weighted
+                        stacking_probs = self.engine_v2.stacking.predict_proba(features_v2.reshape(1, -1))
+                        if stacking_probs is not None:
+                            # Convert ndarray → dict
+                            p = stacking_probs[0] if stacking_probs.ndim > 1 else stacking_probs
+                            ensemble_v2 = {"home": float(p[0]), "draw": float(p[1]), "away": float(p[2])}
+                        else:
                             ensemble_v2 = self._weighted_ensemble(model_results_v2)
                     else:
                         ensemble_v2 = self._weighted_ensemble(model_results_v2)
+
+                    # Blend Poisson probabilities into ensemble (10% weight)
+                    poisson_probs = None
+                    try:
+                        h_att = home_stats.get("avg_goals_scored", 1.3)
+                        h_def = home_stats.get("avg_goals_conceded", 1.1)
+                        a_att = away_stats.get("avg_goals_scored", 1.2)
+                        a_def = away_stats.get("avg_goals_conceded", 1.2)
+                        h_exp, a_exp = self.engine_v2.poisson.predict_score(h_att, h_def, a_att, a_def)
+                        poisson_probs = self.engine_v2.poisson.match_outcome_probs(h_exp, a_exp)
+                        if poisson_probs:
+                            poisson_w = 0.10
+                            ml_w = 1.0 - poisson_w
+                            ensemble_v2 = {
+                                "home": ensemble_v2["home"] * ml_w + poisson_probs.get("home_win", 0.33) * poisson_w,
+                                "draw": ensemble_v2["draw"] * ml_w + poisson_probs.get("draw", 0.33) * poisson_w,
+                                "away": ensemble_v2["away"] * ml_w + poisson_probs.get("away_win", 0.33) * poisson_w,
+                            }
+                    except Exception as e:
+                        log.debug(f"    Poisson blend skipped: {e}")
 
                     for k in ensemble_v2:
                         ensemble_v2[k] = round(ensemble_v2[k], 4)
@@ -972,6 +1022,31 @@ class PredictionPipeline:
                         model_version=f"ensemble_v2_{len(model_results_v2)}models"
                     )
 
+                    # Compute Poisson predicted score + BTTS/O-U for display
+                    poisson_score_str = ""
+                    btts_prob = 0.0
+                    over25_prob = 0.0
+                    try:
+                        h_att = home_stats.get("avg_goals_scored", 1.3)
+                        h_def = home_stats.get("avg_goals_conceded", 1.1)
+                        a_att = away_stats.get("avg_goals_scored", 1.2)
+                        a_def = away_stats.get("avg_goals_conceded", 1.2)
+                        h_exp, a_exp = self.engine_v2.poisson.predict_score(h_att, h_def, a_att, a_def)
+                        poisson_score_str = f"{h_exp}-{a_exp}"
+                        # BTTS: P(home>0) * P(away>0) using Poisson
+                        from math import exp as m_exp
+                        btts_prob = round((1 - m_exp(-h_exp)) * (1 - m_exp(-a_exp)), 4)
+                        # O/U 2.5: P(total > 2.5) = 1 - P(total <= 2)
+                        total_exp = h_exp + a_exp
+                        from math import factorial
+                        p_under = sum(
+                            (total_exp ** k) * m_exp(-total_exp) / factorial(k)
+                            for k in range(3)
+                        )
+                        over25_prob = round(1 - p_under, 4)
+                    except Exception:
+                        pass
+
                     ml_preds_v2[mid] = {
                         "home_team": home,
                         "away_team": away,
@@ -982,6 +1057,9 @@ class PredictionPipeline:
                         "recommended": recommended_v2,
                         "confidence": confidence_v2,
                         "models": model_results_v2,
+                        "poisson_score": poisson_score_str,
+                        "btts_prob": btts_prob,
+                        "over25_prob": over25_prob,
                     }
                 except Exception as e:
                     log.error(f"  v2 prediction failed for {home} vs {away}: {e}")
@@ -1147,6 +1225,14 @@ class PredictionPipeline:
                 if len(set(model_picks)) > 1:
                     continue  # models disagree — skip
 
+            # Kelly criterion: f* = (bp - q) / b where b=odds-1, p=model_prob, q=1-p
+            model_prob = pred["ensemble"].get(best_outcome, 0.33)
+            b = odds_val - 1.0
+            kelly_fraction = 0.0
+            if b > 0 and model_prob > 0:
+                kelly_fraction = max(0.0, (b * model_prob - (1 - model_prob)) / b)
+            kelly_fraction = min(kelly_fraction, 0.25)  # cap at 25% Kelly
+
             candidates.append({
                 "home_team": pred["home_team"],
                 "away_team": pred["away_team"],
@@ -1158,6 +1244,7 @@ class PredictionPipeline:
                 "confidence": round(confidence_pct, 1),
                 "edge": round(edge_val * 100, 1),
                 "ev_score": round(edge_val * pred["confidence"], 6),
+                "kelly_fraction": round(kelly_fraction, 4),
                 "version": version_label,
             })
 
@@ -1421,10 +1508,22 @@ class PredictionPipeline:
                 brier_sum += self.fs.brier_score(probs, actual)
                 log_loss_sum += self.fs.log_loss_single(probs, actual)
 
-                # ROI: assume flat 1-unit stakes at fair odds (1/prob)
+                # ROI: use actual market odds from stored prediction data if available
                 pred_prob = probs.get(predicted.lower(), 0.33)
-                if pred_prob > 0:
+                # Try to get actual market odds from prediction extra data
+                actual_odds = 0
+                try:
+                    odds_map = p.get("odds", {})
+                    if odds_map:
+                        actual_odds = odds_map.get(predicted.lower(), 0)
+                except Exception:
+                    pass
+                if actual_odds and actual_odds > 1.0:
+                    implied_odds = actual_odds
+                elif pred_prob > 0:
                     implied_odds = 1.0 / pred_prob
+                else:
+                    implied_odds = 3.0
                     if predicted.upper() == actual:
                         roi_sum += (implied_odds - 1)  # profit
                     else:

@@ -166,6 +166,31 @@ class XGBoostModel(BaseModel):
             )
 
         self.model.fit(X_train, y_train, sample_weight=sample_weights)
+
+        # Feature importance logging
+        if hasattr(self.model, 'feature_importances_'):
+            top_idx = np.argsort(self.model.feature_importances_)[-10:][::-1]
+            logger.info(f"XGBoost top-10 feature indices: {top_idx.tolist()}")
+            logger.info(f"XGBoost top-10 importances: {self.model.feature_importances_[top_idx].tolist()}")
+
+        # Probability calibration (isotonic)
+        try:
+            cal = CalibratedClassifierCV(self.model, method='isotonic', cv=3)
+            cal.fit(X_train, y_train)
+            self.model = cal
+            logger.info("XGBoost wrapped with CalibratedClassifierCV (isotonic)")
+        except Exception as e:
+            logger.warning(f"Calibration failed, using raw model: {e}")
+
+        # Temporal cross-validation report
+        try:
+            from sklearn.model_selection import TimeSeriesSplit
+            tscv = TimeSeriesSplit(n_splits=5)
+            cv_scores = cross_val_score(self.model, X_train, y_train, cv=tscv, scoring='accuracy')
+            logger.info(f"XGBoost temporal CV: {cv_scores.mean():.4f} ± {cv_scores.std():.4f}")
+        except Exception as e:
+            logger.debug(f"Temporal CV report failed: {e}")
+
         y_pred = self.model.predict(X_test)
         self.accuracy = accuracy_score(y_test, y_pred)
         self.is_trained = True
@@ -248,6 +273,7 @@ class NeuralNetworkModel(BaseModel):
             dr = dropout_rates[i] if i < len(dropout_rates) else 0.0
             if dr > 0:
                 x = keras.layers.Dropout(dr)(x)
+            x = keras.layers.BatchNormalization()(x)
 
         outputs = keras.layers.Dense(3, activation='softmax')(x)
         model = keras.Model(inputs, outputs)
@@ -368,11 +394,93 @@ class RandomForestModel(BaseModel):
             n_jobs=-1,
         )
         self.model.fit(X_train, y_train)
+
+        # Probability calibration (isotonic)
+        try:
+            cal = CalibratedClassifierCV(self.model, method='isotonic', cv=3)
+            cal.fit(X_train, y_train)
+            self.model = cal
+            logger.info("RandomForest wrapped with CalibratedClassifierCV (isotonic)")
+        except Exception as e:
+            logger.warning(f"RF calibration failed, using raw model: {e}")
+
         y_pred = self.model.predict(X_test)
         self.accuracy = accuracy_score(y_test, y_pred)
         self.is_trained = True
 
         logger.info(f"Random Forest accuracy: {self.accuracy:.4f}")
+        self.save()
+        return self.accuracy
+
+    def predict_proba(self, X: np.ndarray) -> np.ndarray:
+        if not self.is_trained:
+            return np.array([[0.33, 0.33, 0.34]])
+        X_scaled = self.scaler.transform(X.reshape(1, -1)) if self.scaler else X.reshape(1, -1)
+        return self.model.predict_proba(X_scaled)
+
+
+class LightGBMModel(BaseModel):
+    """LightGBM classifier for match prediction."""
+
+    def __init__(self, config: Dict = None, suffix: str = ""):
+        super().__init__("lightgbm", config, suffix)
+
+    def train(self, X: np.ndarray, y: np.ndarray) -> float:
+        try:
+            import lightgbm as lgb
+        except ImportError:
+            logger.info("LightGBM not installed — skipping")
+            return 0.0
+
+        split_idx = int(len(X) * (1 - self.config["test_size"]))
+        X_train_raw, X_test_raw = X[:split_idx], X[split_idx:]
+        y_train, y_test = y[:split_idx], y[split_idx:]
+
+        if self.scaler:
+            self.scaler.fit(X_train_raw)
+            X_train = self.scaler.transform(X_train_raw)
+            X_test = self.scaler.transform(X_test_raw)
+        else:
+            X_train, X_test = X_train_raw, X_test_raw
+
+        lgb_params = self.config.get("lightgbm", {})
+        self.model = lgb.LGBMClassifier(
+            n_estimators=lgb_params.get("n_estimators", 300),
+            max_depth=lgb_params.get("max_depth", 7),
+            learning_rate=lgb_params.get("learning_rate", 0.05),
+            subsample=lgb_params.get("subsample", 0.85),
+            colsample_bytree=lgb_params.get("colsample_bytree", 0.8),
+            reg_alpha=lgb_params.get("reg_alpha", 0.1),
+            reg_lambda=lgb_params.get("reg_lambda", 1.0),
+            min_child_samples=lgb_params.get("min_child_samples", 20),
+            num_leaves=lgb_params.get("num_leaves", 31),
+            objective="multiclass",
+            num_class=3,
+            class_weight="balanced",
+            random_state=self.config["random_state"],
+            verbose=-1,
+        )
+        self.model.fit(X_train, y_train)
+
+        # Feature importance logging
+        if hasattr(self.model, 'feature_importances_'):
+            top_idx = np.argsort(self.model.feature_importances_)[-10:][::-1]
+            logger.info(f"LightGBM top-10 feature indices: {top_idx.tolist()}")
+
+        # Calibration
+        try:
+            cal = CalibratedClassifierCV(self.model, method='isotonic', cv=3)
+            cal.fit(X_train, y_train)
+            self.model = cal
+            logger.info("LightGBM wrapped with CalibratedClassifierCV (isotonic)")
+        except Exception as e:
+            logger.warning(f"LightGBM calibration failed: {e}")
+
+        y_pred = self.model.predict(X_test)
+        self.accuracy = accuracy_score(y_test, y_pred)
+        self.is_trained = True
+
+        logger.info(f"LightGBM accuracy: {self.accuracy:.4f}")
         self.save()
         return self.accuracy
 
@@ -511,23 +619,54 @@ class StackingEnsemble:
         self.fallback = EnsembleModel(models, config)
 
     def train_meta(self, X: np.ndarray, y: np.ndarray) -> float:
-        """Train the stacking meta-learner after base models are trained.
-        X, y are the same training data (already temporal-split).
-        We use the base models' out-of-fold predictions on the test portion.
+        """Train the stacking meta-learner using TimeSeriesSplit OOF predictions.
+        This avoids data leakage by generating out-of-fold predictions from
+        temporal cross-validation on the TRAINING portion.
         """
         if not HAS_SKLEARN:
             return 0.0
 
+        from sklearn.model_selection import TimeSeriesSplit
+
         split_idx = int(len(X) * (1 - self.config["test_size"]))
+        X_train = X[:split_idx]
+        y_train = y[:split_idx]
         X_test = X[split_idx:]
         y_test = y[split_idx:]
 
-        if len(X_test) < 50:
-            logger.info("Stacking: too few test samples, falling back to weighted ensemble")
+        if len(X_train) < 200:
+            logger.info("Stacking: too few training samples, falling back to weighted ensemble")
             return 0.0
 
-        # Build meta-features: [xgb_h, xgb_d, xgb_a, nn_h, nn_d, nn_a, rf_h, rf_d, rf_a]
-        meta_features = []
+        # Generate OOF predictions via TimeSeriesSplit on training data
+        n_splits = min(5, max(2, len(X_train) // 100))
+        tscv = TimeSeriesSplit(n_splits=n_splits)
+        oof_meta = np.zeros((len(X_train), 3 * len(self.models)))
+        oof_mask = np.zeros(len(X_train), dtype=bool)
+
+        for fold_idx, (tr_idx, val_idx) in enumerate(tscv.split(X_train)):
+            for m_idx, (name, model) in enumerate(self.models.items()):
+                if model.is_trained:
+                    for vi in val_idx:
+                        probs = model.predict_proba(X_train[vi])
+                        if probs.ndim > 1:
+                            probs = probs[0]
+                        oof_meta[vi, m_idx*3:(m_idx+1)*3] = probs
+                else:
+                    for vi in val_idx:
+                        oof_meta[vi, m_idx*3:(m_idx+1)*3] = [0.33, 0.33, 0.34]
+            oof_mask[val_idx] = True
+
+        # Keep only rows that have OOF predictions
+        meta_X_train = oof_meta[oof_mask]
+        meta_y_train = y_train[oof_mask]
+
+        if len(meta_X_train) < 50:
+            logger.info("Stacking: too few OOF samples, falling back to weighted ensemble")
+            return 0.0
+
+        # Build test meta-features from base model predictions on held-out test set
+        meta_test_features = []
         for x_row in X_test:
             row_feats = []
             for name, model in self.models.items():
@@ -538,14 +677,8 @@ class StackingEnsemble:
                     row_feats.extend(probs.tolist())
                 else:
                     row_feats.extend([0.33, 0.33, 0.34])
-            meta_features.append(row_feats)
-
-        meta_X = np.array(meta_features)
-
-        # Split meta into train/test for meta-model
-        meta_split = int(len(meta_X) * 0.7)
-        meta_X_train, meta_X_test = meta_X[:meta_split], meta_X[meta_split:]
-        meta_y_train, meta_y_test = y_test[:meta_split], y_test[meta_split:]
+            meta_test_features.append(row_feats)
+        meta_X_test = np.array(meta_test_features)
 
         self.meta_model = LogisticRegression(
             C=1.0,
@@ -557,7 +690,7 @@ class StackingEnsemble:
         self.meta_model.fit(meta_X_train, meta_y_train)
 
         y_pred = self.meta_model.predict(meta_X_test)
-        self.accuracy = accuracy_score(meta_y_test, y_pred)
+        self.accuracy = accuracy_score(y_pred, y_test) if len(y_test) > 0 else 0.0
         self.is_trained = True
 
         try:
@@ -566,7 +699,8 @@ class StackingEnsemble:
         except Exception as e:
             logger.warning(f"Could not save stacking meta-model: {e}")
 
-        logger.info(f"Stacking meta-learner accuracy: {self.accuracy:.4f}")
+        logger.info(f"Stacking meta-learner accuracy: {self.accuracy:.4f} "
+                     f"(OOF samples={len(meta_X_train)}, test={len(meta_X_test)})")
         return self.accuracy
 
     def load(self) -> bool:

@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Tuple
 import threading
 
 from .models import (
-    XGBoostModel, NeuralNetworkModel, RandomForestModel,
+    XGBoostModel, NeuralNetworkModel, RandomForestModel, LightGBMModel,
     EnsembleModel, PoissonModel, StackingEnsemble, HAS_SKLEARN
 )
 from .feature_engineering import FeatureEngineer, FeatureEngineerV2, EloTracker
@@ -48,6 +48,11 @@ class PredictionEngine:
             "neural_network": self.neural_net,
             "random_forest": self.random_forest,
         }
+
+        # Add LightGBM for v2 models
+        if self.is_v2 and self.config.get("lightgbm"):
+            self.lightgbm = LightGBMModel(config=self.config, suffix=suffix)
+            self.models["lightgbm"] = self.lightgbm
 
         use_stacking = self.config.get("ensemble", {}).get("use_stacking", False)
         if use_stacking:
@@ -220,6 +225,13 @@ class PredictionEngine:
 
             if callback:
                 callback("status", f"Training on {len(X)} matches ({feedback_count} from feedback)...")
+
+            # NaN / Inf guard — replace with 0 to avoid model crashes
+            nan_count = int(np.isnan(X).sum())
+            inf_count = int(np.isinf(X).sum())
+            if nan_count > 0 or inf_count > 0:
+                logger.warning(f"Training data NaN={nan_count}, Inf={inf_count} — replacing with 0")
+                X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
 
             # Class distribution
             unique, counts = np.unique(y, return_counts=True)
