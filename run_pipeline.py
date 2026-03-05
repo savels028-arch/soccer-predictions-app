@@ -980,16 +980,17 @@ class PredictionPipeline:
                     quota_errors += 1
                 continue
             if model_out:
-                # Look for model output
+                # Only save results for matches where we had a REAL ML prediction
                 mo_doc = self.fs.db.collection("model_outputs").document(mid).get()
-                if mo_doc.exists:
-                    mo_data = mo_doc.to_dict()
-                    fp = mo_data.get("finalProbability", {})
-                    predicted = max(fp, key=fp.get).upper() if fp else "HOME"
-                    confidence = round(mo_data.get("confidenceScore", 0.5) * 100)
-                else:
-                    predicted = "HOME"
-                    confidence = 50
+                if not mo_doc.exists:
+                    continue  # Skip — no ML prediction was made for this match
+
+                mo_data = mo_doc.to_dict()
+                fp = mo_data.get("finalProbability", {})
+                if not fp:
+                    continue
+                predicted = max(fp, key=fp.get).upper()
+                confidence = round(mo_data.get("confidenceScore", 0.5) * 100)
 
                 saved = self.fs.save_prediction_result({
                     "matchDate": m.get("match_date", "")[:10],
@@ -1003,6 +1004,7 @@ class PredictionPipeline:
                     "confidence": confidence,
                     "source": "ML Ensemble",
                     "isCorrect": predicted == actual,
+                    "hasModelOutput": True,
                 })
                 if saved:
                     results_saved += 1
