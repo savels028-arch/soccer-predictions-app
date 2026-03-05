@@ -81,10 +81,9 @@ class DataAggregator:
             except Exception as e:
                 logger.error(f"API-Football error: {e}")
 
-        # 4. Fallback to demo data
+        # 4. No demo fallback — empty is better than fake data
         if not matches:
-            logger.info("No API data available, generating demo matches")
-            matches = self._generate_demo_matches()
+            logger.warning("No API data available for today's matches (no demo fallback)")
 
         # Store in database & cache
         for m in matches:
@@ -122,9 +121,9 @@ class DataAggregator:
             except Exception as e:
                 logger.error(f"Error fetching upcoming: {e}")
 
-        # 3. Demo fallback
+        # 3. No demo fallback
         if not matches:
-            matches = self._generate_demo_upcoming(days)
+            logger.warning("No upcoming matches found from any source")
 
         for m in matches:
             try:
@@ -161,11 +160,9 @@ class DataAggregator:
             except Exception as e:
                 logger.error(f"Error fetching live: {e}")
 
-        # 4. Database / demo fallback
+        # 4. Database fallback (no demo)
         if not matches:
             matches = self.db.get_live_matches()
-            if not matches:
-                matches = self._generate_demo_live()
 
         for m in matches:
             try:
@@ -521,9 +518,9 @@ class DataAggregator:
         if not matches:
             matches = self.db.get_finished_matches(league_code, season)
 
-        # 6. Generate demo data if nothing else works
+        # 6. No demo fallback for historical
         if not matches:
-            matches = self._generate_demo_historical(league_code, season)
+            logger.warning(f"No historical data found for {league_code} season {season}")
 
         self.db.set_cache(cache_key, matches, 60)
         return matches

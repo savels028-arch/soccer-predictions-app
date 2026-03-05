@@ -1,6 +1,8 @@
 """
 ML Models for Soccer Match Prediction
-Includes: XGBoost, Neural Network, Random Forest, and Ensemble.
+Includes: XGBoost, Neural Network, Random Forest, Ensemble, and Stacking.
+v1: Original baseline models
+v2: Parametrised constructors for A/B testing with improved defaults
 """
 import logging
 import pickle
@@ -17,6 +19,8 @@ try:
     from sklearn.model_selection import train_test_split, cross_val_score
     from sklearn.preprocessing import StandardScaler
     from sklearn.metrics import accuracy_score, classification_report
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.calibration import CalibratedClassifierCV
     HAS_SKLEARN = True
 except ImportError:
     HAS_SKLEARN = False
@@ -45,14 +49,16 @@ from config.settings import ML_SETTINGS, MODELS_DIR
 class BaseModel:
     """Base class for prediction models."""
 
-    def __init__(self, name: str):
+    def __init__(self, name: str, config: Dict = None, suffix: str = ""):
         self.name = name
+        self.config = config or ML_SETTINGS
+        self.suffix = suffix
         self.model = None
         self.scaler = StandardScaler() if HAS_SKLEARN else None
         self.is_trained = False
         self.accuracy = 0.0
-        self.model_path = MODELS_DIR / f"{name}_model.pkl"
-        self.scaler_path = MODELS_DIR / f"{name}_scaler.pkl"
+        self.model_path = MODELS_DIR / f"{name}{suffix}_model.pkl"
+        self.scaler_path = MODELS_DIR / f"{name}{suffix}_scaler.pkl"
 
     def save(self):
         """Save model and scaler to disk."""
@@ -108,26 +114,29 @@ class BaseModel:
 class XGBoostModel(BaseModel):
     """XGBoost classifier for match prediction."""
 
-    def __init__(self):
-        super().__init__("xgboost")
+    def __init__(self, config: Dict = None, suffix: str = ""):
+        super().__init__("xgboost", config, suffix)
 
     def train(self, X: np.ndarray, y: np.ndarray) -> float:
         if not HAS_XGBOOST and not HAS_SKLEARN:
             logger.error("No ML library available")
             return 0.0
 
-        X_scaled = self.scaler.fit_transform(X) if self.scaler else X
-
-        # Q5: Temporal split — data is already sorted by date,
-        # take last 20% as test set (no future leakage)
-        split_idx = int(len(X_scaled) * (1 - ML_SETTINGS["test_size"]))
-        X_train, X_test = X_scaled[:split_idx], X_scaled[split_idx:]
+        # Fix: fit scaler on TRAIN only (no leakage)
+        split_idx = int(len(X) * (1 - self.config["test_size"]))
+        X_train_raw, X_test_raw = X[:split_idx], X[split_idx:]
         y_train, y_test = y[:split_idx], y[split_idx:]
 
-        xgb_params = ML_SETTINGS["xgboost"]
+        if self.scaler:
+            self.scaler.fit(X_train_raw)
+            X_train = self.scaler.transform(X_train_raw)
+            X_test = self.scaler.transform(X_test_raw)
+        else:
+            X_train, X_test = X_train_raw, X_test_raw
+
+        xgb_params = self.config["xgboost"]
 
         if HAS_XGBOOST:
-            # Q2: Compute sample weights for class balance
             from sklearn.utils.class_weight import compute_sample_weight
             sample_weights = compute_sample_weight('balanced', y_train)
             self.model = xgb.XGBClassifier(
@@ -135,10 +144,14 @@ class XGBoostModel(BaseModel):
                 max_depth=xgb_params["max_depth"],
                 learning_rate=xgb_params["learning_rate"],
                 subsample=xgb_params["subsample"],
-                colsample_bytree=xgb_params["colsample_bytree"],
+                colsample_bytree=xgb_params.get("colsample_bytree", 0.8),
+                reg_alpha=xgb_params.get("reg_alpha", 0),
+                reg_lambda=xgb_params.get("reg_lambda", 1),
+                min_child_weight=xgb_params.get("min_child_weight", 1),
+                gamma=xgb_params.get("gamma", 0),
                 objective="multi:softprob",
                 num_class=3,
-                random_state=ML_SETTINGS["random_state"],
+                random_state=self.config["random_state"],
                 eval_metric="mlogloss",
                 use_label_encoder=False,
             )
@@ -149,7 +162,7 @@ class XGBoostModel(BaseModel):
                 max_depth=xgb_params["max_depth"],
                 learning_rate=xgb_params["learning_rate"],
                 subsample=xgb_params["subsample"],
-                random_state=ML_SETTINGS["random_state"],
+                random_state=self.config["random_state"],
             )
 
         self.model.fit(X_train, y_train, sample_weight=sample_weights)
@@ -171,26 +184,30 @@ class XGBoostModel(BaseModel):
 class NeuralNetworkModel(BaseModel):
     """Simple neural network for match prediction."""
 
-    def __init__(self):
-        super().__init__("neural_network")
-        self.model_path = MODELS_DIR / "neural_network_model.keras"
+    def __init__(self, config: Dict = None, suffix: str = ""):
+        super().__init__("neural_network", config, suffix)
+        self.model_path = MODELS_DIR / f"neural_network{suffix}_model.keras"
 
     def train(self, X: np.ndarray, y: np.ndarray) -> float:
         if not HAS_TF:
             # Fallback to sklearn MLP
             if HAS_SKLEARN:
                 from sklearn.neural_network import MLPClassifier
-                X_scaled = self.scaler.fit_transform(X) if self.scaler else X
-                # Q5: Temporal split
-                split_idx = int(len(X_scaled) * (1 - ML_SETTINGS["test_size"]))
-                X_train, X_test = X_scaled[:split_idx], X_scaled[split_idx:]
+                split_idx = int(len(X) * (1 - self.config["test_size"]))
+                X_train_raw, X_test_raw = X[:split_idx], X[split_idx:]
                 y_train, y_test = y[:split_idx], y[split_idx:]
-                nn_params = ML_SETTINGS["neural_network"]
+                if self.scaler:
+                    self.scaler.fit(X_train_raw)
+                    X_train = self.scaler.transform(X_train_raw)
+                    X_test = self.scaler.transform(X_test_raw)
+                else:
+                    X_train, X_test = X_train_raw, X_test_raw
+                nn_params = self.config["neural_network"]
                 self.model = MLPClassifier(
                     hidden_layer_sizes=tuple(nn_params["hidden_layers"]),
                     max_iter=nn_params["epochs"],
                     learning_rate_init=nn_params["learning_rate"],
-                    random_state=ML_SETTINGS["random_state"],
+                    random_state=self.config["random_state"],
                     early_stopping=True,
                 )
                 self.model.fit(X_train, y_train)
@@ -201,23 +218,45 @@ class NeuralNetworkModel(BaseModel):
                 return self.accuracy
             return 0.0
 
-        nn_params = ML_SETTINGS["neural_network"]
-        X_scaled = self.scaler.fit_transform(X) if self.scaler else X
-        # Q5: Temporal split
-        split_idx = int(len(X_scaled) * (1 - ML_SETTINGS["test_size"]))
-        X_train, X_test = X_scaled[:split_idx], X_scaled[split_idx:]
+        nn_params = self.config["neural_network"]
+
+        # Fix: fit scaler on TRAIN only
+        split_idx = int(len(X) * (1 - self.config["test_size"]))
+        X_train_raw, X_test_raw = X[:split_idx], X[split_idx:]
         y_train, y_test = y[:split_idx], y[split_idx:]
 
-        model = keras.Sequential([
-            keras.layers.Input(shape=(X.shape[1],)),
-            keras.layers.Dense(nn_params["hidden_layers"][0], activation='relu'),
-            keras.layers.Dropout(0.3),
-            keras.layers.BatchNormalization(),
-            keras.layers.Dense(nn_params["hidden_layers"][1], activation='relu'),
-            keras.layers.Dropout(0.2),
-            keras.layers.Dense(nn_params["hidden_layers"][2], activation='relu'),
-            keras.layers.Dense(3, activation='softmax'),
-        ])
+        if self.scaler:
+            self.scaler.fit(X_train_raw)
+            X_train = self.scaler.transform(X_train_raw)
+            X_test = self.scaler.transform(X_test_raw)
+        else:
+            X_train, X_test = X_train_raw, X_test_raw
+
+        # Get dropout rates (v2 allows per-layer config)
+        dropout_rates = nn_params.get("dropout_rates", [0.3, 0.2, 0.0])
+        layers = nn_params["hidden_layers"]
+
+        # Build model dynamically
+        inputs = keras.layers.Input(shape=(X.shape[1],))
+        x = keras.layers.Dense(layers[0], activation='relu')(inputs)
+        if len(dropout_rates) > 0 and dropout_rates[0] > 0:
+            x = keras.layers.Dropout(dropout_rates[0])(x)
+        x = keras.layers.BatchNormalization()(x)
+
+        for i in range(1, len(layers)):
+            x = keras.layers.Dense(layers[i], activation='relu')(x)
+            dr = dropout_rates[i] if i < len(dropout_rates) else 0.0
+            if dr > 0:
+                x = keras.layers.Dropout(dr)(x)
+
+        outputs = keras.layers.Dense(3, activation='softmax')(x)
+        model = keras.Model(inputs, outputs)
+
+        # Compute class weights for imbalanced classes
+        from sklearn.utils.class_weight import compute_class_weight
+        classes = np.unique(y_train)
+        cw = compute_class_weight('balanced', classes=classes, y=y_train)
+        class_weight_dict = {int(c): w for c, w in zip(classes, cw)}
 
         model.compile(
             optimizer=keras.optimizers.Adam(learning_rate=nn_params["learning_rate"]),
@@ -225,14 +264,22 @@ class NeuralNetworkModel(BaseModel):
             metrics=['accuracy'],
         )
 
+        callbacks = [
+            keras.callbacks.EarlyStopping(patience=15, restore_best_weights=True),
+        ]
+        # v2: add learning rate scheduler
+        if nn_params.get("use_lr_scheduler"):
+            callbacks.append(
+                keras.callbacks.ReduceLROnPlateau(factor=0.5, patience=5, min_lr=1e-6)
+            )
+
         model.fit(
             X_train, y_train,
             epochs=nn_params["epochs"],
             batch_size=nn_params["batch_size"],
             validation_data=(X_test, y_test),
-            callbacks=[
-                keras.callbacks.EarlyStopping(patience=10, restore_best_weights=True),
-            ],
+            class_weight=class_weight_dict,
+            callbacks=callbacks,
             verbose=0,
         )
 
@@ -291,26 +338,33 @@ class NeuralNetworkModel(BaseModel):
 class RandomForestModel(BaseModel):
     """Random Forest classifier for match prediction."""
 
-    def __init__(self):
-        super().__init__("random_forest")
+    def __init__(self, config: Dict = None, suffix: str = ""):
+        super().__init__("random_forest", config, suffix)
 
     def train(self, X: np.ndarray, y: np.ndarray) -> float:
         if not HAS_SKLEARN:
             return 0.0
 
-        X_scaled = self.scaler.fit_transform(X) if self.scaler else X
-        # Q5: Temporal split
-        split_idx = int(len(X_scaled) * (1 - ML_SETTINGS["test_size"]))
-        X_train, X_test = X_scaled[:split_idx], X_scaled[split_idx:]
+        # Fix: fit scaler on TRAIN only
+        split_idx = int(len(X) * (1 - self.config["test_size"]))
+        X_train_raw, X_test_raw = X[:split_idx], X[split_idx:]
         y_train, y_test = y[:split_idx], y[split_idx:]
 
+        if self.scaler:
+            self.scaler.fit(X_train_raw)
+            X_train = self.scaler.transform(X_train_raw)
+            X_test = self.scaler.transform(X_test_raw)
+        else:
+            X_train, X_test = X_train_raw, X_test_raw
+
+        rf_params = self.config.get("random_forest", {})
         self.model = RandomForestClassifier(
-            n_estimators=300,
-            max_depth=10,
-            min_samples_split=5,
-            min_samples_leaf=2,
-            class_weight='balanced',  # Q2: Handle imbalanced classes
-            random_state=ML_SETTINGS["random_state"],
+            n_estimators=rf_params.get("n_estimators", 300),
+            max_depth=rf_params.get("max_depth", 10),
+            min_samples_split=rf_params.get("min_samples_split", 5),
+            min_samples_leaf=rf_params.get("min_samples_leaf", 2),
+            class_weight='balanced',
+            random_state=self.config["random_state"],
             n_jobs=-1,
         )
         self.model.fit(X_train, y_train)
@@ -332,10 +386,11 @@ class RandomForestModel(BaseModel):
 class EnsembleModel:
     """Weighted ensemble of multiple models."""
 
-    def __init__(self, models: Dict[str, BaseModel]):
+    def __init__(self, models: Dict[str, BaseModel], config: Dict = None):
         self.name = "ensemble"
         self.models = models
-        self.weights = ML_SETTINGS["ensemble"]["weights"]
+        cfg = config or ML_SETTINGS
+        self.weights = cfg["ensemble"]["weights"]
         self.accuracy = 0.0
 
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
@@ -435,3 +490,112 @@ class PoissonModel:
             "draw": round(draw_prob, 4),
             "away_win": round(away_win_prob, 4),
         }
+
+
+class StackingEnsemble:
+    """
+    Stacking meta-learner: trains a LogisticRegression on the concatenated
+    probability outputs of all base models.  Falls back to weighted average
+    if there aren't enough samples.
+    """
+
+    def __init__(self, models: Dict[str, BaseModel], config: Dict = None, suffix: str = ""):
+        self.name = "stacking_ensemble"
+        self.models = models
+        self.config = config or ML_SETTINGS
+        self.suffix = suffix
+        self.meta_model = None
+        self.is_trained = False
+        self.accuracy = 0.0
+        self.model_path = MODELS_DIR / f"stacking_meta{suffix}.pkl"
+        self.fallback = EnsembleModel(models, config)
+
+    def train_meta(self, X: np.ndarray, y: np.ndarray) -> float:
+        """Train the stacking meta-learner after base models are trained.
+        X, y are the same training data (already temporal-split).
+        We use the base models' out-of-fold predictions on the test portion.
+        """
+        if not HAS_SKLEARN:
+            return 0.0
+
+        split_idx = int(len(X) * (1 - self.config["test_size"]))
+        X_test = X[split_idx:]
+        y_test = y[split_idx:]
+
+        if len(X_test) < 50:
+            logger.info("Stacking: too few test samples, falling back to weighted ensemble")
+            return 0.0
+
+        # Build meta-features: [xgb_h, xgb_d, xgb_a, nn_h, nn_d, nn_a, rf_h, rf_d, rf_a]
+        meta_features = []
+        for x_row in X_test:
+            row_feats = []
+            for name, model in self.models.items():
+                if model.is_trained:
+                    probs = model.predict_proba(x_row)
+                    if probs.ndim > 1:
+                        probs = probs[0]
+                    row_feats.extend(probs.tolist())
+                else:
+                    row_feats.extend([0.33, 0.33, 0.34])
+            meta_features.append(row_feats)
+
+        meta_X = np.array(meta_features)
+
+        # Split meta into train/test for meta-model
+        meta_split = int(len(meta_X) * 0.7)
+        meta_X_train, meta_X_test = meta_X[:meta_split], meta_X[meta_split:]
+        meta_y_train, meta_y_test = y_test[:meta_split], y_test[meta_split:]
+
+        self.meta_model = LogisticRegression(
+            C=1.0,
+            max_iter=1000,
+            multi_class='multinomial',
+            solver='lbfgs',
+            class_weight='balanced',
+        )
+        self.meta_model.fit(meta_X_train, meta_y_train)
+
+        y_pred = self.meta_model.predict(meta_X_test)
+        self.accuracy = accuracy_score(meta_y_test, y_pred)
+        self.is_trained = True
+
+        try:
+            with open(self.model_path, 'wb') as f:
+                pickle.dump(self.meta_model, f)
+        except Exception as e:
+            logger.warning(f"Could not save stacking meta-model: {e}")
+
+        logger.info(f"Stacking meta-learner accuracy: {self.accuracy:.4f}")
+        return self.accuracy
+
+    def load(self) -> bool:
+        if self.model_path.exists():
+            try:
+                with open(self.model_path, 'rb') as f:
+                    self.meta_model = pickle.load(f)
+                self.is_trained = True
+                return True
+            except Exception:
+                pass
+        return False
+
+    def predict_proba(self, X: np.ndarray) -> np.ndarray:
+        """Predict using stacking meta-model, fall back to weighted average."""
+        if not self.is_trained or self.meta_model is None:
+            return self.fallback.predict_proba(X)
+
+        # Build meta-features from base model predictions
+        row_feats = []
+        for name, model in self.models.items():
+            if model.is_trained:
+                probs = model.predict_proba(X)
+                if probs.ndim > 1:
+                    probs = probs[0]
+                row_feats.extend(probs.tolist())
+            else:
+                row_feats.extend([0.33, 0.33, 0.34])
+
+        meta_X = np.array(row_feats).reshape(1, -1)
+        probs = self.meta_model.predict_proba(meta_X)
+        return probs

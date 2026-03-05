@@ -52,7 +52,7 @@ LEAGUES = {
 }
 
 # ──────────────────────────────────────────────
-# ML MODEL SETTINGS
+# ML MODEL SETTINGS  (v1 — baseline)
 # ──────────────────────────────────────────────
 ML_SETTINGS = {
     "test_size": 0.2,
@@ -73,6 +73,68 @@ ML_SETTINGS = {
     "ensemble": {
         "weights": {"xgboost": 0.4, "neural_network": 0.35, "random_forest": 0.25},
     },
+}
+
+# ──────────────────────────────────────────────
+# ML MODEL SETTINGS v2 — optimised challenger
+# ──────────────────────────────────────────────
+ML_SETTINGS_V2 = {
+    "test_size": 0.2,
+    "random_state": 42,
+    "model_suffix": "_v2",           # separate model files: xgboost_v2_model.pkl
+    "use_v2_features": True,         # enable ELO, weighted form, CSV extra_data
+    "num_training_seasons": 6,       # 6 seasons instead of 3
+    "xgboost": {
+        "n_estimators": 350,
+        "max_depth": 7,
+        "learning_rate": 0.05,
+        "subsample": 0.85,
+        "colsample_bytree": 0.8,
+        "reg_alpha": 0.1,
+        "reg_lambda": 1.0,
+        "min_child_weight": 3,
+        "gamma": 0.1,
+    },
+    "neural_network": {
+        "hidden_layers": [256, 128, 64],
+        "epochs": 150,
+        "batch_size": 64,
+        "learning_rate": 0.001,
+        "dropout_rates": [0.3, 0.25, 0.15],
+        "use_lr_scheduler": True,
+    },
+    "random_forest": {
+        "n_estimators": 500,
+        "max_depth": 12,
+        "min_samples_split": 4,
+        "min_samples_leaf": 2,
+    },
+    "ensemble": {
+        "weights": {"xgboost": 0.40, "neural_network": 0.30, "random_forest": 0.30},
+        "use_stacking": True,
+    },
+    "coupon": {
+        "min_edge_pct": 5.0,          # require ≥5% edge
+        "min_confidence_pct": 55.0,    # require ≥55% confidence
+        "min_picks": 2,
+        "max_picks": 6,
+        "max_per_league": 2,
+        "skip_high_disagreement": True,
+        "sort_by": "edge_x_confidence",  # edge*confidence composite
+    },
+}
+
+# ──────────────────────────────────────────────
+# A/B TEST CONFIGURATION
+# ──────────────────────────────────────────────
+AB_TEST = {
+    "enabled": True,
+    "v1_label": "ML Ensemble v1",
+    "v2_label": "ML Ensemble v2",
+    "v1_config": "ML_SETTINGS",
+    "v2_config": "ML_SETTINGS_V2",
+    "auto_promote": True,           # coupon uses whichever version leads
+    "min_samples_to_compare": 20,    # need ≥20 evaluated matches to switch
 }
 
 # ──────────────────────────────────────────────

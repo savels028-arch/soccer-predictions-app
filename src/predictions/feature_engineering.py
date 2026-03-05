@@ -1,13 +1,66 @@
 """
 Feature Engineering for Soccer Predictions
 Builds ML-ready features from match & team data.
+v1: 42 features (baseline)
+v2: 42 + 18 = 60 features (ELO, weighted form, CSV extra, days rest, goal trend)
 """
 import logging
+import math
 import numpy as np
 from typing import Dict, List, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timedelta
+from collections import defaultdict
 
 logger = logging.getLogger(__name__)
+
+
+# ──────────────────────────────────────────────────────────────
+# ELO TRACKER  — running ELO ratings computed from historical results
+# ──────────────────────────────────────────────────────────────
+class EloTracker:
+    """Compute running ELO ratings from historical results."""
+
+    K = 20               # rating sensitivity
+    HOME_ADV = 100       # home-field advantage in ELO points
+    DEFAULT_ELO = 1500
+
+    def __init__(self):
+        self.ratings: Dict[str, float] = defaultdict(lambda: self.DEFAULT_ELO)
+
+    def expected(self, elo_a: float, elo_b: float) -> float:
+        return 1.0 / (1.0 + 10 ** ((elo_b - elo_a) / 400))
+
+    def update(self, home: str, away: str, home_score: int, away_score: int):
+        """Update ELO ratings after a match (call in chronological order)."""
+        r_h = self.ratings[home] + self.HOME_ADV
+        r_a = self.ratings[away]
+        e_h = self.expected(r_h, r_a)
+        e_a = 1.0 - e_h
+
+        if home_score > away_score:
+            s_h, s_a = 1.0, 0.0
+        elif home_score == away_score:
+            s_h, s_a = 0.5, 0.5
+        else:
+            s_h, s_a = 0.0, 1.0
+
+        self.ratings[home] += self.K * (s_h - e_h)
+        self.ratings[away] += self.K * (s_a - e_a)
+
+    def process_matches(self, matches: List[Dict]):
+        """Process a sorted-by-date list of finished matches to build ELO ratings."""
+        for m in matches:
+            hs = m.get("home_score")
+            aws = m.get("away_score")
+            if hs is None or aws is None:
+                continue
+            home = m.get("home_team_name", "")
+            away = m.get("away_team_name", "")
+            if home and away:
+                self.update(home, away, int(hs), int(aws))
+
+    def get(self, team: str) -> float:
+        return self.ratings[team]
 
 
 class FeatureEngineer:
@@ -290,6 +343,341 @@ class FeatureEngineer:
 
         if not X_list:
             logger.warning("No training data could be built")
+            return np.empty((0, len(cls.FEATURE_NAMES))), np.empty(0), []
+
+        return np.array(X_list), np.array(y_list), date_list
+
+
+# ──────────────────────────────────────────────────────────────
+# V2 FEATURE ENGINEER — all v1 features + 18 new features
+# ──────────────────────────────────────────────────────────────
+class FeatureEngineerV2(FeatureEngineer):
+    """Enhanced feature engineer with ELO, weighted form, CSV stats, etc."""
+
+    EXTRA_FEATURE_NAMES = [
+        # ELO (3)
+        "home_elo", "away_elo", "elo_diff",
+        # Weighted form (6) — exponentially-weighted last 3/5/10
+        "home_form_w3", "home_form_w5", "home_form_w10",
+        "away_form_w3", "away_form_w5", "away_form_w10",
+        # CSV extra_data averages (6)
+        "home_shots_on_target_avg", "away_shots_on_target_avg",
+        "home_corners_avg", "away_corners_avg",
+        "home_cards_avg", "away_cards_avg",
+        # Days since last match (2)
+        "home_days_rest", "away_days_rest",
+        # Goal trend: last-5 avg minus season avg (1)
+        "goal_trend_diff",
+    ]
+
+    FEATURE_NAMES = FeatureEngineer.FEATURE_NAMES + EXTRA_FEATURE_NAMES
+
+    @staticmethod
+    def weighted_form(results: List[str], n: int) -> float:
+        """Exponentially-weighted form: recent results count more.
+        results: list of 'W'/'D'/'L' from most-recent to oldest.
+        """
+        if not results:
+            return 0.5
+        vals = {"W": 3.0, "D": 1.0, "L": 0.0}
+        subset = results[:n]
+        if not subset:
+            return 0.5
+        decay = 0.9
+        w_sum = 0.0
+        weight_sum = 0.0
+        for i, r in enumerate(subset):
+            w = decay ** i
+            w_sum += vals.get(r, 1.0) * w
+            weight_sum += 3.0 * w
+        return w_sum / weight_sum if weight_sum > 0 else 0.5
+
+    @classmethod
+    def build_match_features_v2(cls, home_stats: Dict, away_stats: Dict,
+                                 h2h: List[Dict] = None,
+                                 home_odds: float = None,
+                                 draw_odds: float = None,
+                                 away_odds: float = None,
+                                 ai_predictions: List[Dict] = None,
+                                 elo_tracker: 'EloTracker' = None,
+                                 home_form_list: List[str] = None,
+                                 away_form_list: List[str] = None,
+                                 home_extra: Dict = None,
+                                 away_extra: Dict = None,
+                                 home_days_rest: float = 7.0,
+                                 away_days_rest: float = 7.0,
+                                 home_recent_goals_avg: float = None,
+                                 away_recent_goals_avg: float = None,
+                                 is_training: bool = False) -> np.ndarray:
+        """Build 60-feature vector: 42 v1 features + 18 v2 features."""
+
+        # Build base v1 features — mask AI features during training
+        if is_training:
+            base = cls.build_match_features(
+                home_stats, away_stats, h2h,
+                home_odds, draw_odds, away_odds,
+                ai_predictions=None,  # mask AI during training to avoid distribution mismatch
+            )
+        else:
+            base = cls.build_match_features(
+                home_stats, away_stats, h2h,
+                home_odds, draw_odds, away_odds,
+                ai_predictions=ai_predictions,
+            )
+
+        extra = []
+
+        # ── ELO ratings ──
+        home_name = home_stats.get("team_name", "")
+        away_name = away_stats.get("team_name", "")
+        if elo_tracker:
+            h_elo = elo_tracker.get(home_name)
+            a_elo = elo_tracker.get(away_name)
+        else:
+            h_elo = 1500.0
+            a_elo = 1500.0
+        extra.extend([h_elo / 1000.0, a_elo / 1000.0, (h_elo - a_elo) / 400.0])
+
+        # ── Weighted form ──
+        hf = home_form_list or []
+        af = away_form_list or []
+        extra.append(cls.weighted_form(hf, 3))
+        extra.append(cls.weighted_form(hf, 5))
+        extra.append(cls.weighted_form(hf, 10))
+        extra.append(cls.weighted_form(af, 3))
+        extra.append(cls.weighted_form(af, 5))
+        extra.append(cls.weighted_form(af, 10))
+
+        # ── CSV extra_data averages ──
+        he = home_extra or {}
+        ae = away_extra or {}
+        extra.append(he.get("avg_shots_on_target", 0.0))
+        extra.append(ae.get("avg_shots_on_target", 0.0))
+        extra.append(he.get("avg_corners", 0.0))
+        extra.append(ae.get("avg_corners", 0.0))
+        extra.append(he.get("avg_cards", 0.0))
+        extra.append(ae.get("avg_cards", 0.0))
+
+        # ── Days rest ──
+        extra.append(min(home_days_rest, 30.0) / 7.0)  # normalise to weeks
+        extra.append(min(away_days_rest, 30.0) / 7.0)
+
+        # ── Goal trend diff ──
+        h_season_avg = home_stats.get("avg_goals_scored", 1.3)
+        a_season_avg = away_stats.get("avg_goals_scored", 1.2)
+        h_recent = home_recent_goals_avg if home_recent_goals_avg is not None else h_season_avg
+        a_recent = away_recent_goals_avg if away_recent_goals_avg is not None else a_season_avg
+        goal_trend = (h_recent - h_season_avg) - (a_recent - a_season_avg)
+        extra.append(round(goal_trend, 4))
+
+        return np.concatenate([base, np.array(extra, dtype=np.float64)])
+
+    @classmethod
+    def compute_csv_extra_averages(cls, matches: List[Dict], team_name: str) -> Dict:
+        """Compute average shots-on-target, corners, cards from CSV extra_data for a team."""
+        sot_sum = 0.0
+        corner_sum = 0.0
+        card_sum = 0.0
+        count = 0
+
+        for m in matches:
+            ed = m.get("extra_data", {})
+            if not ed:
+                continue
+            h = m.get("home_team_name", "")
+            a = m.get("away_team_name", "")
+            if h == team_name:
+                sot = ed.get("home_shots_target")
+                cor = ed.get("home_corners")
+                yel = ed.get("home_yellow", 0) or 0
+                red = ed.get("home_red", 0) or 0
+            elif a == team_name:
+                sot = ed.get("away_shots_target")
+                cor = ed.get("away_corners")
+                yel = ed.get("away_yellow", 0) or 0
+                red = ed.get("away_red", 0) or 0
+            else:
+                continue
+            if sot is not None:
+                sot_sum += sot
+                corner_sum += (cor or 0)
+                card_sum += yel + red
+                count += 1
+
+        if count == 0:
+            return {}
+        return {
+            "avg_shots_on_target": round(sot_sum / count, 2),
+            "avg_corners": round(corner_sum / count, 2),
+            "avg_cards": round(card_sum / count, 2),
+        }
+
+    @classmethod
+    def compute_form_list(cls, matches: List[Dict], team_name: str) -> List[str]:
+        """Build ordered form list (most recent first) from sorted matches."""
+        form = []
+        for m in reversed(matches):
+            hs = m.get("home_score")
+            aws = m.get("away_score")
+            if hs is None or aws is None:
+                continue
+            if m.get("status") != "FINISHED":
+                continue
+            h = m.get("home_team_name", "")
+            a = m.get("away_team_name", "")
+            if h == team_name:
+                gs, gc = int(hs), int(aws)
+            elif a == team_name:
+                gs, gc = int(aws), int(hs)
+            else:
+                continue
+            form.append("W" if gs > gc else "D" if gs == gc else "L")
+        return form
+
+    @classmethod
+    def compute_days_since_last(cls, matches: List[Dict], team_name: str,
+                                 reference_date: str) -> float:
+        """Compute days since team's last match before reference_date."""
+        try:
+            ref = datetime.fromisoformat(reference_date[:10])
+        except Exception:
+            return 7.0
+        latest = None
+        for m in matches:
+            md = m.get("match_date", "")[:10]
+            if not md:
+                continue
+            try:
+                dt = datetime.fromisoformat(md)
+            except Exception:
+                continue
+            if dt >= ref:
+                continue
+            h = m.get("home_team_name", "")
+            a = m.get("away_team_name", "")
+            if h == team_name or a == team_name:
+                if latest is None or dt > latest:
+                    latest = dt
+        if latest:
+            return max((ref - latest).days, 1)
+        return 7.0
+
+    @classmethod
+    def compute_recent_goals_avg(cls, matches: List[Dict], team_name: str, n: int = 5) -> Optional[float]:
+        """Average goals scored in last n matches."""
+        goals = []
+        for m in reversed(matches):
+            hs = m.get("home_score")
+            aws = m.get("away_score")
+            if hs is None or aws is None or m.get("status") != "FINISHED":
+                continue
+            h = m.get("home_team_name", "")
+            a = m.get("away_team_name", "")
+            if h == team_name:
+                goals.append(int(hs))
+            elif a == team_name:
+                goals.append(int(aws))
+            if len(goals) >= n:
+                break
+        return sum(goals) / len(goals) if goals else None
+
+    @classmethod
+    def build_training_data_v2(cls, matches: List[Dict], db_manager,
+                                elo_tracker: 'EloTracker' = None) -> Tuple[np.ndarray, np.ndarray, List[str]]:
+        """
+        Build v2 training dataset with advanced features.
+        Same interface as v1 build_training_data but returns 60-feature vectors.
+        """
+        X_list = []
+        y_list = []
+        date_list = []
+
+        sorted_matches = sorted(matches, key=lambda m: m.get("match_date", ""))
+
+        # Build ELO from training matches if not provided
+        if elo_tracker is None:
+            elo_tracker = EloTracker()
+        # We'll update ELO as we go (in temporal order) to avoid leakage
+        elo_copy = EloTracker()
+        elo_copy.ratings = defaultdict(lambda: EloTracker.DEFAULT_ELO, elo_tracker.ratings)
+
+        # Pre-index matches by team for efficient lookup
+        team_matches: Dict[str, List[Dict]] = defaultdict(list)
+        for m in sorted_matches:
+            if m.get("status") == "FINISHED" and m.get("home_score") is not None:
+                team_matches[m.get("home_team_name", "")].append(m)
+                team_matches[m.get("away_team_name", "")].append(m)
+
+        for idx, match in enumerate(sorted_matches):
+            if match.get("home_score") is None or match.get("away_score") is None:
+                continue
+            if match.get("status") != "FINISHED":
+                continue
+
+            home_name = match["home_team_name"]
+            away_name = match["away_team_name"]
+            league_code = match.get("league_code", "")
+            season = match.get("season", 2025)
+            match_date = match.get("match_date", "")
+
+            home_stats = db_manager.get_team_stats(home_name, league_code, season)
+            away_stats = db_manager.get_team_stats(away_name, league_code, season)
+
+            if not home_stats:
+                home_stats = db_manager.compute_team_stats_from_matches(home_name, league_code, season)
+                if home_stats.get("matches_played", 0) < 3:
+                    # Update ELO even if we skip training
+                    elo_copy.update(home_name, away_name, int(match["home_score"]), int(match["away_score"]))
+                    continue
+                db_manager.upsert_team_stats(home_stats)
+
+            if not away_stats:
+                away_stats = db_manager.compute_team_stats_from_matches(away_name, league_code, season)
+                if away_stats.get("matches_played", 0) < 3:
+                    elo_copy.update(home_name, away_name, int(match["home_score"]), int(match["away_score"]))
+                    continue
+                db_manager.upsert_team_stats(away_stats)
+
+            home_stats["team_name"] = home_name
+            away_stats["team_name"] = away_name
+            h2h = db_manager.get_h2h(home_name, away_name)
+
+            try:
+                # Matches up to this point for form/rest/trend computation
+                past = sorted_matches[:idx]
+
+                features = cls.build_match_features_v2(
+                    home_stats, away_stats, h2h,
+                    match.get("home_odds"), match.get("draw_odds"), match.get("away_odds"),
+                    ai_predictions=None,
+                    elo_tracker=elo_copy,
+                    home_form_list=cls.compute_form_list(past, home_name),
+                    away_form_list=cls.compute_form_list(past, away_name),
+                    home_extra=cls.compute_csv_extra_averages(past, home_name),
+                    away_extra=cls.compute_csv_extra_averages(past, away_name),
+                    home_days_rest=cls.compute_days_since_last(past, home_name, match_date),
+                    away_days_rest=cls.compute_days_since_last(past, away_name, match_date),
+                    home_recent_goals_avg=cls.compute_recent_goals_avg(past, home_name),
+                    away_recent_goals_avg=cls.compute_recent_goals_avg(past, away_name),
+                    is_training=True,
+                )
+
+                hs = match["home_score"]
+                aws = match["away_score"]
+                label = 0 if hs > aws else (1 if hs == aws else 2)
+
+                X_list.append(features)
+                y_list.append(label)
+                date_list.append(match_date)
+
+            except Exception as e:
+                logger.error(f"V2 feature engineering error for {home_name} vs {away_name}: {e}")
+
+            # Update ELO AFTER feature extraction (no leakage)
+            elo_copy.update(home_name, away_name, int(match["home_score"]), int(match["away_score"]))
+
+        if not X_list:
+            logger.warning("No v2 training data could be built")
             return np.empty((0, len(cls.FEATURE_NAMES))), np.empty(0), []
 
         return np.array(X_list), np.array(y_list), date_list

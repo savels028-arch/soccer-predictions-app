@@ -10,9 +10,9 @@ import threading
 
 from .models import (
     XGBoostModel, NeuralNetworkModel, RandomForestModel,
-    EnsembleModel, PoissonModel, HAS_SKLEARN
+    EnsembleModel, PoissonModel, StackingEnsemble, HAS_SKLEARN
 )
-from .feature_engineering import FeatureEngineer
+from .feature_engineering import FeatureEngineer, FeatureEngineerV2, EloTracker
 
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -26,27 +26,37 @@ class PredictionEngine:
 
     OUTCOME_LABELS = {0: "Home Win", 1: "Draw", 2: "Away Win"}
 
-    def __init__(self, db_manager, data_aggregator=None):
+    def __init__(self, db_manager, data_aggregator=None, config=None, suffix="", version_label="v1"):
         self.db = db_manager
         self.data_aggregator = data_aggregator
-        self.feature_engineer = FeatureEngineer()
+        self.config = config or ML_SETTINGS
+        self.suffix = suffix
+        self.version_label = version_label
+        self.is_v2 = self.config.get("use_v2_features", False)
+        self.feature_engineer = FeatureEngineerV2() if self.is_v2 else FeatureEngineer()
+        self.elo_tracker = EloTracker() if self.is_v2 else None
         self.poisson = PoissonModel()
 
-        # Initialize models
-        self.xgboost = XGBoostModel()
-        self.neural_net = NeuralNetworkModel()
-        self.random_forest = RandomForestModel()
-        self.ensemble = EnsembleModel({
-            "xgboost": self.xgboost,
-            "neural_network": self.neural_net,
-            "random_forest": self.random_forest,
-        })
+        # Initialize models with config + suffix
+        self.xgboost = XGBoostModel(config=self.config, suffix=suffix)
+        self.neural_net = NeuralNetworkModel(config=self.config, suffix=suffix)
+        self.random_forest = RandomForestModel(config=self.config, suffix=suffix)
 
+        # Ensemble: stacking for v2, weighted average for v1
         self.models = {
             "xgboost": self.xgboost,
             "neural_network": self.neural_net,
             "random_forest": self.random_forest,
         }
+
+        use_stacking = self.config.get("ensemble", {}).get("use_stacking", False)
+        if use_stacking:
+            self.stacking = StackingEnsemble(self.models, config=self.config, suffix=suffix)
+            self.stacking.load()
+        else:
+            self.stacking = None
+
+        self.ensemble = EnsembleModel(self.models, config=self.config)
 
         self._training = False
         self._trained = False
@@ -108,24 +118,21 @@ class PredictionEngine:
             # Collect historical data from APIs
             all_matches = []
             leagues = league_codes or ["PL", "PD", "BL1", "SA", "FL1", "DED", "PPL"]
+            num_seasons = self.config.get("num_training_seasons", 3)
 
             for i, league_code in enumerate(leagues):
                 if callback:
                     callback("progress", f"Loading {LEAGUES.get(league_code, {}).get('name', league_code)}... ({i+1}/{len(leagues)})")
 
                 if self.data_aggregator:
-                    matches = self.data_aggregator.fetch_historical_matches(league_code, 2025)
-                    all_matches.extend(matches)
-
-                    matches_prev = self.data_aggregator.fetch_historical_matches(league_code, 2024)
-                    all_matches.extend(matches_prev)
-
-                    # Also include 2026 data if available
-                    try:
-                        matches_2026 = self.data_aggregator.fetch_historical_matches(league_code, 2026)
-                        all_matches.extend(matches_2026)
-                    except Exception:
-                        pass
+                    # Fetch multiple seasons based on config
+                    for offset in range(num_seasons):
+                        season_year = 2025 - offset
+                        try:
+                            matches = self.data_aggregator.fetch_historical_matches(league_code, season_year)
+                            all_matches.extend(matches)
+                        except Exception:
+                            pass
 
             # ── FEEDBACK LOOP: incorporate prediction_results as extra training data ──
             feedback_count = 0
@@ -191,7 +198,18 @@ class PredictionEngine:
                             self.db.upsert_team_stats(stats)
 
             # Build training data (Q5: returns dates too for temporal ordering)
-            X, y, dates = self.feature_engineer.build_training_data(all_matches, self.db)
+            if self.is_v2:
+                # Build ELO tracker from training matches
+                sorted_all = sorted(all_matches, key=lambda m: m.get("match_date", ""))
+                if self.elo_tracker is None:
+                    self.elo_tracker = EloTracker()
+                X, y, dates = FeatureEngineerV2.build_training_data_v2(
+                    all_matches, self.db, self.elo_tracker
+                )
+                # After building, update the ELO tracker with all matches
+                self.elo_tracker.process_matches(sorted_all)
+            else:
+                X, y, dates = self.feature_engineer.build_training_data(all_matches, self.db)
 
             if len(X) < 50:
                 logger.warning(f"Not enough training data: {len(X)} samples")
@@ -228,6 +246,16 @@ class PredictionEngine:
 
             # Ensemble doesn't train separately
             results["ensemble"] = np.mean([v for v in results.values() if v > 0])
+
+            # Train stacking meta-learner if v2
+            if self.stacking is not None:
+                try:
+                    stacking_acc = self.stacking.train_meta(X, y)
+                    if stacking_acc > 0:
+                        results["stacking"] = stacking_acc
+                        logger.info(f"Stacking meta-learner: {stacking_acc:.4f}")
+                except Exception as e:
+                    logger.warning(f"Stacking training failed (using weighted fallback): {e}")
 
             self._trained = True
 

@@ -45,8 +45,9 @@ from src.api.danske_spil_client import DanskeSpilClient
 from src.api.free_football_client import FreeFootballClient
 from src.database.db_manager import DatabaseManager
 from src.predictions.prediction_engine import PredictionEngine
-from src.predictions.feature_engineering import FeatureEngineer
+from src.predictions.feature_engineering import FeatureEngineer, FeatureEngineerV2, EloTracker
 from src.api.data_aggregator import DataAggregator
+from config.settings import AB_TEST, ML_SETTINGS, ML_SETTINGS_V2
 
 # Optional: CSV + API-Football
 try:
@@ -227,8 +228,28 @@ class PredictionPipeline:
         self.scraper = PredictionScraper()
         self.danske_spil = DanskeSpilClient()
         self._data_agg = DataAggregator(db_manager=self.db)
-        self.engine = PredictionEngine(db_manager=self.db, data_aggregator=self._data_agg)
+
+        # v1 engine (baseline)
+        self.engine = PredictionEngine(
+            db_manager=self.db, data_aggregator=self._data_agg,
+            config=ML_SETTINGS, suffix="", version_label="v1"
+        )
         self.feature_eng = FeatureEngineer()
+
+        # v2 engine (challenger) — only if A/B test enabled
+        self.ab_enabled = AB_TEST.get("enabled", False)
+        if self.ab_enabled:
+            self.engine_v2 = PredictionEngine(
+                db_manager=self.db, data_aggregator=self._data_agg,
+                config=ML_SETTINGS_V2, suffix="_v2", version_label="v2"
+            )
+            self.feature_eng_v2 = FeatureEngineerV2()
+            self.elo_tracker = EloTracker()
+            log.info("  A/B test enabled: running v1 + v2 in parallel")
+        else:
+            self.engine_v2 = None
+            self.feature_eng_v2 = None
+            self.elo_tracker = None
 
         self.csv_client = CSVFootballClient() if HAS_CSV else None
         self.api_football = ApiFootballClient() if HAS_API_FOOTBALL else None
@@ -238,14 +259,17 @@ class PredictionPipeline:
         self._matches: List[dict] = []
         self._odds: List[dict] = []
         self._ai_preds: List[dict] = []
-        self._ml_preds: Dict[str, dict] = {}  # matchId → prediction
+        self._ml_preds: Dict[str, dict] = {}      # v1 matchId → prediction
+        self._ml_preds_v2: Dict[str, dict] = {}   # v2 matchId → prediction
 
         self._stats = {
             "matches_fetched": 0,
             "odds_fetched": 0,
             "ai_predictions": 0,
             "ml_predictions": 0,
+            "ml_predictions_v2": 0,
             "results_saved": 0,
+            "results_saved_v2": 0,
             "coupons_evaluated": 0,
             "sources_updated": 0,
         }
@@ -564,12 +588,32 @@ class PredictionPipeline:
             except Exception as e:
                 log.warning(f"  Could not load prediction_results for feedback: {e}")
 
+            league_codes = ["PL", "PD", "BL1", "SA", "FL1", "DED", "PPL"]
+            cb = lambda t, msg: log.info(f"  [{t}] {msg}")
+
+            # --- v1 training ---
             results = self.engine.train_models(
-                league_codes=["PL", "PD", "BL1", "SA", "FL1", "DED", "PPL"],
-                callback=lambda t, msg: log.info(f"  [{t}] {msg}"),
+                league_codes=league_codes,
+                callback=cb,
                 extra_matches=feedback_matches,
             )
-            log.info(f"  Training results: {results}")
+            log.info(f"  v1 Training results: {results}")
+
+            # --- v2 training (A/B) ---
+            results_v2 = {}
+            if self.ab_enabled and self.engine_v2:
+                log.info("── Training v2 models (A/B challenger) ──")
+                try:
+                    results_v2 = self.engine_v2.train_models(
+                        league_codes=league_codes,
+                        callback=lambda t, msg: log.info(f"  [v2|{t}] {msg}"),
+                        extra_matches=feedback_matches,
+                    )
+                    log.info(f"  v2 Training results: {results_v2}")
+                except Exception as e:
+                    log.error(f"  v2 training failed (non-fatal): {e}")
+                    traceback.print_exc()
+
             return results
         except Exception as e:
             log.error(f"  Training failed: {e}")
@@ -616,6 +660,21 @@ class PredictionPipeline:
                 self._dynamic_weights_cache = defaults
 
         return self._dynamic_weights_cache
+
+    def _weighted_ensemble(self, model_results: Dict[str, Dict]) -> Dict[str, float]:
+        """Compute weighted average ensemble from model results."""
+        weights = self._get_dynamic_weights()
+        ensemble = {"home": 0.0, "draw": 0.0, "away": 0.0}
+        total_weight = 0.0
+        for model_name, probs in model_results.items():
+            w = weights.get(model_name, 0.25)
+            for k in ["home", "draw", "away"]:
+                ensemble[k] += probs[k] * w
+            total_weight += w
+        if total_weight > 0:
+            for k in ensemble:
+                ensemble[k] /= total_weight
+        return ensemble
 
     def _should_retrain(self) -> bool:
         """Check if models should be retrained (weekly or if model files are stale)."""
@@ -788,7 +847,150 @@ class PredictionPipeline:
 
         self._ml_preds = ml_preds
         self._stats["ml_predictions"] = len(ml_preds)
-        log.info(f"  Generated {len(ml_preds)} ML predictions")
+        log.info(f"  Generated {len(ml_preds)} ML v1 predictions")
+
+        # ── v2 predictions (A/B challenger) ──
+        if self.ab_enabled and self.engine_v2 and self.engine_v2.is_trained:
+            log.info("── Running v2 ML predictions (A/B) ──")
+            ml_preds_v2 = {}
+            for m in upcoming:
+                home = m.get("home_team_name", m.get("home_team", ""))
+                away = m.get("away_team_name", m.get("away_team", ""))
+                mid = match_id(m.get("match_date", ""), home, away)
+                try:
+                    od = find_match_in_list(home, away, self._odds)
+                    home_odds = od.get("home_odds", 2.5) if od else 2.5
+                    draw_odds = od.get("draw_odds", 3.3) if od else 3.3
+                    away_odds = od.get("away_odds", 3.0) if od else 3.0
+
+                    league = m.get("league_code", m.get("league", "PL"))
+                    home_stats = self.db.compute_team_stats_from_matches(home, league, 2025) or {}
+                    away_stats = self.db.compute_team_stats_from_matches(away, league, 2025) or {}
+                    h2h = self.db.get_h2h(home, away) or []
+
+                    # v2 extra data
+                    home_matches = self.db.get_team_matches(home, limit=20)
+                    away_matches = self.db.get_team_matches(away, limit=20)
+                    home_form_list = FeatureEngineerV2.compute_form_list(home_matches, home)
+                    away_form_list = FeatureEngineerV2.compute_form_list(away_matches, away)
+                    home_extra = FeatureEngineerV2.compute_csv_extra_averages(home_matches, home)
+                    away_extra = FeatureEngineerV2.compute_csv_extra_averages(away_matches, away)
+                    match_date = m.get("match_date", "")
+                    home_days_rest = FeatureEngineerV2.compute_days_since_last(home_matches, home, match_date)
+                    away_days_rest = FeatureEngineerV2.compute_days_since_last(away_matches, away, match_date)
+                    home_goals_avg = FeatureEngineerV2.compute_recent_goals_avg(home_matches, home)
+                    away_goals_avg = FeatureEngineerV2.compute_recent_goals_avg(away_matches, away)
+
+                    # AI predictions
+                    ai_for_match = []
+                    for ai_pred in self._ai_preds:
+                        ai_h = ai_pred.get("home_team", "")
+                        ai_a = ai_pred.get("away_team", "")
+                        if fuzzy_match_teams(home, ai_h) and fuzzy_match_teams(away, ai_a):
+                            h_pct = ai_pred.get("home_win_pct", 0)
+                            d_pct = ai_pred.get("draw_pct", 0)
+                            a_pct = ai_pred.get("away_win_pct", 0)
+                            total = (h_pct or 0) + (d_pct or 0) + (a_pct or 0)
+                            if total > 0:
+                                ai_for_match.append({
+                                    "home": (h_pct or 0) / total,
+                                    "draw": (d_pct or 0) / total,
+                                    "away": (a_pct or 0) / total,
+                                })
+
+                    home_stats["team_name"] = home
+                    away_stats["team_name"] = away
+                    features_v2 = FeatureEngineerV2.build_match_features_v2(
+                        home_stats, away_stats, h2h,
+                        home_odds=home_odds, draw_odds=draw_odds, away_odds=away_odds,
+                        ai_predictions=ai_for_match if ai_for_match else None,
+                        elo_tracker=self.engine_v2.elo_tracker,
+                        home_form_list=home_form_list, away_form_list=away_form_list,
+                        home_extra=home_extra, away_extra=away_extra,
+                        home_days_rest=home_days_rest, away_days_rest=away_days_rest,
+                        home_recent_goals_avg=home_goals_avg,
+                        away_recent_goals_avg=away_goals_avg,
+                        is_training=False,
+                    )
+
+                    # Run v2 models
+                    model_results_v2 = {}
+                    for model_name, model in self.engine_v2.models.items():
+                        if model.is_trained:
+                            try:
+                                proba = model.predict_proba(features_v2.reshape(1, -1))
+                                if proba is not None and len(proba) > 0:
+                                    p = proba[0]
+                                    model_results_v2[model_name] = {
+                                        "home": float(p[0]),
+                                        "draw": float(p[1]),
+                                        "away": float(p[2]),
+                                    }
+                            except Exception as e:
+                                log.debug(f"    v2 Model {model_name} failed for {home} vs {away}: {e}")
+
+                    if not model_results_v2:
+                        continue
+
+                    # Stacking ensemble or weighted average
+                    if self.engine_v2.stacking and self.engine_v2.stacking.is_trained:
+                        ensemble_v2 = self.engine_v2.stacking.predict_proba(features_v2.reshape(1, -1))
+                        if ensemble_v2 is None:
+                            # fallback to weighted
+                            ensemble_v2 = self._weighted_ensemble(model_results_v2)
+                    else:
+                        ensemble_v2 = self._weighted_ensemble(model_results_v2)
+
+                    for k in ensemble_v2:
+                        ensemble_v2[k] = round(ensemble_v2[k], 4)
+
+                    # Edge calculation
+                    edge_v2 = {}
+                    if od:
+                        ho, do_, ao = home_odds, draw_odds, away_odds
+                        if ho > 0 and do_ > 0 and ao > 0:
+                            total_impl = 1/ho + 1/do_ + 1/ao
+                            fair = {
+                                "home": 1/ho / total_impl,
+                                "draw": 1/do_ / total_impl,
+                                "away": 1/ao / total_impl,
+                            }
+                            edge_v2 = {k: round(ensemble_v2[k] - fair[k], 4) for k in ensemble_v2}
+
+                    best_outcome = max(ensemble_v2, key=ensemble_v2.get)
+                    confidence_v2 = ensemble_v2[best_outcome]
+                    recommended_v2 = None
+                    if edge_v2:
+                        best_edge_outcome = max(edge_v2, key=edge_v2.get)
+                        if edge_v2[best_edge_outcome] > 0.03 and ensemble_v2[best_edge_outcome] > 0.50:
+                            recommended_v2 = best_edge_outcome.upper()
+
+                    # Save v2 model output (with _v2 suffix)
+                    self.fs.save_model_output(
+                        f"{mid}_v2", ensemble_v2, edge_v2 if edge_v2 else None,
+                        recommended_v2, confidence_v2,
+                        model_version=f"ensemble_v2_{len(model_results_v2)}models"
+                    )
+
+                    ml_preds_v2[mid] = {
+                        "home_team": home,
+                        "away_team": away,
+                        "match_date": match_date,
+                        "league": league,
+                        "ensemble": ensemble_v2,
+                        "edge": edge_v2,
+                        "recommended": recommended_v2,
+                        "confidence": confidence_v2,
+                        "models": model_results_v2,
+                    }
+                except Exception as e:
+                    log.error(f"  v2 prediction failed for {home} vs {away}: {e}")
+                    traceback.print_exc()
+
+            self._ml_preds_v2 = ml_preds_v2
+            self._stats_v2["ml_predictions"] = len(ml_preds_v2)
+            log.info(f"  Generated {len(ml_preds_v2)} ML v2 predictions")
+
         return ml_preds
 
     # ──────────────────────────────────────
@@ -890,13 +1092,32 @@ class PredictionPipeline:
     # ──────────────────────────────────────
 
     def build_daily_coupon(self):
-        """Build today's Vinderkupon from model outputs + odds."""
+        """Build today's Vinderkupon from model outputs + odds.
+        
+        v2 coupon uses quality filters: min_edge, min_confidence, max_per_league,
+        skip_high_disagreement, and sorts by edge*confidence (EV ranking).
+        """
         log.info("── Stage 6: Building daily coupon ──")
         today = date.today().strftime("%Y-%m-%d")
 
+        # Use v2 predictions if A/B is enabled and v2 produced results, else v1
+        source_preds = self._ml_preds
+        version_label = "v1"
+        if self.ab_enabled and self._ml_preds_v2:
+            source_preds = self._ml_preds_v2
+            version_label = "v2"
+            log.info(f"  Using {version_label} predictions for coupon ({len(source_preds)} available)")
+
+        # Coupon quality settings
+        coupon_cfg = ML_SETTINGS_V2.get("coupon", {}) if version_label == "v2" else {}
+        min_edge_pct = coupon_cfg.get("min_edge_pct", 3.0)
+        min_confidence_pct = coupon_cfg.get("min_confidence_pct", 50.0)
+        max_per_league = coupon_cfg.get("max_per_league", 99)
+        skip_disagreement = coupon_cfg.get("skip_high_disagreement", False)
+
         # Collect candidates: matches with ML predictions + Danske Spil odds
         candidates = []
-        for mid, pred in self._ml_preds.items():
+        for mid, pred in source_preds.items():
             od = find_match_in_list(
                 pred["home_team"], pred["away_team"], self._odds
             )
@@ -912,6 +1133,19 @@ class PredictionPipeline:
                 continue
 
             edge_val = pred.get("edge", {}).get(best_outcome, 0)
+            confidence_pct = pred["confidence"] * 100
+
+            # ── Quality filters ──
+            if edge_val * 100 < min_edge_pct:
+                continue
+            if confidence_pct < min_confidence_pct:
+                continue
+
+            # Skip if high disagreement between models (optional)
+            if skip_disagreement and pred.get("models"):
+                model_picks = [max(mp, key=mp.get) for mp in pred["models"].values()]
+                if len(set(model_picks)) > 1:
+                    continue  # models disagree — skip
 
             candidates.append({
                 "home_team": pred["home_team"],
@@ -921,20 +1155,65 @@ class PredictionPipeline:
                 "kickoff": "",
                 "pick": best_outcome.upper(),
                 "odds": round(odds_val, 2),
-                "confidence": round(pred["confidence"] * 100, 1),
+                "confidence": round(confidence_pct, 1),
                 "edge": round(edge_val * 100, 1),
+                "ev_score": round(edge_val * pred["confidence"], 6),
+                "version": version_label,
             })
 
-        # Sort by confidence (safety-first), then edge
-        candidates.sort(key=lambda c: (c["confidence"], c["edge"]), reverse=True)
-        picks = candidates[:4]
+        # ── Sort by EV score (edge × confidence) ── highest value first
+        candidates.sort(key=lambda c: c["ev_score"], reverse=True)
+
+        # ── Max per league diversification ──
+        picks = []
+        league_counts = {}
+        for c in candidates:
+            lg = c.get("league", "UNK")
+            if league_counts.get(lg, 0) >= max_per_league:
+                continue
+            picks.append(c)
+            league_counts[lg] = league_counts.get(lg, 0) + 1
+            if len(picks) >= 6:  # max 6 picks
+                break
+
+        # Ensure at least 2 picks
+        if len(picks) < 2:
+            log.info(f"  Only {len(picks)} quality picks — falling back to top confidence")
+            # Fallback: relax filters, take top 3 by confidence
+            fallback = []
+            for mid, pred in source_preds.items():
+                od = find_match_in_list(pred["home_team"], pred["away_team"], self._odds)
+                if not od:
+                    continue
+                best_outcome = max(pred["ensemble"], key=pred["ensemble"].get)
+                odds_val = (od.get("home_odds", 0) if best_outcome == "home"
+                           else od.get("away_odds", 0) if best_outcome == "away"
+                           else od.get("draw_odds", 0))
+                if odds_val <= 1.0:
+                    continue
+                edge_val = pred.get("edge", {}).get(best_outcome, 0)
+                fallback.append({
+                    "home_team": pred["home_team"],
+                    "away_team": pred["away_team"],
+                    "league": pred["league"],
+                    "match_date": pred["match_date"],
+                    "kickoff": "",
+                    "pick": best_outcome.upper(),
+                    "odds": round(odds_val, 2),
+                    "confidence": round(pred["confidence"] * 100, 1),
+                    "edge": round(edge_val * 100, 1),
+                    "ev_score": 0,
+                    "version": version_label,
+                })
+            fallback.sort(key=lambda c: c["confidence"], reverse=True)
+            picks = fallback[:3]
 
         if picks:
             total_odds = 1.0
             for p in picks:
                 total_odds *= p["odds"]
             self.fs.save_daily_coupon(today, picks, total_odds)
-            log.info(f"  Daily coupon: {len(picks)} picks, total odds: {total_odds:.2f}")
+            log.info(f"  Daily coupon ({version_label}): {len(picks)} picks, total odds: {total_odds:.2f}")
         else:
             log.info("  No suitable picks for today's coupon")
 
@@ -949,6 +1228,7 @@ class PredictionPipeline:
         log.info(f"  {len(finished)} finished matches to evaluate")
 
         results_saved = 0
+        results_saved_v2 = 0
         quota_errors = 0
         for m in finished:
             if quota_errors >= 2:
@@ -971,8 +1251,7 @@ class PredictionPipeline:
             except Exception:
                 pass
 
-            # Save to legacy prediction_results collection
-            # Use the ensemble prediction if available
+            # ── Evaluate v1 ──
             try:
                 model_out = self.fs.get_match(mid)
             except Exception as e:
@@ -980,37 +1259,65 @@ class PredictionPipeline:
                     quota_errors += 1
                 continue
             if model_out:
-                # Only save results for matches where we had a REAL ML prediction
                 mo_doc = self.fs.db.collection("model_outputs").document(mid).get()
-                if not mo_doc.exists:
-                    continue  # Skip — no ML prediction was made for this match
+                if mo_doc.exists:
+                    mo_data = mo_doc.to_dict()
+                    fp = mo_data.get("finalProbability", {})
+                    if fp:
+                        predicted = max(fp, key=fp.get).upper()
+                        confidence = round(mo_data.get("confidenceScore", 0.5) * 100)
+                        saved = self.fs.save_prediction_result({
+                            "matchDate": m.get("match_date", "")[:10],
+                            "homeTeam": home,
+                            "awayTeam": away,
+                            "leagueCode": m.get("league_code", m.get("league", "")),
+                            "homeScore": hs,
+                            "awayScore": as_,
+                            "actualOutcome": actual,
+                            "predictedOutcome": predicted,
+                            "confidence": confidence,
+                            "source": "ML Ensemble v1",
+                            "isCorrect": predicted == actual,
+                            "hasModelOutput": True,
+                        })
+                        if saved:
+                            results_saved += 1
 
-                mo_data = mo_doc.to_dict()
-                fp = mo_data.get("finalProbability", {})
-                if not fp:
-                    continue
-                predicted = max(fp, key=fp.get).upper()
-                confidence = round(mo_data.get("confidenceScore", 0.5) * 100)
-
-                saved = self.fs.save_prediction_result({
-                    "matchDate": m.get("match_date", "")[:10],
-                    "homeTeam": home,
-                    "awayTeam": away,
-                    "leagueCode": m.get("league_code", m.get("league", "")),
-                    "homeScore": hs,
-                    "awayScore": as_,
-                    "actualOutcome": actual,
-                    "predictedOutcome": predicted,
-                    "confidence": confidence,
-                    "source": "ML Ensemble",
-                    "isCorrect": predicted == actual,
-                    "hasModelOutput": True,
-                })
-                if saved:
-                    results_saved += 1
+            # ── Evaluate v2 (A/B) ──
+            if self.ab_enabled:
+                try:
+                    mo_doc_v2 = self.fs.db.collection("model_outputs").document(f"{mid}_v2").get()
+                    if mo_doc_v2.exists:
+                        mo_data_v2 = mo_doc_v2.to_dict()
+                        fp_v2 = mo_data_v2.get("finalProbability", {})
+                        if fp_v2:
+                            predicted_v2 = max(fp_v2, key=fp_v2.get).upper()
+                            conf_v2 = round(mo_data_v2.get("confidenceScore", 0.5) * 100)
+                            saved_v2 = self.fs.save_prediction_result({
+                                "matchDate": m.get("match_date", "")[:10],
+                                "homeTeam": home,
+                                "awayTeam": away,
+                                "leagueCode": m.get("league_code", m.get("league", "")),
+                                "homeScore": hs,
+                                "awayScore": as_,
+                                "actualOutcome": actual,
+                                "predictedOutcome": predicted_v2,
+                                "confidence": conf_v2,
+                                "source": "ML Ensemble v2",
+                                "isCorrect": predicted_v2 == actual,
+                                "hasModelOutput": True,
+                            })
+                            if saved_v2:
+                                results_saved_v2 += 1
+                except Exception as e:
+                    log.debug(f"  v2 evaluation error for {mid}: {e}")
 
         self._stats["results_saved"] = results_saved
-        log.info(f"  Saved {results_saved} new prediction results")
+        if self.ab_enabled:
+            self._stats_v2["results_saved"] = results_saved_v2
+            log.info(f"  Saved {results_saved} v1 + {results_saved_v2} v2 prediction results")
+        else:
+            log.info(f"  Saved {results_saved} new prediction results")
 
         # Evaluate pending coupons
         self._evaluate_coupons(finished)
