@@ -579,6 +579,12 @@ class FeatureEngineerV2(FeatureEngineer):
             ed = m.get("extra_data", {})
             if not ed:
                 continue
+            if isinstance(ed, str):
+                try:
+                    import json
+                    ed = json.loads(ed)
+                except Exception:
+                    continue
             h = m.get("home_team_name", "")
             a = m.get("away_team_name", "")
             if h == team_name:
