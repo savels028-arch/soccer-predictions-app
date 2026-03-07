@@ -501,6 +501,8 @@ class FeatureEngineerV2(FeatureEngineer):
             extra.append(1.0 if league_code == lc else 0.0)
 
         # ── Season progress / matchday (2) ──
+        matchday = matchday or 0
+        total_matchdays = total_matchdays or 38
         if matchday > 0 and total_matchdays > 0:
             extra.append(matchday / total_matchdays)  # season_progress
             extra.append(matchday / 38.0)             # matchday_norm (38 = standard league)
@@ -792,7 +794,7 @@ class FeatureEngineerV2(FeatureEngineer):
                     away_recent_goals_avg=cls.compute_recent_goals_avg(past, away_name),
                     is_training=True,
                     league_code=league_code,
-                    matchday=match.get("matchday", 0),
+                    matchday=match.get("matchday") or 0,
                     total_matchdays=38,
                     match_datetime=match_date,
                     home_sos=cls.compute_sos(past, home_name, elo_copy),

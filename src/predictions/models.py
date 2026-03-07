@@ -202,7 +202,9 @@ class XGBoostModel(BaseModel):
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
         if not self.is_trained:
             return np.array([[0.33, 0.33, 0.34]])
-        X_scaled = self.scaler.transform(X.reshape(1, -1)) if self.scaler else X.reshape(1, -1)
+        if X.ndim == 1:
+            X = X.reshape(1, -1)
+        X_scaled = self.scaler.transform(X) if self.scaler else X
         return self.model.predict_proba(X_scaled)
 
 
@@ -352,7 +354,9 @@ class NeuralNetworkModel(BaseModel):
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
         if not self.is_trained or self.model is None:
             return np.array([[0.33, 0.33, 0.34]])
-        X_scaled = self.scaler.transform(X.reshape(1, -1)) if self.scaler else X.reshape(1, -1)
+        if X.ndim == 1:
+            X = X.reshape(1, -1)
+        X_scaled = self.scaler.transform(X) if self.scaler else X
         if HAS_TF and hasattr(self.model, 'predict'):
             probs = self.model.predict(X_scaled, verbose=0)
             return probs
@@ -415,7 +419,9 @@ class RandomForestModel(BaseModel):
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
         if not self.is_trained:
             return np.array([[0.33, 0.33, 0.34]])
-        X_scaled = self.scaler.transform(X.reshape(1, -1)) if self.scaler else X.reshape(1, -1)
+        if X.ndim == 1:
+            X = X.reshape(1, -1)
+        X_scaled = self.scaler.transform(X) if self.scaler else X
         return self.model.predict_proba(X_scaled)
 
 
@@ -487,7 +493,9 @@ class LightGBMModel(BaseModel):
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
         if not self.is_trained:
             return np.array([[0.33, 0.33, 0.34]])
-        X_scaled = self.scaler.transform(X.reshape(1, -1)) if self.scaler else X.reshape(1, -1)
+        if X.ndim == 1:
+            X = X.reshape(1, -1)
+        X_scaled = self.scaler.transform(X) if self.scaler else X
         return self.model.predict_proba(X_scaled)
 
 
@@ -638,24 +646,26 @@ class StackingEnsemble:
             logger.info("Stacking: too few training samples, falling back to weighted ensemble")
             return 0.0
 
-        # Generate OOF predictions via TimeSeriesSplit on training data
+        # Generate OOF predictions via TimeSeriesSplit on training data (batch mode)
         n_splits = min(5, max(2, len(X_train) // 100))
         tscv = TimeSeriesSplit(n_splits=n_splits)
         oof_meta = np.zeros((len(X_train), 3 * len(self.models)))
         oof_mask = np.zeros(len(X_train), dtype=bool)
 
-        for fold_idx, (tr_idx, val_idx) in enumerate(tscv.split(X_train)):
-            for m_idx, (name, model) in enumerate(self.models.items()):
-                if model.is_trained:
-                    for vi in val_idx:
-                        probs = model.predict_proba(X_train[vi])
-                        if probs.ndim > 1:
-                            probs = probs[0]
-                        oof_meta[vi, m_idx*3:(m_idx+1)*3] = probs
-                else:
-                    for vi in val_idx:
-                        oof_meta[vi, m_idx*3:(m_idx+1)*3] = [0.33, 0.33, 0.34]
-            oof_mask[val_idx] = True
+        import warnings as _w
+        with _w.catch_warnings():
+            _w.simplefilter("ignore")
+            for fold_idx, (tr_idx, val_idx) in enumerate(tscv.split(X_train)):
+                X_val = X_train[val_idx]
+                for m_idx, (name, model) in enumerate(self.models.items()):
+                    if model.is_trained:
+                        probs_batch = model.predict_proba(X_val)  # batch prediction
+                        if probs_batch.ndim == 1:
+                            probs_batch = probs_batch.reshape(1, -1)
+                        oof_meta[val_idx, m_idx*3:(m_idx+1)*3] = probs_batch
+                    else:
+                        oof_meta[val_idx, m_idx*3:(m_idx+1)*3] = [0.33, 0.33, 0.34]
+                oof_mask[val_idx] = True
 
         # Keep only rows that have OOF predictions
         meta_X_train = oof_meta[oof_mask]
@@ -665,25 +675,22 @@ class StackingEnsemble:
             logger.info("Stacking: too few OOF samples, falling back to weighted ensemble")
             return 0.0
 
-        # Build test meta-features from base model predictions on held-out test set
-        meta_test_features = []
-        for x_row in X_test:
-            row_feats = []
-            for name, model in self.models.items():
+        # Build test meta-features from base model predictions (batch mode)
+        meta_X_test = np.zeros((len(X_test), 3 * len(self.models)))
+        with _w.catch_warnings():
+            _w.simplefilter("ignore")
+            for m_idx, (name, model) in enumerate(self.models.items()):
                 if model.is_trained:
-                    probs = model.predict_proba(x_row)
-                    if probs.ndim > 1:
-                        probs = probs[0]
-                    row_feats.extend(probs.tolist())
+                    probs_batch = model.predict_proba(X_test)
+                    if probs_batch.ndim == 1:
+                        probs_batch = probs_batch.reshape(1, -1)
+                    meta_X_test[:, m_idx*3:(m_idx+1)*3] = probs_batch
                 else:
-                    row_feats.extend([0.33, 0.33, 0.34])
-            meta_test_features.append(row_feats)
-        meta_X_test = np.array(meta_test_features)
+                    meta_X_test[:, m_idx*3:(m_idx+1)*3] = [0.33, 0.33, 0.34]
 
         self.meta_model = LogisticRegression(
             C=1.0,
             max_iter=1000,
-            multi_class='multinomial',
             solver='lbfgs',
             class_weight='balanced',
         )
