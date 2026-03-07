@@ -173,12 +173,12 @@ class XGBoostModel(BaseModel):
             logger.info(f"XGBoost top-10 feature indices: {top_idx.tolist()}")
             logger.info(f"XGBoost top-10 importances: {self.model.feature_importances_[top_idx].tolist()}")
 
-        # Probability calibration (isotonic)
+        # Probability calibration (sigmoid = Platt scaling, resists overfitting better)
         try:
-            cal = CalibratedClassifierCV(self.model, method='isotonic', cv=3)
+            cal = CalibratedClassifierCV(self.model, method='sigmoid', cv=5)
             cal.fit(X_train, y_train)
             self.model = cal
-            logger.info("XGBoost wrapped with CalibratedClassifierCV (isotonic)")
+            logger.info("XGBoost wrapped with CalibratedClassifierCV (sigmoid, cv=5)")
         except Exception as e:
             logger.warning(f"Calibration failed, using raw model: {e}")
 
@@ -399,12 +399,12 @@ class RandomForestModel(BaseModel):
         )
         self.model.fit(X_train, y_train)
 
-        # Probability calibration (isotonic)
+        # Probability calibration (sigmoid = Platt scaling, resists overfitting better)
         try:
-            cal = CalibratedClassifierCV(self.model, method='isotonic', cv=3)
+            cal = CalibratedClassifierCV(self.model, method='sigmoid', cv=5)
             cal.fit(X_train, y_train)
             self.model = cal
-            logger.info("RandomForest wrapped with CalibratedClassifierCV (isotonic)")
+            logger.info("RandomForest wrapped with CalibratedClassifierCV (sigmoid, cv=5)")
         except Exception as e:
             logger.warning(f"RF calibration failed, using raw model: {e}")
 
@@ -473,12 +473,12 @@ class LightGBMModel(BaseModel):
             top_idx = np.argsort(self.model.feature_importances_)[-10:][::-1]
             logger.info(f"LightGBM top-10 feature indices: {top_idx.tolist()}")
 
-        # Calibration
+        # Calibration (sigmoid = Platt scaling, resists overfitting better)
         try:
-            cal = CalibratedClassifierCV(self.model, method='isotonic', cv=3)
+            cal = CalibratedClassifierCV(self.model, method='sigmoid', cv=5)
             cal.fit(X_train, y_train)
             self.model = cal
-            logger.info("LightGBM wrapped with CalibratedClassifierCV (isotonic)")
+            logger.info("LightGBM wrapped with CalibratedClassifierCV (sigmoid, cv=5)")
         except Exception as e:
             logger.warning(f"LightGBM calibration failed: {e}")
 

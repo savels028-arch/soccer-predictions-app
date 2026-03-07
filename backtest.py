@@ -453,7 +453,7 @@ def predict_single_v2(match: Dict, models: Dict, ensemble: EnsembleModel,
     if probs.ndim > 1:
         probs = probs[0]
 
-    # Poisson blend (10%)
+    # Poisson blend (5% — reduced from 10% to prevent overconfidence)
     h_attack = home_stats.get("avg_goals_scored", 1.3)
     h_defense = home_stats.get("avg_goals_conceded", 1.1)
     a_attack = away_stats.get("avg_goals_scored", 1.2)
@@ -462,9 +462,9 @@ def predict_single_v2(match: Dict, models: Dict, ensemble: EnsembleModel,
     poisson_probs = poisson.match_outcome_probs(h_exp, a_exp)
 
     blended = np.array([
-        probs[0] * 0.90 + poisson_probs["home_win"] * 0.10,
-        probs[1] * 0.90 + poisson_probs["draw"] * 0.10,
-        probs[2] * 0.90 + poisson_probs["away_win"] * 0.10,
+        probs[0] * 0.95 + poisson_probs["home_win"] * 0.05,
+        probs[1] * 0.95 + poisson_probs["draw"] * 0.05,
+        probs[2] * 0.95 + poisson_probs["away_win"] * 0.05,
     ])
     total = blended.sum()
     if total > 0:
