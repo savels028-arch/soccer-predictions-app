@@ -1,14 +1,13 @@
 name: Run ML Pipeline
 
 on:
-  # Schedule disabled — enable when FIREBASE_SERVICE_ACCOUNT + CRON_SECRET secrets are configured
-  # schedule:
-  #   # Pre-match run: 08:00 UTC daily (09:00 CET)
-  #   - cron: "0 8 * * *"
-  #   # Post-match evaluation: 22:00 UTC daily (23:00 CET)
-  #   - cron: "0 22 * * *"
-  #   # Weekly retrain with feedback loop: Monday 06:00 UTC (07:00 CET)
-  #   - cron: "0 6 * * 1"
+  schedule:
+    # Pre-match run: 08:00 UTC daily (09:00 CET)
+    - cron: "0 8 * * *"
+    # Post-match evaluation: 22:00 UTC daily (23:00 CET)
+    - cron: "0 22 * * *"
+    # Weekly retrain with feedback loop: Monday 06:00 UTC (07:00 CET)
+    - cron: "0 6 * * 1"
   workflow_dispatch:
     inputs:
       mode:
