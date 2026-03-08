@@ -144,7 +144,7 @@ ML_SETTINGS_V2 = {
 # A/B TEST CONFIGURATION
 # ──────────────────────────────────────────────
 AB_TEST = {
-    "enabled": True,
+    "enabled": False,
     "v1_label": "ML Ensemble v1",
     "v2_label": "ML Ensemble v2",
     "v1_config": "ML_SETTINGS",
