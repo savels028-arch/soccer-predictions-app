@@ -1407,7 +1407,13 @@ class PredictionPipeline:
             log.info(f"  Saved {results_saved} new prediction results")
 
         # Evaluate pending coupons
-        self._evaluate_coupons(finished)
+        try:
+            self._evaluate_coupons(finished)
+        except Exception as e:
+            if "Quota" in str(e) or "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
+                log.warning("  Skipping coupon evaluation — Firestore quota exhausted")
+            else:
+                raise
 
     def _evaluate_coupons(self, finished_matches: list):
         """Evaluate pending daily coupons against finished matches."""
@@ -1546,7 +1552,13 @@ class PredictionPipeline:
 
         # Compute normalized weights from inverse Brier Score
         if source_results:
-            self._recalculate_weights()
+            try:
+                self._recalculate_weights()
+            except Exception as e:
+                if "Quota" in str(e) or "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
+                    log.warning("  Skipping weight recalculation — Firestore quota exhausted")
+                else:
+                    raise
 
     def _recalculate_weights(self):
         """Recalculate source weights based on inverse Brier Score."""
@@ -1732,8 +1744,20 @@ class PredictionPipeline:
         """Just evaluate finished matches."""
         log.info("═ Evaluate-only run ═")
         self.fetch_matches()
-        self.evaluate_finished()
-        self.update_source_performance()
+        try:
+            self.evaluate_finished()
+        except Exception as e:
+            if "Quota" in str(e) or "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
+                log.warning("  Evaluate stage aborted — Firestore quota exhausted")
+            else:
+                raise
+        try:
+            self.update_source_performance()
+        except Exception as e:
+            if "Quota" in str(e) or "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
+                log.warning("  Source performance update skipped — Firestore quota exhausted")
+            else:
+                raise
 
 
 # ─────────────────────────────────────────
