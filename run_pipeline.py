@@ -48,7 +48,7 @@ from src.database.db_manager import DatabaseManager
 from src.predictions.prediction_engine import PredictionEngine
 from src.predictions.feature_engineering import FeatureEngineer, FeatureEngineerV2, EloTracker
 from src.api.data_aggregator import DataAggregator
-from config.settings import AB_TEST, ML_SETTINGS, ML_SETTINGS_V2
+from config.settings import AB_TEST, ML_SETTINGS, ML_SETTINGS_V2, PAPER_TRADING
 
 # Optional: CSV + API-Football
 try:
@@ -1186,16 +1186,29 @@ class PredictionPipeline:
             version_label = "v2"
             log.info(f"  Using {version_label} predictions for coupon ({len(source_preds)} available)")
 
-        # Coupon quality settings
-        coupon_cfg = ML_SETTINGS_V2.get("coupon", {}) if version_label == "v2" else {}
-        min_edge_pct = coupon_cfg.get("min_edge_pct", 3.0)
-        min_confidence_pct = coupon_cfg.get("min_confidence_pct", 50.0)
-        max_per_league = coupon_cfg.get("max_per_league", 99)
+        # Coupon quality settings (v1 now has its own coupon config too)
+        if version_label == "v2":
+            coupon_cfg = ML_SETTINGS_V2.get("coupon", {})
+        else:
+            coupon_cfg = ML_SETTINGS.get("coupon", {})
+        min_edge_pct = coupon_cfg.get("min_edge_pct", 5.0)
+        min_confidence_pct = coupon_cfg.get("min_confidence_pct", 40.0)
+        max_per_league = coupon_cfg.get("max_per_league", 2)
         skip_disagreement = coupon_cfg.get("skip_high_disagreement", False)
+
+        # Exclude leagues with negative backtest ROI (e.g. Championship)
+        excluded_leagues = set(PAPER_TRADING.get("excluded_leagues", []))
 
         # Collect candidates: matches with ML predictions + Danske Spil odds
         candidates = []
+        skipped_league = 0
         for mid, pred in source_preds.items():
+            # Skip excluded leagues (negative ROI in backtest)
+            league_code = pred.get("league", "")
+            if league_code in excluded_leagues:
+                skipped_league += 1
+                continue
+
             od = find_match_in_list(
                 pred["home_team"], pred["away_team"], self._odds
             )
@@ -1301,6 +1314,8 @@ class PredictionPipeline:
                 total_odds *= p["odds"]
             self.fs.save_daily_coupon(today, picks, total_odds)
             log.info(f"  Daily coupon ({version_label}): {len(picks)} picks, total odds: {total_odds:.2f}")
+            if skipped_league:
+                log.info(f"  Skipped {skipped_league} predictions from excluded leagues")
         else:
             log.info("  No suitable picks for today's coupon")
 
@@ -1353,7 +1368,14 @@ class PredictionPipeline:
                     if fp:
                         predicted = max(fp, key=fp.get).upper()
                         confidence = round(mo_data.get("confidenceScore", 0.5) * 100)
-                        saved = self.fs.save_prediction_result({
+
+                        # Get odds for paper-trading P&L
+                        match_odds = model_out.get("closingOdds") or model_out.get("currentOdds") or {}
+                        pred_odds = match_odds.get(predicted.lower(), 0)
+                        edge_data = mo_data.get("edge", {})
+                        pred_edge = round(edge_data.get(predicted.lower(), 0) * 100, 1) if edge_data else 0
+
+                        result_doc = {
                             "matchDate": m.get("match_date", "")[:10],
                             "homeTeam": home,
                             "awayTeam": away,
@@ -1366,7 +1388,12 @@ class PredictionPipeline:
                             "source": "ML Ensemble v1",
                             "isCorrect": predicted == actual,
                             "hasModelOutput": True,
-                        })
+                            # Paper-trading fields
+                            "odds": round(pred_odds, 2) if pred_odds else 0,
+                            "edge": pred_edge,
+                            "profit": round(pred_odds - 1, 2) if (predicted == actual and pred_odds > 0) else -1.0,
+                        }
+                        saved = self.fs.save_prediction_result(result_doc)
                         if saved:
                             results_saved += 1
 
@@ -1665,6 +1692,84 @@ class PredictionPipeline:
             "predictions": ai_preds,
             "odds_matches": odds_matches,
         })
+
+        # cache/paper_trading — live P&L tracker
+        try:
+            all_results = self.fs.get_all_prediction_results(limit=2000)
+            if all_results:
+                pt_cfg = PAPER_TRADING
+                stake = pt_cfg.get("stake_per_bet", 100)
+                bankroll = pt_cfg.get("starting_bankroll", 10000)
+
+                total_bets = 0
+                total_won = 0
+                total_profit = 0.0
+                by_league: Dict[str, Dict] = {}
+                equity_curve = []
+                running_profit = 0.0
+
+                # Sort by date for equity curve
+                sorted_results = sorted(all_results, key=lambda r: r.get("matchDate", ""))
+
+                for r in sorted_results:
+                    odds = r.get("odds", 0)
+                    if not odds or odds <= 0:
+                        continue  # skip results without odds data
+
+                    total_bets += 1
+                    is_correct = r.get("isCorrect", False)
+                    if is_correct:
+                        total_won += 1
+                        bet_profit = (odds - 1) * stake
+                    else:
+                        bet_profit = -stake
+
+                    total_profit += bet_profit
+                    running_profit += bet_profit
+
+                    league = r.get("leagueCode", "UNK")
+                    if league not in by_league:
+                        by_league[league] = {"bets": 0, "won": 0, "profit": 0.0}
+                    by_league[league]["bets"] += 1
+                    if is_correct:
+                        by_league[league]["won"] += 1
+                    by_league[league]["profit"] += bet_profit
+
+                    equity_curve.append({
+                        "date": r.get("matchDate", ""),
+                        "profit": round(running_profit),
+                    })
+
+                # Compute per-league ROI
+                league_stats = []
+                for lg, stats in sorted(by_league.items(), key=lambda x: x[1]["profit"], reverse=True):
+                    staked = stats["bets"] * stake
+                    league_stats.append({
+                        "league": lg,
+                        "bets": stats["bets"],
+                        "won": stats["won"],
+                        "hitRate": round(stats["won"] / stats["bets"] * 100) if stats["bets"] else 0,
+                        "profit": round(stats["profit"]),
+                        "roi": round(stats["profit"] / staked * 100, 1) if staked else 0,
+                    })
+
+                staked_total = total_bets * stake
+                self.fs.write_cache("paper_trading", {
+                    "startingBankroll": bankroll,
+                    "stakePerBet": stake,
+                    "totalBets": total_bets,
+                    "totalWon": total_won,
+                    "hitRate": round(total_won / total_bets * 100, 1) if total_bets else 0,
+                    "totalProfit": round(total_profit),
+                    "totalStaked": staked_total,
+                    "roi": round(total_profit / staked_total * 100, 1) if staked_total else 0,
+                    "currentBankroll": bankroll + round(total_profit),
+                    "byLeague": league_stats,
+                    "equityCurve": equity_curve[-100:],  # last 100 data points
+                })
+                log.info(f"  Paper trading: {total_bets} bets, P&L {total_profit:+.0f} DKK, ROI {total_profit/staked_total*100:+.1f}%" if staked_total else "  Paper trading: no bets with odds data")
+        except Exception as e:
+            log.debug(f"  Paper trading cache skipped: {e}")
 
         log.info(f"  Wrote {len(upcoming)} matches, {len(ai_preds)} predictions, "
                  f"{len(odds_matches)} odds_matches to cache")

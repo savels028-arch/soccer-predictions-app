@@ -2,383 +2,743 @@
   "holdout": {
     "label": "Holdout (train 2015-2022, test 2023-2025)",
     "v1": {
-      "total": 1051,
-      "correct": 466,
-      "accuracy": 0.4433872502378687,
-      "brier": 0.6476085759167073,
-      "log_loss": 1.0553091132849521,
+      "total": 9613,
+      "correct": 2943,
+      "accuracy": 0.306147924685322,
+      "brier": 0.8592253757176208,
+      "log_loss": 1.344207516084566,
       "roi_flat": {
-        "staked": 1051,
-        "returned": 1268.0199999999995,
-        "profit": 217.01999999999953,
-        "roi_pct": 20.648905803996147
+        "staked": 9613,
+        "returned": 9971.070000000002,
+        "profit": 358.0700000000015,
+        "roi_pct": 3.724851763237299
       },
       "roi_kelly": {
-        "n_bets": 747,
-        "staked": 174.14,
-        "returned": 214.86,
-        "profit": 40.72,
-        "roi_pct": 23.38102615363149
+        "n_bets": 9142,
+        "staked": 2259.72,
+        "returned": 2321.57,
+        "profit": 61.85,
+        "roi_pct": 2.737236776823758
       }
     },
     "v2": {
-      "total": 1051,
-      "correct": 420,
-      "accuracy": 0.39961941008563273,
-      "brier": 0.8305350738311238,
-      "log_loss": 1.376235452931183,
+      "total": 9613,
+      "correct": 2633,
+      "accuracy": 0.2738999271819411,
+      "brier": 1.2791279156204356,
+      "log_loss": 2.3653794782750603,
       "roi_flat": {
-        "staked": 1051,
-        "returned": 1194.3099999999997,
-        "profit": 143.30999999999972,
-        "roi_pct": 13.635585156993313
+        "staked": 9613,
+        "returned": 9601.33,
+        "profit": -11.670000000000073,
+        "roi_pct": -0.12139810673046991
       },
       "roi_kelly": {
-        "n_bets": 922,
-        "staked": 222.11,
-        "returned": 256.08,
-        "profit": 33.97,
-        "roi_pct": 15.29553022809003
+        "n_bets": 9531,
+        "staked": 2375.92,
+        "returned": 2367.78,
+        "profit": -8.15,
+        "roi_pct": -0.3428852985551645
       }
     },
     "v1_per_league": {
-      "PL": {
-        "total": 1051,
-        "correct": 466,
-        "accuracy": 0.4433872502378687,
-        "brier": 0.6476085759167073,
-        "log_loss": 1.0553091132849521,
+      "BL1": {
+        "total": 828,
+        "correct": 252,
+        "accuracy": 0.30434782608695654,
+        "brier": 0.8374226798899361,
+        "log_loss": 1.3065279004197379,
         "roi_flat": {
-          "staked": 1051,
-          "returned": 1268.0199999999995,
-          "profit": 217.01999999999953,
-          "roi_pct": 20.648905803996147
+          "staked": 828,
+          "returned": 901.0099999999996,
+          "profit": 73.00999999999965,
+          "roi_pct": 8.817632850241504
         },
         "roi_kelly": {
-          "n_bets": 747,
-          "staked": 174.14,
-          "returned": 214.86,
-          "profit": 40.72,
-          "roi_pct": 23.38102615363149
+          "n_bets": 788,
+          "staked": 194.66,
+          "returned": 210.23,
+          "profit": 15.57,
+          "roi_pct": 7.996239837858704
+        }
+      },
+      "BL2": {
+        "total": 828,
+        "correct": 243,
+        "accuracy": 0.29347826086956524,
+        "brier": 0.8655277814142001,
+        "log_loss": 1.3617666190859612,
+        "roi_flat": {
+          "staked": 828,
+          "returned": 837.4200000000003,
+          "profit": 9.4200000000003,
+          "roi_pct": 1.1376811594203262
+        },
+        "roi_kelly": {
+          "n_bets": 800,
+          "staked": 196.18,
+          "returned": 194.46,
+          "profit": -1.71,
+          "roi_pct": -0.8720107193047308
+        }
+      },
+      "BSA": {
+        "total": 840,
+        "correct": 254,
+        "accuracy": 0.30238095238095236,
+        "brier": 0.8855605303712171,
+        "log_loss": 1.388408811110249,
+        "roi_flat": {
+          "staked": 840,
+          "returned": 890.8599999999998,
+          "profit": 50.859999999999786,
+          "roi_pct": 6.05476190476188
+        },
+        "roi_kelly": {
+          "n_bets": 815,
+          "staked": 202.92,
+          "returned": 212.53,
+          "profit": 9.61,
+          "roi_pct": 4.733872059975806
+        }
+      },
+      "DED": {
+        "total": 837,
+        "correct": 286,
+        "accuracy": 0.34169653524492233,
+        "brier": 0.8069804005046447,
+        "log_loss": 1.264910999092596,
+        "roi_flat": {
+          "staked": 837,
+          "returned": 989.1000000000004,
+          "profit": 152.10000000000036,
+          "roi_pct": 18.17204301075273
+        },
+        "roi_kelly": {
+          "n_bets": 762,
+          "staked": 188.66,
+          "returned": 222.49,
+          "profit": 33.83,
+          "roi_pct": 17.933557735095
+        }
+      },
+      "ELC": {
+        "total": 1523,
+        "correct": 431,
+        "accuracy": 0.2829940906106369,
+        "brier": 0.8990170021785694,
+        "log_loss": 1.411294267008531,
+        "roi_flat": {
+          "staked": 1523,
+          "returned": 1457.909999999999,
+          "profit": -65.09000000000106,
+          "roi_pct": -4.273801707156996
+        },
+        "roi_kelly": {
+          "n_bets": 1487,
+          "staked": 366.56,
+          "returned": 347.9,
+          "profit": -18.66,
+          "roi_pct": -5.091530020768026
+        }
+      },
+      "FL1": {
+        "total": 828,
+        "correct": 257,
+        "accuracy": 0.3103864734299517,
+        "brier": 0.8310376365669138,
+        "log_loss": 1.2987048705418187,
+        "roi_flat": {
+          "staked": 828,
+          "returned": 842.9099999999995,
+          "profit": 14.909999999999513,
+          "roi_pct": 1.8007246376811008
+        },
+        "roi_kelly": {
+          "n_bets": 779,
+          "staked": 191.25,
+          "returned": 191.08,
+          "profit": -0.17,
+          "roi_pct": -0.08765216677274842
+        }
+      },
+      "PD": {
+        "total": 1020,
+        "correct": 334,
+        "accuracy": 0.32745098039215687,
+        "brier": 0.8555004349292447,
+        "log_loss": 1.3435231162754535,
+        "roi_flat": {
+          "staked": 1020,
+          "returned": 1030.1500000000008,
+          "profit": 10.150000000000773,
+          "roi_pct": 0.995098039215762
+        },
+        "roi_kelly": {
+          "n_bets": 952,
+          "staked": 236.6,
+          "returned": 236.51,
+          "profit": -0.09,
+          "roi_pct": -0.036841802211260384
+        }
+      },
+      "PL": {
+        "total": 1051,
+        "correct": 300,
+        "accuracy": 0.285442435775452,
+        "brier": 0.8433014337534229,
+        "log_loss": 1.3108036685929982,
+        "roi_flat": {
+          "staked": 1051,
+          "returned": 1087.6500000000003,
+          "profit": 36.65000000000032,
+          "roi_pct": 3.487155090390135
+        },
+        "roi_kelly": {
+          "n_bets": 988,
+          "staked": 243.47,
+          "returned": 252.28,
+          "profit": 8.8,
+          "roi_pct": 3.616113232383427
+        }
+      },
+      "PPL": {
+        "total": 828,
+        "correct": 269,
+        "accuracy": 0.3248792270531401,
+        "brier": 0.8263550832843232,
+        "log_loss": 1.2851682535541613,
+        "roi_flat": {
+          "staked": 828,
+          "returned": 833.5799999999999,
+          "profit": 5.579999999999927,
+          "roi_pct": 0.6739130434782521
+        },
+        "roi_kelly": {
+          "n_bets": 765,
+          "staked": 190.11,
+          "returned": 189.0,
+          "profit": -1.11,
+          "roi_pct": -0.5814508687441118
+        }
+      },
+      "SA": {
+        "total": 1030,
+        "correct": 317,
+        "accuracy": 0.30776699029126214,
+        "brier": 0.9028473759436689,
+        "log_loss": 1.4083774103877547,
+        "roi_flat": {
+          "staked": 1030,
+          "returned": 1100.4800000000012,
+          "profit": 70.48000000000116,
+          "roi_pct": 6.8427184466020545
+        },
+        "roi_kelly": {
+          "n_bets": 1006,
+          "staked": 249.31,
+          "returned": 265.09,
+          "profit": 15.78,
+          "roi_pct": 6.329057379974287
         }
       }
     },
     "v2_per_league": {
-      "PL": {
-        "total": 1051,
-        "correct": 420,
-        "accuracy": 0.39961941008563273,
-        "brier": 0.8305350738311238,
-        "log_loss": 1.376235452931183,
+      "BL1": {
+        "total": 828,
+        "correct": 225,
+        "accuracy": 0.2717391304347826,
+        "brier": 1.2855647141314446,
+        "log_loss": 2.3889281034283614,
         "roi_flat": {
-          "staked": 1051,
-          "returned": 1194.3099999999997,
-          "profit": 143.30999999999972,
-          "roi_pct": 13.635585156993313
+          "staked": 828,
+          "returned": 870.6699999999995,
+          "profit": 42.669999999999504,
+          "roi_pct": 5.153381642512017
         },
         "roi_kelly": {
-          "n_bets": 922,
-          "staked": 222.11,
-          "returned": 256.08,
-          "profit": 33.97,
-          "roi_pct": 15.29553022809003
+          "n_bets": 818,
+          "staked": 203.94,
+          "returned": 213.47,
+          "profit": 9.53,
+          "roi_pct": 4.673359229684228
+        }
+      },
+      "BL2": {
+        "total": 828,
+        "correct": 219,
+        "accuracy": 0.2644927536231884,
+        "brier": 1.3105987349924748,
+        "log_loss": 2.447639961827392,
+        "roi_flat": {
+          "staked": 828,
+          "returned": 809.2800000000002,
+          "profit": -18.7199999999998,
+          "roi_pct": -2.260869565217367
+        },
+        "roi_kelly": {
+          "n_bets": 828,
+          "staked": 206.96,
+          "returned": 202.24,
+          "profit": -4.72,
+          "roi_pct": -2.2821830859828514
+        }
+      },
+      "BSA": {
+        "total": 840,
+        "correct": 230,
+        "accuracy": 0.27380952380952384,
+        "brier": 1.300325063740617,
+        "log_loss": 2.444698976762214,
+        "roi_flat": {
+          "staked": 840,
+          "returned": 851.0199999999999,
+          "profit": 11.019999999999868,
+          "roi_pct": 1.3119047619047464
+        },
+        "roi_kelly": {
+          "n_bets": 840,
+          "staked": 209.7,
+          "returned": 212.66,
+          "profit": 2.96,
+          "roi_pct": 1.412059474062154
+        }
+      },
+      "DED": {
+        "total": 837,
+        "correct": 231,
+        "accuracy": 0.27598566308243727,
+        "brier": 1.2351708393862946,
+        "log_loss": 2.22725654217768,
+        "roi_flat": {
+          "staked": 837,
+          "returned": 911.6700000000003,
+          "profit": 74.6700000000003,
+          "roi_pct": 8.921146953405055
+        },
+        "roi_kelly": {
+          "n_bets": 826,
+          "staked": 205.34,
+          "returned": 224.02,
+          "profit": 18.68,
+          "roi_pct": 9.097702330895356
+        }
+      },
+      "ELC": {
+        "total": 1523,
+        "correct": 413,
+        "accuracy": 0.2711753118844386,
+        "brier": 1.3070602304663552,
+        "log_loss": 2.461170505429717,
+        "roi_flat": {
+          "staked": 1523,
+          "returned": 1438.9399999999991,
+          "profit": -84.06000000000085,
+          "roi_pct": -5.519369665134659
+        },
+        "roi_kelly": {
+          "n_bets": 1517,
+          "staked": 378.5,
+          "returned": 357.19,
+          "profit": -21.31,
+          "roi_pct": -5.631298076603078
+        }
+      },
+      "FL1": {
+        "total": 828,
+        "correct": 215,
+        "accuracy": 0.25966183574879226,
+        "brier": 1.2860188795530723,
+        "log_loss": 2.3686397615954564,
+        "roi_flat": {
+          "staked": 828,
+          "returned": 789.0999999999997,
+          "profit": -38.90000000000032,
+          "roi_pct": -4.69806763285028
+        },
+        "roi_kelly": {
+          "n_bets": 821,
+          "staked": 204.01,
+          "returned": 193.8,
+          "profit": -10.22,
+          "roi_pct": -5.007862680636645
+        }
+      },
+      "PD": {
+        "total": 1020,
+        "correct": 295,
+        "accuracy": 0.28921568627450983,
+        "brier": 1.2409136347850398,
+        "log_loss": 2.2763374010648794,
+        "roi_flat": {
+          "staked": 1020,
+          "returned": 997.8500000000003,
+          "profit": -22.14999999999975,
+          "roi_pct": -2.171568627450956
+        },
+        "roi_kelly": {
+          "n_bets": 1000,
+          "staked": 249.01,
+          "returned": 242.31,
+          "profit": -6.7,
+          "roi_pct": -2.691042114803945
+        }
+      },
+      "PL": {
+        "total": 1051,
+        "correct": 266,
+        "accuracy": 0.2530922930542341,
+        "brier": 1.3044857595213526,
+        "log_loss": 2.3968168777774137,
+        "roi_flat": {
+          "staked": 1051,
+          "returned": 1048.3500000000006,
+          "profit": -2.649999999999409,
+          "roi_pct": -0.2521408182682596
+        },
+        "roi_kelly": {
+          "n_bets": 1040,
+          "staked": 259.43,
+          "returned": 258.27,
+          "profit": -1.16,
+          "roi_pct": -0.44792035149468745
+        }
+      },
+      "PPL": {
+        "total": 828,
+        "correct": 237,
+        "accuracy": 0.286231884057971,
+        "brier": 1.234131313742764,
+        "log_loss": 2.2024008384493357,
+        "roi_flat": {
+          "staked": 828,
+          "returned": 807.4200000000002,
+          "profit": -20.579999999999814,
+          "roi_pct": -2.4855072463767893
+        },
+        "roi_kelly": {
+          "n_bets": 812,
+          "staked": 202.19,
+          "returned": 195.35,
+          "profit": -6.83,
+          "roi_pct": -3.3796673127190853
+        }
+      },
+      "SA": {
+        "total": 1030,
+        "correct": 302,
+        "accuracy": 0.29320388349514565,
+        "brier": 1.2683871253294354,
+        "log_loss": 2.3707288505889363,
+        "roi_flat": {
+          "staked": 1030,
+          "returned": 1077.0300000000009,
+          "profit": 47.03000000000088,
+          "roi_pct": 4.566019417475814
+        },
+        "roi_kelly": {
+          "n_bets": 1029,
+          "staked": 256.83,
+          "returned": 268.46,
+          "profit": 11.63,
+          "roi_pct": 4.528728725210911
         }
       }
     },
     "v1_edge_sweep": [
       {
-        "total": 763,
-        "correct": 254,
-        "accuracy": 0.3328964613368283,
-        "brier": 0.6951914057666141,
-        "log_loss": 1.1197233691933985,
+        "total": 9173,
+        "correct": 2577,
+        "accuracy": 0.2809331734438025,
+        "brier": 0.8782785960228375,
+        "log_loss": 1.3710000289987752,
         "roi_flat": {
-          "staked": 763,
-          "returned": 947.3000000000004,
-          "profit": 184.3000000000004,
-          "roi_pct": 24.15465268676283
+          "staked": 9173,
+          "returned": 9449.709999999997,
+          "profit": 276.7099999999973,
+          "roi_pct": 3.0165703695628183
         },
         "roi_kelly": {
-          "n_bets": 747,
-          "staked": 174.14,
-          "returned": 214.86,
-          "profit": 40.72,
-          "roi_pct": 23.38102615363149
+          "n_bets": 9142,
+          "staked": 2259.72,
+          "returned": 2321.57,
+          "profit": 61.85,
+          "roi_pct": 2.737236776823758
         },
         "threshold": 0.0
       },
       {
-        "total": 747,
-        "correct": 243,
-        "accuracy": 0.3253012048192771,
-        "brier": 0.6994522104104296,
-        "log_loss": 1.1258685694886856,
+        "total": 9150,
+        "correct": 2558,
+        "accuracy": 0.2795628415300546,
+        "brier": 0.8794689066207522,
+        "log_loss": 1.3726490762505703,
         "roi_flat": {
-          "staked": 747,
-          "returned": 926.0400000000004,
-          "profit": 179.04000000000042,
-          "roi_pct": 23.96787148594383
+          "staked": 9150,
+          "returned": 9416.269999999999,
+          "profit": 266.2699999999986,
+          "roi_pct": 2.910054644808728
         },
         "roi_kelly": {
-          "n_bets": 746,
-          "staked": 174.14,
-          "returned": 214.85,
-          "profit": 40.71,
-          "roi_pct": 23.37853614577279
+          "n_bets": 9142,
+          "staked": 2259.72,
+          "returned": 2321.57,
+          "profit": 61.85,
+          "roi_pct": 2.737236776823758
         },
         "threshold": 0.02
       },
       {
-        "total": 736,
-        "correct": 235,
-        "accuracy": 0.31929347826086957,
-        "brier": 0.7022125313390759,
-        "log_loss": 1.1299522001237705,
+        "total": 9111,
+        "correct": 2531,
+        "accuracy": 0.2777960706837888,
+        "brier": 0.881058329619066,
+        "log_loss": 1.3747973058619805,
         "roi_flat": {
-          "staked": 736,
-          "returned": 908.5900000000003,
-          "profit": 172.59000000000026,
-          "roi_pct": 23.449728260869602
+          "staked": 9111,
+          "returned": 9363.800000000001,
+          "profit": 252.8000000000011,
+          "roi_pct": 2.7746679837559114
         },
         "roi_kelly": {
-          "n_bets": 736,
-          "staked": 173.89,
-          "returned": 214.44,
-          "profit": 40.55,
-          "roi_pct": 23.31809861566808
+          "n_bets": 9111,
+          "staked": 2259.0,
+          "returned": 2320.55,
+          "profit": 61.55,
+          "roi_pct": 2.7245365340777288
         },
         "threshold": 0.05
       },
       {
-        "total": 721,
-        "correct": 225,
-        "accuracy": 0.3120665742024965,
-        "brier": 0.7041015733278417,
-        "log_loss": 1.1327481807791733,
+        "total": 9081,
+        "correct": 2513,
+        "accuracy": 0.2767316374848585,
+        "brier": 0.8820673946469274,
+        "log_loss": 1.376100431696397,
         "roi_flat": {
-          "staked": 721,
-          "returned": 882.0600000000004,
-          "profit": 161.0600000000004,
-          "roi_pct": 22.338418862690762
+          "staked": 9081,
+          "returned": 9324.820000000002,
+          "profit": 243.82000000000153,
+          "roi_pct": 2.6849465917850623
         },
         "roi_kelly": {
-          "n_bets": 721,
-          "staked": 172.86,
-          "returned": 212.71,
-          "profit": 39.85,
-          "roi_pct": 23.052574191927764
+          "n_bets": 9081,
+          "staked": 2256.83,
+          "returned": 2317.79,
+          "profit": 60.96,
+          "roi_pct": 2.7011829299695767
         },
         "threshold": 0.08
       },
       {
-        "total": 712,
-        "correct": 222,
-        "accuracy": 0.31179775280898875,
-        "brier": 0.7045477746405576,
-        "log_loss": 1.1333796509775795,
+        "total": 9056,
+        "correct": 2495,
+        "accuracy": 0.27550795053003535,
+        "brier": 0.8830768118284242,
+        "log_loss": 1.3773985781304496,
         "roi_flat": {
-          "staked": 712,
-          "returned": 873.3800000000003,
-          "profit": 161.38000000000034,
-          "roi_pct": 22.6657303370787
+          "staked": 9056,
+          "returned": 9284.540000000003,
+          "profit": 228.5400000000027,
+          "roi_pct": 2.5236307420494994
         },
         "roi_kelly": {
-          "n_bets": 712,
-          "staked": 171.9,
-          "returned": 211.81,
-          "profit": 39.91,
-          "roi_pct": 23.21715533137951
+          "n_bets": 9056,
+          "staked": 2253.66,
+          "returned": 2312.84,
+          "profit": 59.18,
+          "roi_pct": 2.625842888474954
         },
         "threshold": 0.1
       },
       {
-        "total": 671,
-        "correct": 207,
-        "accuracy": 0.30849478390462,
-        "brier": 0.7079606574110014,
-        "log_loss": 1.1366200019851318,
+        "total": 8969,
+        "correct": 2459,
+        "accuracy": 0.2741665737540417,
+        "brier": 0.885930194045957,
+        "log_loss": 1.3812170974653295,
         "roi_flat": {
-          "staked": 671,
-          "returned": 827.0000000000003,
-          "profit": 156.00000000000034,
-          "roi_pct": 23.248882265275757
+          "staked": 8969,
+          "returned": 9196.129999999997,
+          "profit": 227.12999999999738,
+          "roi_pct": 2.5323893410636344
         },
         "roi_kelly": {
-          "n_bets": 671,
-          "staked": 165.36,
-          "returned": 204.41,
-          "profit": 39.05,
-          "roi_pct": 23.61316102734643
+          "n_bets": 8969,
+          "staked": 2238.91,
+          "returned": 2297.32,
+          "profit": 58.41,
+          "roi_pct": 2.6090375918945417
         },
         "threshold": 0.15
       },
       {
-        "total": 579,
-        "correct": 186,
-        "accuracy": 0.32124352331606215,
-        "brier": 0.7082085894626666,
-        "log_loss": 1.1330894554717568,
+        "total": 8831,
+        "correct": 2432,
+        "accuracy": 0.2753935001698562,
+        "brier": 0.8891395693041846,
+        "log_loss": 1.3854172365607158,
         "roi_flat": {
-          "staked": 579,
-          "returned": 745.0200000000001,
-          "profit": 166.0200000000001,
-          "roi_pct": 28.673575129533695
+          "staked": 8831,
+          "returned": 9111.759999999995,
+          "profit": 280.75999999999476,
+          "roi_pct": 3.1792548975200403
         },
         "roi_kelly": {
-          "n_bets": 579,
-          "staked": 144.74,
-          "returned": 186.26,
-          "profit": 41.51,
-          "roi_pct": 28.679594924383306
+          "n_bets": 8831,
+          "staked": 2207.72,
+          "returned": 2277.93,
+          "profit": 70.2,
+          "roi_pct": 3.179932480534179
         },
         "threshold": 0.2
       }
     ],
     "v2_edge_sweep": [
       {
-        "total": 951,
-        "correct": 345,
-        "accuracy": 0.3627760252365931,
-        "brier": 0.8689023528124872,
-        "log_loss": 1.4372348416558351,
+        "total": 9538,
+        "correct": 2567,
+        "accuracy": 0.26913399035437197,
+        "brier": 1.2855797335807158,
+        "log_loss": 2.3774668918848825,
         "roi_flat": {
-          "staked": 951,
-          "returned": 1087.24,
-          "profit": 136.24,
-          "roi_pct": 14.32597266035752
+          "staked": 9538,
+          "returned": 9509.470000000001,
+          "profit": -28.529999999998836,
+          "roi_pct": -0.29911931222477284
         },
         "roi_kelly": {
-          "n_bets": 922,
-          "staked": 222.11,
-          "returned": 256.08,
-          "profit": 33.97,
-          "roi_pct": 15.29553022809003
+          "n_bets": 9531,
+          "staked": 2375.92,
+          "returned": 2367.78,
+          "profit": -8.15,
+          "roi_pct": -0.3428852985551645
         },
         "threshold": 0.0
       },
       {
-        "total": 933,
-        "correct": 332,
-        "accuracy": 0.3558413719185423,
-        "brier": 0.8766990039117435,
-        "log_loss": 1.4479795797846262,
+        "total": 9532,
+        "correct": 2563,
+        "accuracy": 0.2688837599664289,
+        "brier": 1.2860464024030551,
+        "log_loss": 2.378249520291758,
         "roi_flat": {
-          "staked": 933,
-          "returned": 1067.7500000000002,
-          "profit": 134.75000000000023,
-          "roi_pct": 14.442658092175801
+          "staked": 9532,
+          "returned": 9504.24,
+          "profit": -27.76000000000022,
+          "roi_pct": -0.29122954259337197
         },
         "roi_kelly": {
-          "n_bets": 922,
-          "staked": 222.11,
-          "returned": 256.08,
-          "profit": 33.97,
-          "roi_pct": 15.29553022809003
+          "n_bets": 9531,
+          "staked": 2375.92,
+          "returned": 2367.78,
+          "profit": -8.15,
+          "roi_pct": -0.3428852985551645
         },
         "threshold": 0.02
       },
       {
-        "total": 918,
-        "correct": 324,
-        "accuracy": 0.35294117647058826,
-        "brier": 0.880855613821739,
-        "log_loss": 1.4530297231163747,
+        "total": 9517,
+        "correct": 2554,
+        "accuracy": 0.2683618787433015,
+        "brier": 1.2870707353322417,
+        "log_loss": 2.3803142758968403,
         "roi_flat": {
-          "staked": 918,
-          "returned": 1055.8100000000004,
-          "profit": 137.8100000000004,
-          "roi_pct": 15.011982570806143
+          "staked": 9517,
+          "returned": 9486.569999999998,
+          "profit": -30.43000000000211,
+          "roi_pct": -0.31974361668595264
         },
         "roi_kelly": {
-          "n_bets": 918,
-          "staked": 222.02,
-          "returned": 256.04,
-          "profit": 34.02,
-          "roi_pct": 15.322119189955005
+          "n_bets": 9517,
+          "staked": 2375.58,
+          "returned": 2367.47,
+          "profit": -8.11,
+          "roi_pct": -0.3413081730611769
         },
         "threshold": 0.05
       },
       {
-        "total": 893,
-        "correct": 307,
-        "accuracy": 0.3437849944008959,
-        "brier": 0.8919257559490341,
-        "log_loss": 1.4676565005016382,
+        "total": 9506,
+        "correct": 2546,
+        "accuracy": 0.26783084367767723,
+        "brier": 1.2881167610151592,
+        "log_loss": 2.382206691089652,
         "roi_flat": {
-          "staked": 893,
-          "returned": 1028.7600000000007,
-          "profit": 135.76000000000067,
-          "roi_pct": 15.202687569988877
+          "staked": 9506,
+          "returned": 9474.039999999997,
+          "profit": -31.960000000002765,
+          "roi_pct": -0.3362087102882681
         },
         "roi_kelly": {
-          "n_bets": 893,
-          "staked": 220.16,
-          "returned": 253.94,
-          "profit": 33.78,
-          "roi_pct": 15.345296611848033
+          "n_bets": 9506,
+          "staked": 2374.68,
+          "returned": 2366.36,
+          "profit": -8.31,
+          "roi_pct": -0.3501019773567809
         },
         "threshold": 0.08
       },
       {
-        "total": 877,
-        "correct": 298,
-        "accuracy": 0.33979475484606614,
-        "brier": 0.8995829893664244,
-        "log_loss": 1.4803187177964345,
+        "total": 9503,
+        "correct": 2545,
+        "accuracy": 0.267810165210986,
+        "brier": 1.2882298809737467,
+        "log_loss": 2.382435584361876,
         "roi_flat": {
-          "staked": 877,
-          "returned": 1015.3000000000006,
-          "profit": 138.30000000000064,
-          "roi_pct": 15.769669327252068
+          "staked": 9503,
+          "returned": 9472.389999999998,
+          "profit": -30.6100000000024,
+          "roi_pct": -0.32210880774494793
         },
         "roi_kelly": {
-          "n_bets": 877,
-          "staked": 217.63,
-          "returned": 251.64,
-          "profit": 34.01,
-          "roi_pct": 15.625024987850056
+          "n_bets": 9503,
+          "staked": 2374.25,
+          "returned": 2366.14,
+          "profit": -8.11,
+          "roi_pct": -0.34171828856781694
         },
         "threshold": 0.1
       },
       {
-        "total": 844,
-        "correct": 276,
-        "accuracy": 0.32701421800947866,
-        "brier": 0.9141516428627083,
-        "log_loss": 1.5000938522363918,
+        "total": 9486,
+        "correct": 2534,
+        "accuracy": 0.2671305081172254,
+        "brier": 1.2896143153623505,
+        "log_loss": 2.385064234683066,
         "roi_flat": {
-          "staked": 844,
-          "returned": 974.4800000000006,
-          "profit": 130.4800000000006,
-          "roi_pct": 15.459715639810495
+          "staked": 9486,
+          "returned": 9449.0,
+          "profit": -37.0,
+          "roi_pct": -0.39004849251528567
         },
         "roi_kelly": {
-          "n_bets": 844,
-          "staked": 210.87,
-          "returned": 243.38,
-          "profit": 32.51,
-          "roi_pct": 15.415873978642505
+          "n_bets": 9486,
+          "staked": 2371.12,
+          "returned": 2361.98,
+          "profit": -9.14,
+          "roi_pct": -0.38534041833286814
         },
         "threshold": 0.15
       },
       {
-        "total": 811,
-        "correct": 252,
-        "accuracy": 0.31072749691738594,
-        "brier": 0.9333751972393995,
-        "log_loss": 1.5301203243118442,
+        "total": 9461,
+        "correct": 2523,
+        "accuracy": 0.2666737131381461,
+        "brier": 1.2912390981562758,
+        "log_loss": 2.3878860437187734,
         "roi_flat": {
-          "staked": 811,
-          "returned": 925.4700000000005,
-          "profit": 114.47000000000048,
-          "roi_pct": 14.114673242910047
+          "staked": 9461,
+          "returned": 9428.39,
+          "profit": -32.61000000000058,
+          "roi_pct": -0.34467815241518424
         },
         "roi_kelly": {
-          "n_bets": 811,
-          "staked": 202.74,
-          "returned": 231.33,
-          "profit": 28.58,
-          "roi_pct": 14.098672855332971
+          "n_bets": 9461,
+          "staked": 2365.25,
+          "returned": 2357.1,
+          "profit": -8.15,
+          "roi_pct": -0.34467815241518424
         },
         "threshold": 0.2
       }
@@ -407,45 +767,45 @@
       },
       {
         "bin": "30%-40%",
-        "count": 77,
-        "actual_win_rate": 42.9,
+        "count": 78,
+        "actual_win_rate": 35.9,
         "expected_mid": 35.0,
-        "gap": 7.9
+        "gap": 0.9
       },
       {
         "bin": "40%-50%",
-        "count": 427,
-        "actual_win_rate": 41.5,
+        "count": 641,
+        "actual_win_rate": 35.3,
         "expected_mid": 45.0,
-        "gap": -3.5
+        "gap": -9.7
       },
       {
         "bin": "50%-60%",
-        "count": 334,
-        "actual_win_rate": 50.6,
+        "count": 1298,
+        "actual_win_rate": 23.5,
         "expected_mid": 55.0,
-        "gap": -4.4
+        "gap": -31.5
       },
       {
         "bin": "60%-70%",
-        "count": 172,
-        "actual_win_rate": 40.7,
+        "count": 2153,
+        "actual_win_rate": 19.6,
         "expected_mid": 65.0,
-        "gap": -24.3
+        "gap": -45.4
       },
       {
         "bin": "70%-80%",
-        "count": 40,
-        "actual_win_rate": 42.5,
+        "count": 3181,
+        "actual_win_rate": 29.6,
         "expected_mid": 75.0,
-        "gap": -32.5
+        "gap": -45.4
       },
       {
         "bin": "80%-90%",
-        "count": 1,
-        "actual_win_rate": 0.0,
+        "count": 2262,
+        "actual_win_rate": 45.1,
         "expected_mid": 85.0,
-        "gap": -85.0
+        "gap": -39.9
       },
       {
         "bin": "90%-100%",
@@ -479,52 +839,52 @@
       },
       {
         "bin": "30%-40%",
-        "count": 13,
-        "actual_win_rate": 30.8,
+        "count": 11,
+        "actual_win_rate": 36.4,
         "expected_mid": 35.0,
-        "gap": -4.2
+        "gap": 1.4
       },
       {
         "bin": "40%-50%",
-        "count": 91,
-        "actual_win_rate": 39.6,
+        "count": 82,
+        "actual_win_rate": 41.5,
         "expected_mid": 45.0,
-        "gap": -5.4
+        "gap": -3.5
       },
       {
         "bin": "50%-60%",
-        "count": 183,
-        "actual_win_rate": 39.9,
+        "count": 149,
+        "actual_win_rate": 32.9,
         "expected_mid": 55.0,
-        "gap": -15.1
+        "gap": -22.1
       },
       {
         "bin": "60%-70%",
-        "count": 154,
-        "actual_win_rate": 38.3,
+        "count": 165,
+        "actual_win_rate": 24.2,
         "expected_mid": 65.0,
-        "gap": -26.7
+        "gap": -40.8
       },
       {
         "bin": "70%-80%",
-        "count": 189,
-        "actual_win_rate": 43.9,
+        "count": 229,
+        "actual_win_rate": 18.3,
         "expected_mid": 75.0,
-        "gap": -31.1
+        "gap": -56.7
       },
       {
         "bin": "80%-90%",
-        "count": 298,
-        "actual_win_rate": 38.3,
+        "count": 565,
+        "actual_win_rate": 16.8,
         "expected_mid": 85.0,
-        "gap": -46.7
+        "gap": -68.2
       },
       {
         "bin": "90%-100%",
-        "count": 123,
-        "actual_win_rate": 41.5,
+        "count": 8412,
+        "actual_win_rate": 28.2,
         "expected_mid": 95.0,
-        "gap": -53.5
+        "gap": -66.8
       }
     ]
   }

@@ -632,6 +632,187 @@ def compute_edge_threshold_sweep(predictions: List[Dict]) -> List[Dict]:
     return results
 
 
+def compute_betting_experiments(predictions: List[Dict]) -> List[Dict]:
+    """Run many betting strategies on the full prediction set and return results."""
+    experiments = []
+
+    def _run(name: str, preds: List[Dict], bet_label_fn=None):
+        """Run a single experiment. bet_label_fn overrides predicted label if given."""
+        staked = 0
+        returned = 0.0
+        n_correct = 0
+        n_total = len(preds)
+        kelly_staked = 0.0
+        kelly_returned = 0.0
+        kelly_bets = 0
+        cumulative = []  # (match_idx, running_profit)
+
+        for p in preds:
+            label = bet_label_fn(p) if bet_label_fn else p["predicted"]
+            odds_map = {LABEL_HOME: p["home_odds"], LABEL_DRAW: p["draw_odds"], LABEL_AWAY: p["away_odds"]}
+            sel_odds = odds_map.get(label)
+            if not sel_odds or sel_odds <= 1.0:
+                continue
+            staked += 1
+            if label == p["actual"]:
+                returned += sel_odds
+                n_correct += 1
+            cumulative.append(returned - staked)
+
+            # Kelly
+            prob = [p["home_prob"], p["draw_prob"], p["away_prob"]][label]
+            b = sel_odds - 1.0
+            k = max(0.0, (b * prob - (1.0 - prob)) / b) if b > 0 else 0.0
+            k = min(k, 0.25)
+            if k > 0:
+                kelly_staked += k
+                kelly_bets += 1
+                if label == p["actual"]:
+                    kelly_returned += k * sel_odds
+
+        profit = returned - staked
+        roi = (profit / staked * 100) if staked > 0 else 0.0
+        acc = (n_correct / staked * 100) if staked > 0 else 0.0
+        k_profit = kelly_returned - kelly_staked
+        k_roi = (k_profit / kelly_staked * 100) if kelly_staked > 0 else 0.0
+        # Max drawdown from cumulative
+        max_dd = 0.0
+        peak = 0.0
+        for pl in cumulative:
+            if pl > peak:
+                peak = pl
+            dd = peak - pl
+            if dd > max_dd:
+                max_dd = dd
+
+        experiments.append({
+            "name": name,
+            "bets": staked,
+            "correct": n_correct,
+            "accuracy": acc,
+            "profit": profit,
+            "roi": roi,
+            "kelly_bets": kelly_bets,
+            "kelly_profit": k_profit,
+            "kelly_roi": k_roi,
+            "max_drawdown": max_dd,
+        })
+
+    # ── 1. ALL predictions (model picks) ──
+    _run("ALL predictions", predictions)
+
+    # ── 2. Confidence thresholds ──
+    for thresh in [0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70]:
+        filtered = [p for p in predictions if p["confidence"] >= thresh]
+        _run(f"Conf >= {thresh:.0%}", filtered)
+
+    # ── 3. Edge thresholds ──
+    for thresh in [0.02, 0.05, 0.10, 0.15, 0.20]:
+        filtered = [p for p in predictions if p["edge"] >= thresh]
+        _run(f"Edge >= {thresh:.0%}", filtered)
+
+    # ── 4. Only specific outcomes ──
+    _run("Only HOME picks", [p for p in predictions if p["predicted"] == LABEL_HOME])
+    _run("Only DRAW picks", [p for p in predictions if p["predicted"] == LABEL_DRAW])
+    _run("Only AWAY picks", [p for p in predictions if p["predicted"] == LABEL_AWAY])
+
+    # ── 5. OPPOSITE of model (always bet against) ──
+    def _opposite(p):
+        probs = [(p["home_prob"], LABEL_HOME), (p["draw_prob"], LABEL_DRAW), (p["away_prob"], LABEL_AWAY)]
+        probs.sort(key=lambda x: x[0])  # lowest prob first
+        return probs[0][1]  # bet on LEAST likely outcome
+    _run("OPPOSITE (least likely)", predictions, bet_label_fn=_opposite)
+
+    # ── 6. Baselines: always bet Home / Draw / Away ──
+    _run("Baseline: always HOME", predictions, bet_label_fn=lambda p: LABEL_HOME)
+    _run("Baseline: always DRAW", predictions, bet_label_fn=lambda p: LABEL_DRAW)
+    _run("Baseline: always AWAY", predictions, bet_label_fn=lambda p: LABEL_AWAY)
+
+    # ── 7. Favourite (lowest odds) / Underdog (highest odds) ──
+    def _favourite(p):
+        odds = [(p.get("home_odds") or 99, LABEL_HOME),
+                (p.get("draw_odds") or 99, LABEL_DRAW),
+                (p.get("away_odds") or 99, LABEL_AWAY)]
+        odds.sort(key=lambda x: x[0])
+        return odds[0][1]
+    _run("Baseline: FAVOURITE", predictions, bet_label_fn=_favourite)
+
+    def _underdog(p):
+        odds = [(p.get("home_odds") or 0, LABEL_HOME),
+                (p.get("draw_odds") or 0, LABEL_DRAW),
+                (p.get("away_odds") or 0, LABEL_AWAY)]
+        odds.sort(key=lambda x: x[0], reverse=True)
+        return odds[0][1]
+    _run("Baseline: UNDERDOG", predictions, bet_label_fn=_underdog)
+
+    # ── 8. Kelly-only (only bet when kelly > 0) ──
+    kelly_only = [p for p in predictions if p.get("kelly", 0) > 0]
+    _run("Kelly filter (k>0)", kelly_only)
+
+    # ── 9. High-value: edge>5% AND conf>45% ──
+    hv = [p for p in predictions if p["edge"] >= 0.05 and p["confidence"] >= 0.45]
+    _run("Edge>=5% + Conf>=45%", hv)
+
+    hv2 = [p for p in predictions if p["edge"] >= 0.10 and p["confidence"] >= 0.50]
+    _run("Edge>=10% + Conf>=50%", hv2)
+
+    return experiments
+
+
+def print_betting_experiments(v1_exps: List[Dict], v2_exps: List[Dict]):
+    """Print side-by-side betting experiment comparison."""
+    print_header("BETTING EXPERIMENTS (1 unit flat stake per bet)")
+    print()
+    print(f"  {'Strategy':<26} │ {'v1 Bets':>7} {'v1 Acc':>7} {'v1 Profit':>10} {'v1 ROI%':>8} │ {'v2 Bets':>7} {'v2 Acc':>7} {'v2 Profit':>10} {'v2 ROI%':>8}")
+    print(f"  {'─'*26} │ {'─'*7} {'─'*7} {'─'*10} {'─'*8} │ {'─'*7} {'─'*7} {'─'*10} {'─'*8}")
+
+    for v1e, v2e in zip(v1_exps, v2_exps):
+        name = v1e["name"]
+        v1_bets = str(v1e["bets"])
+        v1_acc = f"{v1e['accuracy']:.1f}%" if v1e["bets"] else "—"
+        v1_p = f"{v1e['profit']:+.1f}u" if v1e["bets"] else "—"
+        v1_r = f"{v1e['roi']:+.1f}%" if v1e["bets"] else "—"
+        v2_bets = str(v2e["bets"])
+        v2_acc = f"{v2e['accuracy']:.1f}%" if v2e["bets"] else "—"
+        v2_p = f"{v2e['profit']:+.1f}u" if v2e["bets"] else "—"
+        v2_r = f"{v2e['roi']:+.1f}%" if v2e["bets"] else "—"
+
+        # Color profit
+        if v1e["bets"] and v1e["profit"] > 0:
+            v1_p = f"\033[92m{v1_p}\033[0m"
+            v1_r = f"\033[92m{v1_r}\033[0m"
+        elif v1e["bets"] and v1e["profit"] < 0:
+            v1_p = f"\033[91m{v1_p}\033[0m"
+            v1_r = f"\033[91m{v1_r}\033[0m"
+        if v2e["bets"] and v2e["profit"] > 0:
+            v2_p = f"\033[92m{v2_p}\033[0m"
+            v2_r = f"\033[92m{v2_r}\033[0m"
+        elif v2e["bets"] and v2e["profit"] < 0:
+            v2_p = f"\033[91m{v2_p}\033[0m"
+            v2_r = f"\033[91m{v2_r}\033[0m"
+
+        print(f"  {name:<26} │ {v1_bets:>7} {v1_acc:>7} {v1_p:>10} {v1_r:>8} │ {v2_bets:>7} {v2_acc:>7} {v2_p:>10} {v2_r:>8}")
+    print()
+
+    # Kelly summary
+    print(f"  {'KELLY STAKING':^26}")
+    print(f"  {'Strategy':<26} │ {'v1 KBets':>7} {'v1 KProf':>10} {'v1 KROI%':>8} {'v1 MaxDD':>8} │ {'v2 KBets':>7} {'v2 KProf':>10} {'v2 KROI%':>8} {'v2 MaxDD':>8}")
+    print(f"  {'─'*26} │ {'─'*7} {'─'*10} {'─'*8} {'─'*8} │ {'─'*7} {'─'*10} {'─'*8} {'─'*8}")
+
+    for v1e, v2e in zip(v1_exps[:5], v2_exps[:5]):  # Top 5 strategies only for Kelly
+        name = v1e["name"]
+        v1_kb = str(v1e["kelly_bets"])
+        v1_kp = f"{v1e['kelly_profit']:+.1f}u" if v1e["kelly_bets"] else "—"
+        v1_kr = f"{v1e['kelly_roi']:+.1f}%" if v1e["kelly_bets"] else "—"
+        v1_dd = f"{v1e['max_drawdown']:.1f}u"
+        v2_kb = str(v2e["kelly_bets"])
+        v2_kp = f"{v2e['kelly_profit']:+.1f}u" if v2e["kelly_bets"] else "—"
+        v2_kr = f"{v2e['kelly_roi']:+.1f}%" if v2e["kelly_bets"] else "—"
+        v2_dd = f"{v2e['max_drawdown']:.1f}u"
+        print(f"  {name:<26} │ {v1_kb:>7} {v1_kp:>10} {v1_kr:>8} {v1_dd:>8} │ {v2_kb:>7} {v2_kp:>10} {v2_kr:>8} {v2_dd:>8}")
+    print()
+
+
 def compute_calibration(predictions: List[Dict], n_bins: int = 10) -> List[Dict]:
     """Compute calibration table: predicted probability bins vs actual frequency."""
     bins = [[] for _ in range(n_bins)]
@@ -1053,6 +1234,11 @@ def generate_report(v1_preds: List[Dict], v2_preds: List[Dict], label: str):
     v2_cal = compute_calibration(v2_preds)
     print_calibration(v1_cal, v2_cal)
 
+    # Betting experiments (ALL matches, filters, baselines, opposite, etc.)
+    v1_exps = compute_betting_experiments(v1_preds)
+    v2_exps = compute_betting_experiments(v2_preds)
+    print_betting_experiments(v1_exps, v2_exps)
+
     return {
         "label": label,
         "v1": v1_metrics,
@@ -1063,6 +1249,8 @@ def generate_report(v1_preds: List[Dict], v2_preds: List[Dict], label: str):
         "v2_edge_sweep": v2_edge,
         "v1_calibration": v1_cal,
         "v2_calibration": v2_cal,
+        "v1_experiments": v1_exps,
+        "v2_experiments": v2_exps,
     }
 
 
@@ -1076,7 +1264,25 @@ def main():
     parser.add_argument("--leagues", type=str, default=None,
                         help="Comma-separated league codes (e.g. PL,PD). Default: all CSV leagues")
     parser.add_argument("--verbose", "-v", action="store_true", help="Debug logging")
+    parser.add_argument("--analyze", type=str, default=None,
+                        help="Re-run analysis on saved predictions JSON (skip training)")
     args = parser.parse_args()
+
+    # ── Analyze-only mode: re-run experiments on saved predictions ──
+    if args.analyze:
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
+        pred_path = Path(args.analyze)
+        if not pred_path.exists():
+            print(f"File not found: {pred_path}")
+            return
+        with open(pred_path) as f:
+            raw_preds = json.load(f)
+        for mode_name, mode_data in raw_preds.items():
+            v1_preds = mode_data.get("v1", [])
+            v2_preds = mode_data.get("v2", [])
+            if v1_preds or v2_preds:
+                generate_report(v1_preds, v2_preds, f"Re-analysis: {mode_name}")
+        return
 
     # Neither flag means both
     run_holdout = args.holdout or (not args.holdout and not args.walk_forward)
@@ -1119,6 +1325,8 @@ def main():
     engine = BacktestEngine(all_matches, db, leagues)
     results = {}
 
+    raw_preds = {}  # store raw predictions for later re-analysis
+
     # ── Holdout ──
     if run_holdout:
         print_header("HOLDOUT BACKTEST")
@@ -1127,6 +1335,7 @@ def main():
         v1_h, v2_h = engine.run_holdout(train_seasons, test_seasons)
         if v1_h or v2_h:
             results["holdout"] = generate_report(v1_h, v2_h, f"Holdout (train {train_seasons[0]}-{train_seasons[-1]}, test {test_seasons[0]}-{test_seasons[-1]})")
+            raw_preds["holdout"] = {"v1": v1_h, "v2": v2_h}
 
     # ── Walk-Forward ──
     if run_wf:
@@ -1134,6 +1343,7 @@ def main():
         v1_wf, v2_wf = engine.run_walk_forward(start_test_season=2019)
         if v1_wf or v2_wf:
             results["walk_forward"] = generate_report(v1_wf, v2_wf, "Walk-Forward (2019-2025)")
+            raw_preds["walk_forward"] = {"v1": v1_wf, "v2": v2_wf}
 
     # ── Save results to JSON ──
     output_path = ROOT / "data" / "backtest_results.json"
@@ -1143,6 +1353,15 @@ def main():
         logger.info(f"\nResults saved to {output_path}")
     except Exception as e:
         logger.warning(f"Could not save JSON: {e}")
+
+    # ── Save raw predictions for later re-analysis ──
+    raw_path = ROOT / "data" / "backtest_predictions.json"
+    try:
+        with open(raw_path, "w") as f:
+            json.dump(raw_preds, f, indent=2, default=str)
+        logger.info(f"Raw predictions saved to {raw_path}")
+    except Exception as e:
+        logger.warning(f"Could not save raw predictions: {e}")
 
     elapsed = time.time() - t0
     print_header(f"BACKTEST COMPLETE — {elapsed/60:.1f} minutes")

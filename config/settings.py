@@ -73,6 +73,32 @@ ML_SETTINGS = {
     "ensemble": {
         "weights": {"xgboost": 0.4, "neural_network": 0.35, "random_forest": 0.25},
     },
+    "coupon": {
+        "min_edge_pct": 5.0,          # require ≥5% edge (backtest-validated)
+        "min_confidence_pct": 40.0,    # require ≥40% confidence
+        "min_picks": 2,
+        "max_picks": 6,
+        "max_per_league": 2,
+        "skip_high_disagreement": False,
+    },
+}
+
+# ──────────────────────────────────────────────
+# PAPER TRADING — live tracking before real money
+# Based on full 10-league holdout backtest (9613 matches):
+#   v1 overall: +3.7% ROI (flat), +2.7% ROI (Kelly)
+# ──────────────────────────────────────────────
+PAPER_TRADING = {
+    # Leagues with positive ROI in backtest (exclude ELC -4.3%)
+    "profitable_leagues": ["DED", "BL1", "SA", "BSA", "PL", "FL1", "BL2", "PD", "PPL"],
+    "excluded_leagues": ["ELC"],  # Championship: -4.3% ROI in backtest
+    # Filtering
+    "min_edge_pct": 5.0,
+    "min_confidence_pct": 40.0,
+    # Paper bankroll (DKK) — for tracking, not real money
+    "starting_bankroll": 10000,
+    "stake_per_bet": 100,       # flat 100 DKK per bet
+    "use_kelly": False,         # start with flat staking
 }
 
 # ──────────────────────────────────────────────
