@@ -81,7 +81,7 @@ jobs:
         run: |
           curl -s -X GET \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            "https://www.aibets.dk/api/cron/update-predictions" \
+            "https://www.aibets.dk/api/cron/update-predictions?force=1" \
             -o /dev/null -w "Cron response: %{http_code}\n"
 
       - name: Upload logs
