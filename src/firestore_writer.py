@@ -26,6 +26,82 @@ from firebase_admin import credentials, firestore
 log = logging.getLogger("firestore_writer")
 
 
+def build_coupon_history_payload(coupons: list) -> dict:
+    """Build the frontend coupon_history cache payload from coupon documents."""
+    valid_coupons = []
+    for data in coupons:
+        picks = data.get("picks") or []
+        status = data.get("status") or "pending"
+
+        if not picks and status != "skipped":
+            continue
+
+        pick_results = data.get("pickResults") or []
+        has_results = any(r in ("won", "lost") for r in pick_results)
+        if status in ("won", "lost") and not has_results:
+            continue
+
+        valid_coupons.append({
+            "date": data.get("date"),
+            "picks": picks,
+            "totalOdds": data.get("totalOdds") or 0,
+            "status": status,
+            "pickResults": pick_results,
+            "reason": data.get("reason"),
+            "candidateCount": data.get("candidateCount"),
+        })
+
+    won = sum(1 for c in valid_coupons if c["status"] == "won")
+    lost = sum(1 for c in valid_coupons if c["status"] == "lost")
+    pending = sum(1 for c in valid_coupons if c["status"] == "pending")
+    skipped = sum(1 for c in valid_coupons if c["status"] == "skipped")
+    decided = won + lost
+
+    total_picks = 0
+    correct_picks = 0
+    league_map: Dict[str, Dict[str, int]] = {}
+    for coupon in valid_coupons:
+        pick_results = coupon.get("pickResults") or []
+        for idx, pick in enumerate(coupon.get("picks") or []):
+            result = pick_results[idx] if idx < len(pick_results) else None
+            if result not in ("won", "lost"):
+                continue
+            total_picks += 1
+            if result == "won":
+                correct_picks += 1
+
+            league = pick.get("league") or "Ukendt"
+            if league not in league_map:
+                league_map[league] = {"total": 0, "correct": 0}
+            league_map[league]["total"] += 1
+            if result == "won":
+                league_map[league]["correct"] += 1
+
+    league_stats = [
+        {
+            "league": league,
+            "total": stats["total"],
+            "correct": stats["correct"],
+            "accuracy": round((stats["correct"] / stats["total"]) * 100) if stats["total"] else 0,
+        }
+        for league, stats in league_map.items()
+    ]
+
+    return {
+        "total": len(valid_coupons),
+        "won": won,
+        "lost": lost,
+        "pending": pending,
+        "skipped": skipped,
+        "winRate": round((won / decided) * 100) if decided else 0,
+        "totalPicks": total_picks,
+        "correctPicks": correct_picks,
+        "pickHitRate": round((correct_picks / total_picks) * 100) if total_picks else 0,
+        "leagueStats": league_stats,
+        "coupons": valid_coupons,
+    }
+
+
 # ──────────────────────────────────────────
 # Team name normalization
 # ──────────────────────────────────────────
@@ -343,7 +419,32 @@ class FirestoreWriter:
             "totalOdds": round(total_odds, 2),
             "status": "pending",
             "createdAt": firestore.SERVER_TIMESTAMP,
+            "updatedAt": firestore.SERVER_TIMESTAMP,
         })
+
+    def save_no_coupon(self, date_str: str, reason: str, meta: Optional[dict] = None):
+        """Record that today's coupon was intentionally skipped."""
+        ref = self.db.collection("daily_coupons").document(date_str)
+        existing = ref.get()
+        if existing.exists:
+            data = existing.to_dict()
+            if data.get("status") not in (None, "pending", "skipped"):
+                return
+            if data.get("picks"):
+                return
+
+        doc = {
+            "date": date_str,
+            "picks": [],
+            "totalOdds": 0,
+            "status": "skipped",
+            "reason": reason,
+            "createdAt": firestore.SERVER_TIMESTAMP,
+            "updatedAt": firestore.SERVER_TIMESTAMP,
+        }
+        if meta:
+            doc.update(meta)
+        ref.set(doc, merge=True)
 
     def get_pending_coupons(self) -> list:
         """Get all pending daily coupons."""
@@ -357,6 +458,7 @@ class FirestoreWriter:
             "status": "won" if all_correct else "lost",
             "pickResults": pick_results,
             "evaluatedAt": firestore.SERVER_TIMESTAMP,
+            "updatedAt": firestore.SERVER_TIMESTAMP,
         })
 
     # ──────────────────────────────────────
@@ -370,6 +472,19 @@ class FirestoreWriter:
             "updatedAt": firestore.SERVER_TIMESTAMP,
             "date": datetime.utcnow().strftime("%Y-%m-%d"),
         })
+
+    def refresh_coupon_history_cache(self, limit: int = 30) -> dict:
+        """Refresh cache/coupon_history from daily_coupons."""
+        snap = (
+            self.db.collection("daily_coupons")
+            .order_by("date", direction=firestore.Query.DESCENDING)
+            .limit(limit)
+            .get()
+        )
+        payload = build_coupon_history_payload([d.to_dict() for d in snap])
+        self.write_cache("coupon_history", payload)
+        log.info("Refreshed coupon_history cache with %s coupons", payload["total"])
+        return payload
 
     # ──────────────────────────────────────
     # READS (for evaluation)

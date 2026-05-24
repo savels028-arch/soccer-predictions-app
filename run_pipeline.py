@@ -1756,6 +1756,16 @@ class PredictionPipeline:
                 f"  Only {len(picks)} quality picks — skipping coupon instead of "
                 "relaxing edge/confidence filters"
             )
+            self.fs.save_no_coupon(today, "not_enough_quality_picks", {
+                "candidateCount": len(candidates),
+                "selectedCount": len(picks),
+                "minPicks": min_picks,
+                "minEdgePct": min_edge_pct,
+                "minConfidencePct": min_confidence_pct,
+                "version": version_label,
+                "strategy": coupon_strategy,
+            })
+            self.fs.refresh_coupon_history_cache()
             return
 
         if picks:
@@ -1785,10 +1795,19 @@ class PredictionPipeline:
                     extra={"couponDate": today, "totalOddsBeforeLeg": round(total_odds, 2)},
                 )
             self.fs.save_daily_coupon(today, picks, total_odds)
+            self.fs.refresh_coupon_history_cache()
             log.info(f"  Daily coupon ({version_label}): {len(picks)} picks, total odds: {total_odds:.2f}")
             if skipped_league:
                 log.info(f"  Skipped {skipped_league} predictions from excluded leagues")
         else:
+            self.fs.save_no_coupon(today, "no_suitable_picks", {
+                "candidateCount": len(candidates),
+                "selectedCount": 0,
+                "minPicks": min_picks,
+                "version": version_label,
+                "strategy": coupon_strategy,
+            })
+            self.fs.refresh_coupon_history_cache()
             log.info("  No suitable picks for today's coupon")
 
     # ──────────────────────────────────────
@@ -1914,6 +1933,7 @@ class PredictionPipeline:
         # Evaluate pending coupons
         try:
             self._evaluate_coupons(finished)
+            self.fs.refresh_coupon_history_cache()
         except Exception as e:
             if "Quota" in str(e) or "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
                 log.warning("  Skipping coupon evaluation — Firestore quota exhausted")
@@ -2170,6 +2190,10 @@ class PredictionPipeline:
             "predictions": ai_preds,
             "odds_matches": odds_matches,
         })
+        try:
+            self.fs.refresh_coupon_history_cache()
+        except Exception as e:
+            log.warning(f"  Coupon history cache refresh failed: {e}")
 
         # cache/paper_trading — live P&L tracker
         try:

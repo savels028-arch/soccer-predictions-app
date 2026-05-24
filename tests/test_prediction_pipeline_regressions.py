@@ -30,6 +30,7 @@ from src.predictions.feature_engineering import FeatureEngineer, FeatureEngineer
 from src.predictions.models import RandomForestModel
 from src.predictions.prediction_engine import PredictionEngine
 from run_pipeline import _calibrate_probs_by_league, _historical_h2h_coupon_pick
+from src.firestore_writer import build_coupon_history_payload
 
 
 def _match(api_id, home, away, when, home_score, away_score, season=2024):
@@ -252,6 +253,41 @@ def test_league_calibration_blends_toward_priors():
     assert calibrated["home"] == pytest.approx(0.57)
     assert calibrated["draw"] == pytest.approx(0.22)
     assert calibrated["away"] == pytest.approx(0.21)
+
+
+def test_coupon_history_payload_keeps_skipped_days_and_excludes_bad_legacy_docs():
+    payload = build_coupon_history_payload([
+        {
+            "date": "2026-05-24",
+            "status": "skipped",
+            "reason": "not_enough_quality_picks",
+            "picks": [],
+        },
+        {
+            "date": "2026-05-23",
+            "status": "lost",
+            "picks": [{"league": "PL"}],
+            "pickResults": ["lost"],
+        },
+        {
+            "date": "2026-05-22",
+            "status": "won",
+            "picks": [{"league": "PL"}],
+            "pickResults": [],
+        },
+        {
+            "date": "2026-05-21",
+            "status": "pending",
+            "picks": [],
+        },
+    ])
+
+    assert payload["total"] == 2
+    assert payload["skipped"] == 1
+    assert payload["lost"] == 1
+    assert payload["totalPicks"] == 1
+    assert payload["coupons"][0]["status"] == "skipped"
+    assert payload["coupons"][0]["reason"] == "not_enough_quality_picks"
 
 
 def test_prediction_results_normalize_legacy_outcome_labels(tmp_path):
