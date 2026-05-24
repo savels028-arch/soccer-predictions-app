@@ -101,6 +101,35 @@ python run_pipeline.py --context-only     # Hent lineups/skader/spillerdata
 python run_pipeline.py --watch            # Kør løbende hvert 15. minut
 ```
 
+### Privat lokal drift uden Vercel/GitHub Actions
+
+Hvis siden kun skal bruges privat, kan din Mac selv opdatere data og du kan åbne
+siden lokalt.
+
+```bash
+# Start hjemmesiden lokalt
+scripts/start-local-site.sh
+
+# Kør en fuld dataopdatering manuelt
+scripts/run-local-pipeline.sh
+
+# Installer automatisk lokal opdatering via macOS launchd
+scripts/install-local-scheduler.sh
+```
+
+Den lokale scheduler kører når Mac'en er vågen:
+
+- daglig full pipeline kl. 08:30
+- odds snapshot kl. 12:00
+- resultatevaluering kl. 23:15
+- retraining mandag kl. 07:00
+
+Stop scheduler igen med:
+
+```bash
+scripts/uninstall-local-scheduler.sh
+```
+
 ### Med API nøgler
 
 ```bash
