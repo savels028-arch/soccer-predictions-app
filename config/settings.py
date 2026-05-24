@@ -36,6 +36,26 @@ FOOTBALL_DATA_BASE_URL = "https://api.football-data.org/v4"
 API_FOOTBALL_BASE_URL = "https://v3.football.api-sports.io"
 
 # ──────────────────────────────────────────────
+# DATA ENRICHMENT
+# ──────────────────────────────────────────────
+DATA_ENRICHMENT = {
+    # Uses API-Football when API_FOOTBALL_KEY is set.
+    "enabled": True,
+    "api_football_context": True,
+    # Free tier is usually 100 req/day. A fixture context can cost up to
+    # four requests: lineups, injuries, player stats, fixture stats.
+    "max_context_matches_per_run": 12,
+    # Probability calibration blends model probabilities toward recent
+    # league base rates. Small value on purpose until live CLV proves it.
+    "league_calibration_enabled": True,
+    "league_calibration_strength": 0.15,
+    "league_calibration_min_matches": 80,
+    "league_calibration_history_limit": 600,
+    # Do not relax into many weak bets.
+    "save_all_pick_candidates": True,
+}
+
+# ──────────────────────────────────────────────
 # SUPPORTED LEAGUES
 # ──────────────────────────────────────────────
 LEAGUES = {
@@ -74,27 +94,41 @@ ML_SETTINGS = {
         "weights": {"xgboost": 0.4, "neural_network": 0.35, "random_forest": 0.25},
     },
     "coupon": {
-        "min_edge_pct": 5.0,          # require ≥5% edge (backtest-validated)
-        "min_confidence_pct": 40.0,    # require ≥40% confidence
+        # Strategy-zoo walk-forward 2012-2025:
+        # mature H2H coupons: +4,352 DKK from 10,000, 55.9% coupon hit,
+        # 626 DKK max drawdown. Singles stayed negative, so coupon-first.
+        "strategy": "historical_h2h_coupon",
+        "min_h2h_matches": 10,
+        "min_h2h_rate_pct": 75.0,
+        "odds_min": 1.20,
+        "odds_max": 2.50,
+        "min_edge_pct": 2.0,
+        "min_confidence_pct": 75.0,
         "min_picks": 2,
-        "max_picks": 6,
+        "max_picks": 2,
         "max_per_league": 2,
+        "allowed_leagues": ["BL1", "DED", "FL1", "PD", "PL", "PPL", "SA"],
         "skip_high_disagreement": False,
+        "sort_by": "confidence",
     },
 }
 
 # ──────────────────────────────────────────────
 # PAPER TRADING — live tracking before real money
-# Based on full 10-league holdout backtest (9613 matches):
-#   v1 overall: +3.7% ROI (flat), +2.7% ROI (Kelly)
+# Based on walk-forward 2019-2025 (22495 evaluated predictions):
+#   v1 Serie A draw market-underdog with model edge >= 2%:
+#     +7,255 DKK from 10,000, 36.1% hit rate, 1,010 DKK max drawdown.
+#   v1 top-league value coupons: +13,632 DKK from 10,000.
+#   v2 remains disabled because it lost on accuracy, Brier, and log loss.
 # ──────────────────────────────────────────────
 PAPER_TRADING = {
-    # Leagues with positive ROI in backtest (exclude ELC -4.3%)
-    "profitable_leagues": ["DED", "BL1", "SA", "BSA", "PL", "FL1", "BL2", "PD", "PPL"],
-    "excluded_leagues": ["ELC"],  # Championship: -4.3% ROI in backtest
+    "profitable_leagues": ["SA"],
+    "excluded_leagues": ["ELC"],
     # Filtering
-    "min_edge_pct": 5.0,
-    "min_confidence_pct": 40.0,
+    "bet_style": "market_underdog",
+    "outcome_filter": "draw",
+    "min_edge_pct": 2.0,
+    "min_confidence_pct": None,
     # Paper bankroll (DKK) — for tracking, not real money
     "starting_bankroll": 10000,
     "stake_per_bet": 100,       # flat 100 DKK per bet

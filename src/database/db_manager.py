@@ -216,6 +216,71 @@ class DatabaseManager:
             )
         """)
 
+        # ── Odds Movement Snapshots ──
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS odds_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                match_id TEXT NOT NULL,
+                match_date TEXT,
+                home_team TEXT NOT NULL,
+                away_team TEXT NOT NULL,
+                source TEXT NOT NULL,
+                market TEXT DEFAULT '1x2',
+                home_odds REAL,
+                draw_odds REAL,
+                away_odds REAL,
+                implied_home REAL,
+                implied_draw REAL,
+                implied_away REAL,
+                extra_data TEXT,
+                captured_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # ── Pick Snapshots for CLV and paper trading ──
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS pick_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                match_id TEXT NOT NULL,
+                match_date TEXT,
+                home_team TEXT NOT NULL,
+                away_team TEXT NOT NULL,
+                source TEXT NOT NULL,
+                model_version TEXT,
+                strategy TEXT,
+                pick TEXT NOT NULL,
+                probability REAL,
+                edge REAL,
+                odds_at_pick REAL,
+                closing_odds REAL,
+                clv_pct REAL,
+                extra_data TEXT,
+                captured_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # ── Match Context: lineups, injuries, player stats, xG/event summaries ──
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS match_context (
+                match_id TEXT NOT NULL,
+                source TEXT NOT NULL,
+                match_date TEXT,
+                home_team TEXT NOT NULL,
+                away_team TEXT NOT NULL,
+                home_missing_players INTEGER DEFAULT 0,
+                away_missing_players INTEGER DEFAULT 0,
+                home_lineup_players INTEGER DEFAULT 0,
+                away_lineup_players INTEGER DEFAULT 0,
+                home_player_rating_avg REAL,
+                away_player_rating_avg REAL,
+                home_xg REAL,
+                away_xg REAL,
+                context_json TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (match_id, source)
+            )
+        """)
+
         # ── Indexes ──
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_matches_date ON matches(match_date)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_matches_league ON matches(league_code)")
@@ -224,9 +289,30 @@ class DatabaseManager:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_team_stats_team ON team_stats(team_name)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_h2h_teams ON head_to_head(home_team, away_team)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_pred_results_date ON prediction_results(match_date)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_odds_snapshots_match ON odds_snapshots(match_id, captured_at)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_pick_snapshots_match ON pick_snapshots(match_id, captured_at)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_match_context_match ON match_context(match_id)")
 
         self.conn.commit()
         logger.info("Database tables created/verified")
+
+    @staticmethod
+    def _normalize_outcome(outcome: Any) -> Optional[str]:
+        """Normalize outcome labels so hit-rate comparisons use one format."""
+        if outcome is None:
+            return None
+        key = str(outcome).strip().upper().replace(" ", "_").replace("-", "_")
+        aliases = {
+            "HOME": "HOME_WIN",
+            "HOME_WIN": "HOME_WIN",
+            "1": "HOME_WIN",
+            "AWAY": "AWAY_WIN",
+            "AWAY_WIN": "AWAY_WIN",
+            "2": "AWAY_WIN",
+            "DRAW": "DRAW",
+            "X": "DRAW",
+        }
+        return aliases.get(key, key)
 
     # ──────────────────────────────────────────────
     # TEAM OPERATIONS
@@ -450,13 +536,20 @@ class DatabaseManager:
         """, (home, away, league_code, match_date, home_score, away_score, season))
         self.conn.commit()
 
-    def get_h2h(self, team1: str, team2: str, limit: int = 10) -> List[Dict]:
+    def get_h2h(self, team1: str, team2: str, limit: int = 10,
+                before_date: str = None) -> List[Dict]:
         cursor = self.conn.cursor()
-        cursor.execute("""
+        query = """
             SELECT * FROM head_to_head
-            WHERE (home_team = ? AND away_team = ?) OR (home_team = ? AND away_team = ?)
-            ORDER BY match_date DESC LIMIT ?
-        """, (team1, team2, team2, team1, limit))
+            WHERE ((home_team = ? AND away_team = ?) OR (home_team = ? AND away_team = ?))
+        """
+        params: List[Any] = [team1, team2, team2, team1]
+        if before_date:
+            query += " AND DATE(match_date) < DATE(?)"
+            params.append(before_date)
+        query += " ORDER BY match_date DESC LIMIT ?"
+        params.append(limit)
+        cursor.execute(query, params)
         return [dict(row) for row in cursor.fetchall()]
 
     # ──────────────────────────────────────────────
@@ -503,6 +596,221 @@ class DatabaseManager:
             ORDER BY confidence DESC
         """, (today,))
         return [dict(row) for row in cursor.fetchall()]
+
+    # ──────────────────────────────────────────────
+    # ODDS / PICK / CONTEXT TRACKING
+    # ──────────────────────────────────────────────
+    @staticmethod
+    def _implied_probabilities(home_odds: float, draw_odds: float, away_odds: float) -> Dict[str, float]:
+        if not home_odds or not draw_odds or not away_odds:
+            return {}
+        if home_odds <= 1.0 or draw_odds <= 1.0 or away_odds <= 1.0:
+            return {}
+        total = 1 / home_odds + 1 / draw_odds + 1 / away_odds
+        if total <= 0:
+            return {}
+        return {
+            "home": round((1 / home_odds) / total, 4),
+            "draw": round((1 / draw_odds) / total, 4),
+            "away": round((1 / away_odds) / total, 4),
+        }
+
+    def save_odds_snapshot(
+        self,
+        match_id: str,
+        match_date: str,
+        home_team: str,
+        away_team: str,
+        source: str,
+        odds: Dict[str, Any],
+        market: str = "1x2",
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> int:
+        """Persist every observed odds update so CLV can be measured later."""
+        home_odds = float(odds.get("home") or odds.get("home_odds") or 0.0)
+        draw_odds = float(odds.get("draw") or odds.get("draw_odds") or 0.0)
+        away_odds = float(odds.get("away") or odds.get("away_odds") or 0.0)
+        implied = self._implied_probabilities(home_odds, draw_odds, away_odds)
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            INSERT INTO odds_snapshots (
+                match_id, match_date, home_team, away_team, source, market,
+                home_odds, draw_odds, away_odds,
+                implied_home, implied_draw, implied_away, extra_data
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            match_id, match_date, home_team, away_team, source, market,
+            home_odds, draw_odds, away_odds,
+            implied.get("home"), implied.get("draw"), implied.get("away"),
+            json.dumps(extra or {}),
+        ))
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def get_latest_odds_snapshot(self, match_id: str, source: Optional[str] = None) -> Optional[Dict]:
+        cursor = self.conn.cursor()
+        if source:
+            cursor.execute("""
+                SELECT * FROM odds_snapshots
+                WHERE match_id = ? AND source = ?
+                ORDER BY captured_at DESC, id DESC LIMIT 1
+            """, (match_id, source))
+        else:
+            cursor.execute("""
+                SELECT * FROM odds_snapshots
+                WHERE match_id = ?
+                ORDER BY captured_at DESC, id DESC LIMIT 1
+            """, (match_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def save_pick_snapshot(
+        self,
+        match_id: str,
+        match_date: str,
+        home_team: str,
+        away_team: str,
+        source: str,
+        pick: str,
+        odds_at_pick: float,
+        probability: float = 0.0,
+        edge: float = 0.0,
+        model_version: str = "",
+        strategy: str = "",
+        closing_odds: Optional[float] = None,
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> int:
+        """Persist a chosen bet candidate with the exact odds seen at decision time."""
+        clv_pct = None
+        if odds_at_pick and closing_odds and closing_odds > 0:
+            clv_pct = round((float(odds_at_pick) / float(closing_odds) - 1.0) * 100, 2)
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            INSERT INTO pick_snapshots (
+                match_id, match_date, home_team, away_team, source, model_version,
+                strategy, pick, probability, edge, odds_at_pick, closing_odds,
+                clv_pct, extra_data
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            match_id, match_date, home_team, away_team, source, model_version,
+            strategy, pick.upper(), probability, edge, odds_at_pick,
+            closing_odds, clv_pct, json.dumps(extra or {}),
+        ))
+        self.conn.commit()
+        return cursor.lastrowid
+
+    def upsert_match_context(
+        self,
+        match_id: str,
+        source: str,
+        match_date: str,
+        home_team: str,
+        away_team: str,
+        context: Dict[str, Any],
+    ):
+        """Store pre-match context such as lineups, injuries and player ratings."""
+        summary = context.get("summary", {}) if isinstance(context, dict) else {}
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            INSERT INTO match_context (
+                match_id, source, match_date, home_team, away_team,
+                home_missing_players, away_missing_players,
+                home_lineup_players, away_lineup_players,
+                home_player_rating_avg, away_player_rating_avg,
+                home_xg, away_xg, context_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(match_id, source) DO UPDATE SET
+                match_date=excluded.match_date,
+                home_team=excluded.home_team,
+                away_team=excluded.away_team,
+                home_missing_players=excluded.home_missing_players,
+                away_missing_players=excluded.away_missing_players,
+                home_lineup_players=excluded.home_lineup_players,
+                away_lineup_players=excluded.away_lineup_players,
+                home_player_rating_avg=excluded.home_player_rating_avg,
+                away_player_rating_avg=excluded.away_player_rating_avg,
+                home_xg=excluded.home_xg,
+                away_xg=excluded.away_xg,
+                context_json=excluded.context_json,
+                updated_at=CURRENT_TIMESTAMP
+        """, (
+            match_id, source, match_date, home_team, away_team,
+            summary.get("home_missing_players", 0),
+            summary.get("away_missing_players", 0),
+            summary.get("home_lineup_players", 0),
+            summary.get("away_lineup_players", 0),
+            summary.get("home_player_rating_avg"),
+            summary.get("away_player_rating_avg"),
+            summary.get("home_xg"),
+            summary.get("away_xg"),
+            json.dumps(context or {}),
+        ))
+        self.conn.commit()
+
+    def get_match_context(self, match_id: str, source: Optional[str] = None) -> Optional[Dict]:
+        cursor = self.conn.cursor()
+        if source:
+            cursor.execute("""
+                SELECT * FROM match_context
+                WHERE match_id = ? AND source = ?
+            """, (match_id, source))
+        else:
+            cursor.execute("""
+                SELECT * FROM match_context
+                WHERE match_id = ?
+                ORDER BY updated_at DESC LIMIT 1
+            """, (match_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        data = dict(row)
+        try:
+            data["context"] = json.loads(data.get("context_json") or "{}")
+        except Exception:
+            data["context"] = {}
+        return data
+
+    def get_league_outcome_priors(
+        self,
+        league_code: str,
+        before_date: Optional[str] = None,
+        min_matches: int = 80,
+        limit: int = 600,
+    ) -> Optional[Dict[str, float]]:
+        """Return recent league 1X2 base rates for probability calibration."""
+        cursor = self.conn.cursor()
+        params: List[Any] = [league_code]
+        date_filter = ""
+        if before_date:
+            date_filter = "AND DATE(match_date) < DATE(?)"
+            params.append(before_date)
+        params.append(limit)
+        cursor.execute(f"""
+            SELECT home_score, away_score FROM matches
+            WHERE status = 'FINISHED'
+              AND league_code = ?
+              AND home_score IS NOT NULL
+              AND away_score IS NOT NULL
+              {date_filter}
+            ORDER BY match_date DESC LIMIT ?
+        """, params)
+        rows = cursor.fetchall()
+        if len(rows) < min_matches:
+            return None
+        counts = {"home": 0, "draw": 0, "away": 0}
+        for row in rows:
+            home_score = int(row["home_score"])
+            away_score = int(row["away_score"])
+            if home_score > away_score:
+                counts["home"] += 1
+            elif home_score < away_score:
+                counts["away"] += 1
+            else:
+                counts["draw"] += 1
+        total = sum(counts.values())
+        if not total:
+            return None
+        return {key: round(value / total, 4) for key, value in counts.items()}
 
     # ──────────────────────────────────────────────
     # MODEL PERFORMANCE
@@ -673,9 +981,9 @@ class DatabaseManager:
             SELECT p.model_name,
                    COUNT(*) as total,
                    SUM(CASE
-                       WHEN (p.predicted_outcome = 'HOME_WIN' AND m.home_score > m.away_score)
-                         OR (p.predicted_outcome = 'DRAW' AND m.home_score = m.away_score)
-                         OR (p.predicted_outcome = 'AWAY_WIN' AND m.home_score < m.away_score)
+                       WHEN (UPPER(REPLACE(REPLACE(p.predicted_outcome, ' ', '_'), '-', '_')) IN ('HOME_WIN', 'HOME') AND m.home_score > m.away_score)
+                         OR (UPPER(REPLACE(REPLACE(p.predicted_outcome, ' ', '_'), '-', '_')) IN ('DRAW', 'X') AND m.home_score = m.away_score)
+                         OR (UPPER(REPLACE(REPLACE(p.predicted_outcome, ' ', '_'), '-', '_')) IN ('AWAY_WIN', 'AWAY') AND m.home_score < m.away_score)
                        THEN 1 ELSE 0
                    END) as correct,
                    AVG(p.confidence) as avg_confidence
@@ -694,9 +1002,9 @@ class DatabaseManager:
             SELECT p.league_code,
                    COUNT(*) as total,
                    SUM(CASE
-                       WHEN (p.predicted_outcome = 'HOME_WIN' AND m.home_score > m.away_score)
-                         OR (p.predicted_outcome = 'DRAW' AND m.home_score = m.away_score)
-                         OR (p.predicted_outcome = 'AWAY_WIN' AND m.home_score < m.away_score)
+                       WHEN (UPPER(REPLACE(REPLACE(p.predicted_outcome, ' ', '_'), '-', '_')) IN ('HOME_WIN', 'HOME') AND m.home_score > m.away_score)
+                         OR (UPPER(REPLACE(REPLACE(p.predicted_outcome, ' ', '_'), '-', '_')) IN ('DRAW', 'X') AND m.home_score = m.away_score)
+                         OR (UPPER(REPLACE(REPLACE(p.predicted_outcome, ' ', '_'), '-', '_')) IN ('AWAY_WIN', 'AWAY') AND m.home_score < m.away_score)
                        THEN 1 ELSE 0
                    END) as correct
             FROM predictions p
@@ -716,9 +1024,9 @@ class DatabaseManager:
                    p.match_date,
                    m.home_score, m.away_score,
                    CASE
-                       WHEN (p.predicted_outcome = 'HOME_WIN' AND m.home_score > m.away_score)
-                         OR (p.predicted_outcome = 'DRAW' AND m.home_score = m.away_score)
-                         OR (p.predicted_outcome = 'AWAY_WIN' AND m.home_score < m.away_score)
+                       WHEN (UPPER(REPLACE(REPLACE(p.predicted_outcome, ' ', '_'), '-', '_')) IN ('HOME_WIN', 'HOME') AND m.home_score > m.away_score)
+                         OR (UPPER(REPLACE(REPLACE(p.predicted_outcome, ' ', '_'), '-', '_')) IN ('DRAW', 'X') AND m.home_score = m.away_score)
+                         OR (UPPER(REPLACE(REPLACE(p.predicted_outcome, ' ', '_'), '-', '_')) IN ('AWAY_WIN', 'AWAY') AND m.home_score < m.away_score)
                        THEN 1 ELSE 0
                    END as is_correct
             FROM predictions p
@@ -790,6 +1098,18 @@ class DatabaseManager:
         with self._lock:
             cursor = self.conn.cursor()
             try:
+                actual = self._normalize_outcome(result["actual_outcome"])
+                predicted = self._normalize_outcome(result["predicted_outcome"])
+                is_correct = bool(actual and predicted and predicted == actual)
+                source = result.get("source", "AI Sites")
+                cursor.execute("""
+                    SELECT 1 FROM prediction_results
+                    WHERE match_date = ? AND home_team = ? AND away_team = ? AND source = ?
+                    LIMIT 1
+                """, (
+                    result["match_date"], result["home_team"], result["away_team"], source
+                ))
+                existed = cursor.fetchone() is not None
                 cursor.execute("""
                     INSERT INTO prediction_results (
                         match_date, home_team, away_team, league_code,
@@ -797,18 +1117,29 @@ class DatabaseManager:
                         predicted_outcome, confidence, source, is_correct,
                         home_win_prob, draw_prob, away_win_prob
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(match_date, home_team, away_team, source) DO UPDATE SET
+                        league_code=excluded.league_code,
+                        home_score=excluded.home_score,
+                        away_score=excluded.away_score,
+                        actual_outcome=excluded.actual_outcome,
+                        predicted_outcome=excluded.predicted_outcome,
+                        confidence=excluded.confidence,
+                        is_correct=excluded.is_correct,
+                        home_win_prob=excluded.home_win_prob,
+                        draw_prob=excluded.draw_prob,
+                        away_win_prob=excluded.away_win_prob
                 """, (
                     result["match_date"], result["home_team"], result["away_team"],
                     result.get("league_code", ""),
                     result.get("home_score"), result.get("away_score"),
-                    result["actual_outcome"], result["predicted_outcome"],
-                    result.get("confidence", 0), result.get("source", "AI Sites"),
-                    1 if result["is_correct"] else 0,
+                    actual, predicted,
+                    result.get("confidence", 0), source,
+                    1 if is_correct else 0,
                     result.get("home_win_prob"), result.get("draw_prob"),
                     result.get("away_win_prob"),
                 ))
                 self.conn.commit()
-                return True
+                return not existed
             except sqlite3.IntegrityError:
                 return False
             except Exception as e:

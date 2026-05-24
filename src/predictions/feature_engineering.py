@@ -298,24 +298,25 @@ class FeatureEngineer:
             away_name = match["away_team_name"]
             league_code = match.get("league_code", "")
             season = match.get("season", 2025)
+            match_date = match.get("match_date", "")
 
-            # Get stats
-            home_stats = db_manager.get_team_stats(home_name, league_code, season)
-            away_stats = db_manager.get_team_stats(away_name, league_code, season)
+            # Build training features from the pre-match state only.
+            # Using cached season aggregates leaks future information into the label.
+            home_stats = db_manager.compute_team_stats_from_matches(
+                home_name, league_code, season, before_date=match_date
+            )
+            away_stats = db_manager.compute_team_stats_from_matches(
+                away_name, league_code, season, before_date=match_date
+            )
 
-            if not home_stats:
-                home_stats = db_manager.compute_team_stats_from_matches(home_name, league_code, season)
-                if home_stats.get("matches_played", 0) < 3:
-                    continue
-                db_manager.upsert_team_stats(home_stats)
+            if home_stats.get("matches_played", 0) < 3:
+                continue
+            if away_stats.get("matches_played", 0) < 3:
+                continue
 
-            if not away_stats:
-                away_stats = db_manager.compute_team_stats_from_matches(away_name, league_code, season)
-                if away_stats.get("matches_played", 0) < 3:
-                    continue
-                db_manager.upsert_team_stats(away_stats)
-
-            h2h = db_manager.get_h2h(home_name, away_name)
+            home_stats["team_name"] = home_name
+            away_stats["team_name"] = away_name
+            h2h = db_manager.get_h2h(home_name, away_name, before_date=match_date)
 
             try:
                 features = cls.build_match_features(
@@ -335,7 +336,7 @@ class FeatureEngineer:
 
                 X_list.append(features)
                 y_list.append(label)
-                date_list.append(match.get("match_date", ""))
+                date_list.append(match_date)
 
             except Exception as e:
                 logger.error(f"Feature engineering error: {e}")
@@ -759,27 +760,24 @@ class FeatureEngineerV2(FeatureEngineer):
             season = match.get("season", 2025)
             match_date = match.get("match_date", "")
 
-            home_stats = db_manager.get_team_stats(home_name, league_code, season)
-            away_stats = db_manager.get_team_stats(away_name, league_code, season)
+            home_stats = db_manager.compute_team_stats_from_matches(
+                home_name, league_code, season, before_date=match_date
+            )
+            away_stats = db_manager.compute_team_stats_from_matches(
+                away_name, league_code, season, before_date=match_date
+            )
 
-            if not home_stats:
-                home_stats = db_manager.compute_team_stats_from_matches(home_name, league_code, season)
-                if home_stats.get("matches_played", 0) < 3:
-                    # Update ELO even if we skip training
-                    elo_copy.update(home_name, away_name, int(match["home_score"]), int(match["away_score"]))
-                    continue
-                db_manager.upsert_team_stats(home_stats)
+            if home_stats.get("matches_played", 0) < 3:
+                elo_copy.update(home_name, away_name, int(match["home_score"]), int(match["away_score"]))
+                continue
 
-            if not away_stats:
-                away_stats = db_manager.compute_team_stats_from_matches(away_name, league_code, season)
-                if away_stats.get("matches_played", 0) < 3:
-                    elo_copy.update(home_name, away_name, int(match["home_score"]), int(match["away_score"]))
-                    continue
-                db_manager.upsert_team_stats(away_stats)
+            if away_stats.get("matches_played", 0) < 3:
+                elo_copy.update(home_name, away_name, int(match["home_score"]), int(match["away_score"]))
+                continue
 
             home_stats["team_name"] = home_name
             away_stats["team_name"] = away_name
-            h2h = db_manager.get_h2h(home_name, away_name)
+            h2h = db_manager.get_h2h(home_name, away_name, before_date=match_date)
 
             try:
                 # Matches up to this point for form/rest/trend computation

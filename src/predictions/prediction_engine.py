@@ -16,7 +16,7 @@ from .feature_engineering import FeatureEngineer, FeatureEngineerV2, EloTracker
 
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
-from config.settings import LEAGUES
+from config.settings import LEAGUES, ML_SETTINGS
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 class PredictionEngine:
     """Main prediction engine that manages ML models and generates predictions."""
 
-    OUTCOME_LABELS = {0: "Home Win", 1: "Draw", 2: "Away Win"}
+    OUTCOME_LABELS = {0: "HOME_WIN", 1: "DRAW", 2: "AWAY_WIN"}
 
     def __init__(self, db_manager, data_aggregator=None, config=None, suffix="", version_label="v1"):
         self.db = db_manager
@@ -293,6 +293,49 @@ class PredictionEngine:
         thread.start()
         return thread
 
+    def _build_match_features(self, match: Dict, home_stats: Dict,
+                              away_stats: Dict, h2h: List[Dict]) -> np.ndarray:
+        """Build the feature vector that matches the trained model version."""
+        home_odds = match.get("home_odds")
+        draw_odds = match.get("draw_odds")
+        away_odds = match.get("away_odds")
+
+        if not self.is_v2:
+            features = self.feature_engineer.build_match_features(
+                home_stats, away_stats, h2h,
+                home_odds, draw_odds, away_odds
+            )
+            return np.nan_to_num(features, nan=0.0, posinf=0.0, neginf=0.0)
+
+        match_date = match.get("match_date", "")
+        home_name = home_stats.get("team_name", "")
+        away_name = away_stats.get("team_name", "")
+        home_matches = self.db.get_team_matches(home_name, limit=100, before_date=match_date)
+        away_matches = self.db.get_team_matches(away_name, limit=100, before_date=match_date)
+
+        features = self.feature_engineer.build_match_features_v2(
+            home_stats, away_stats, h2h,
+            home_odds, draw_odds, away_odds,
+            ai_predictions=None,
+            elo_tracker=self.elo_tracker,
+            home_form_list=FeatureEngineerV2.compute_form_list(home_matches, home_name),
+            away_form_list=FeatureEngineerV2.compute_form_list(away_matches, away_name),
+            home_extra=FeatureEngineerV2.compute_csv_extra_averages(home_matches, home_name),
+            away_extra=FeatureEngineerV2.compute_csv_extra_averages(away_matches, away_name),
+            home_days_rest=FeatureEngineerV2.compute_days_since_last(home_matches, home_name, match_date),
+            away_days_rest=FeatureEngineerV2.compute_days_since_last(away_matches, away_name, match_date),
+            home_recent_goals_avg=FeatureEngineerV2.compute_recent_goals_avg(home_matches, home_name),
+            away_recent_goals_avg=FeatureEngineerV2.compute_recent_goals_avg(away_matches, away_name),
+            is_training=False,
+            league_code=match.get("league_code", ""),
+            matchday=match.get("matchday") or 0,
+            total_matchdays=38,
+            match_datetime=match_date,
+            home_sos=FeatureEngineerV2.compute_sos(home_matches, home_name, self.elo_tracker),
+            away_sos=FeatureEngineerV2.compute_sos(away_matches, away_name, self.elo_tracker),
+        )
+        return np.nan_to_num(features, nan=0.0, posinf=0.0, neginf=0.0)
+
     # ──────────────────────────────────────────
     # PREDICTION
     # ──────────────────────────────────────────
@@ -320,13 +363,9 @@ class PredictionEngine:
         home_stats["team_name"] = home_name
         away_stats["team_name"] = away_name
 
-        h2h = self.db.get_h2h(home_name, away_name)
+        h2h = self.db.get_h2h(home_name, away_name, before_date=match.get("match_date"))
 
-        # Build features
-        features = self.feature_engineer.build_match_features(
-            home_stats, away_stats, h2h,
-            match.get("home_odds"), match.get("draw_odds"), match.get("away_odds")
-        )
+        features = self._build_match_features(match, home_stats, away_stats, h2h)
 
         predictions = []
 
@@ -389,7 +428,7 @@ class PredictionEngine:
             )
             poisson_probs = self.poisson.match_outcome_probs(h_goals, a_goals)
 
-            outcome_map = {"home_win": "Home Win", "draw": "Draw", "away_win": "Away Win"}
+            outcome_map = {"home_win": "HOME_WIN", "draw": "DRAW", "away_win": "AWAY_WIN"}
             best = max(poisson_probs, key=poisson_probs.get)
 
             predictions.append({

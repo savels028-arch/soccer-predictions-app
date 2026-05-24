@@ -73,7 +73,9 @@ class BaseModel:
     def _expected_features(self) -> int:
         """Get expected feature count from FeatureEngineer."""
         try:
-            from .feature_engineering import FeatureEngineer
+            from .feature_engineering import FeatureEngineer, FeatureEngineerV2
+            if self.config.get("use_v2_features", False):
+                return len(FeatureEngineerV2.FEATURE_NAMES)
             return len(FeatureEngineer.FEATURE_NAMES)
         except Exception:
             return 0

@@ -5,6 +5,7 @@
 # Core
 requests>=2.31.0
 numpy>=1.24.0
+Flask>=3.0.0
 
 # Firebase
 firebase-admin>=6.2.0
@@ -25,3 +26,4 @@ pandas>=2.0.0
 
 # Utilities
 python-dateutil>=2.8.0
+pytest>=8.0.0

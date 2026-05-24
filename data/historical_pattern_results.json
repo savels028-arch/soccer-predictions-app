@@ -1,0 +1,2999 @@
+{
+  "generated_at": "2026-05-12T21:45:45.585927Z",
+  "objective": "walk_forward_historical_patterns_no_future_leakage",
+  "source_matches": 22495,
+  "patterns_tested": [
+    "directed_h2h_outcome",
+    "pair_dominant_result",
+    "home_team_home_outcome",
+    "away_team_away_outcome",
+    "home_team_any_result",
+    "away_team_any_result",
+    "pair_no_draw_favourite"
+  ],
+  "candidate_count": 840,
+  "best": {
+    "type": "historical_pattern",
+    "name": "directed_h2h_outcome min_matches=3 min_rate=80% max_odds=4.0",
+    "pattern": "directed_h2h_outcome",
+    "min_matches": 3,
+    "min_rate_pct": 80.0,
+    "max_odds": 4.0,
+    "score": 2937.0,
+    "eligible": true,
+    "rejection_reasons": [],
+    "simulation": {
+      "bets": 1078,
+      "wins": 662,
+      "accuracy": 61.41,
+      "final_bankroll": 15290.0,
+      "profit": 5290.0,
+      "roi_pct": 4.91,
+      "max_drawdown": 1637.0,
+      "max_drawdown_pct": 10.41,
+      "by_season": {
+        "2022": {
+          "bets": 188,
+          "wins": 109,
+          "staked": 18800.0,
+          "returned": 18662.0,
+          "profit": -138.0,
+          "roi_pct": -0.73,
+          "accuracy": 57.98
+        },
+        "2023": {
+          "bets": 222,
+          "wins": 130,
+          "staked": 22200.0,
+          "returned": 22591.0,
+          "profit": 391.0,
+          "roi_pct": 1.76,
+          "accuracy": 58.56
+        },
+        "2024": {
+          "bets": 335,
+          "wins": 207,
+          "staked": 33500.0,
+          "returned": 34509.0,
+          "profit": 1009.0,
+          "roi_pct": 3.01,
+          "accuracy": 61.79
+        },
+        "2025": {
+          "bets": 333,
+          "wins": 216,
+          "staked": 33300.0,
+          "returned": 37328.0,
+          "profit": 4028.0,
+          "roi_pct": 12.1,
+          "accuracy": 64.86
+        }
+      }
+    }
+  },
+  "top": [
+    {
+      "type": "historical_pattern",
+      "name": "directed_h2h_outcome min_matches=3 min_rate=80% max_odds=4.0",
+      "pattern": "directed_h2h_outcome",
+      "min_matches": 3,
+      "min_rate_pct": 80.0,
+      "max_odds": 4.0,
+      "score": 2937.0,
+      "eligible": true,
+      "rejection_reasons": [],
+      "simulation": {
+        "bets": 1078,
+        "wins": 662,
+        "accuracy": 61.41,
+        "final_bankroll": 15290.0,
+        "profit": 5290.0,
+        "roi_pct": 4.91,
+        "max_drawdown": 1637.0,
+        "max_drawdown_pct": 10.41,
+        "by_season": {
+          "2022": {
+            "bets": 188,
+            "wins": 109,
+            "staked": 18800.0,
+            "returned": 18662.0,
+            "profit": -138.0,
+            "roi_pct": -0.73,
+            "accuracy": 57.98
+          },
+          "2023": {
+            "bets": 222,
+            "wins": 130,
+            "staked": 22200.0,
+            "returned": 22591.0,
+            "profit": 391.0,
+            "roi_pct": 1.76,
+            "accuracy": 58.56
+          },
+          "2024": {
+            "bets": 335,
+            "wins": 207,
+            "staked": 33500.0,
+            "returned": 34509.0,
+            "profit": 1009.0,
+            "roi_pct": 3.01,
+            "accuracy": 61.79
+          },
+          "2025": {
+            "bets": 333,
+            "wins": 216,
+            "staked": 33300.0,
+            "returned": 37328.0,
+            "profit": 4028.0,
+            "roi_pct": 12.1,
+            "accuracy": 64.86
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "directed_h2h_outcome min_matches=4 min_rate=80% max_odds=2.5",
+      "pattern": "directed_h2h_outcome",
+      "min_matches": 4,
+      "min_rate_pct": 80.0,
+      "max_odds": 2.5,
+      "score": 2146.5,
+      "eligible": true,
+      "rejection_reasons": [],
+      "simulation": {
+        "bets": 476,
+        "wins": 331,
+        "accuracy": 69.54,
+        "final_bankroll": 12878.0,
+        "profit": 2878.0,
+        "roi_pct": 6.05,
+        "max_drawdown": 1430.0,
+        "max_drawdown_pct": 10.87,
+        "by_season": {
+          "2023": {
+            "bets": 66,
+            "wins": 47,
+            "staked": 6600.0,
+            "returned": 6947.0,
+            "profit": 347.0,
+            "roi_pct": 5.26,
+            "accuracy": 71.21
+          },
+          "2024": {
+            "bets": 184,
+            "wins": 123,
+            "staked": 18400.0,
+            "returned": 18466.0,
+            "profit": 66.0,
+            "roi_pct": 0.36,
+            "accuracy": 66.85
+          },
+          "2025": {
+            "bets": 226,
+            "wins": 161,
+            "staked": 22600.0,
+            "returned": 25065.0,
+            "profit": 2465.0,
+            "roi_pct": 10.91,
+            "accuracy": 71.24
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "directed_h2h_outcome min_matches=3 min_rate=80% max_odds=2.5",
+      "pattern": "directed_h2h_outcome",
+      "min_matches": 3,
+      "min_rate_pct": 80.0,
+      "max_odds": 2.5,
+      "score": 1953.75,
+      "eligible": true,
+      "rejection_reasons": [],
+      "simulation": {
+        "bets": 879,
+        "wins": 596,
+        "accuracy": 67.8,
+        "final_bankroll": 14316.0,
+        "profit": 4316.0,
+        "roi_pct": 4.91,
+        "max_drawdown": 1461.0,
+        "max_drawdown_pct": 9.97,
+        "by_season": {
+          "2022": {
+            "bets": 145,
+            "wins": 97,
+            "staked": 14500.0,
+            "returned": 15001.0,
+            "profit": 501.0,
+            "roi_pct": 3.46,
+            "accuracy": 66.9
+          },
+          "2023": {
+            "bets": 180,
+            "wins": 114,
+            "staked": 18000.0,
+            "returned": 17473.0,
+            "profit": -527.0,
+            "roi_pct": -2.93,
+            "accuracy": 63.33
+          },
+          "2024": {
+            "bets": 276,
+            "wins": 190,
+            "staked": 27600.0,
+            "returned": 29041.0,
+            "profit": 1441.0,
+            "roi_pct": 5.22,
+            "accuracy": 68.84
+          },
+          "2025": {
+            "bets": 278,
+            "wins": 195,
+            "staked": 27800.0,
+            "returned": 30701.0,
+            "profit": 2901.0,
+            "roi_pct": 10.44,
+            "accuracy": 70.14
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "directed_h2h_outcome min_matches=4 min_rate=80% max_odds=2.0",
+      "pattern": "directed_h2h_outcome",
+      "min_matches": 4,
+      "min_rate_pct": 80.0,
+      "max_odds": 2.0,
+      "score": 1624.5,
+      "eligible": true,
+      "rejection_reasons": [],
+      "simulation": {
+        "bets": 406,
+        "wins": 297,
+        "accuracy": 73.15,
+        "final_bankroll": 12308.0,
+        "profit": 2308.0,
+        "roi_pct": 5.68,
+        "max_drawdown": 1286.0,
+        "max_drawdown_pct": 10.3,
+        "by_season": {
+          "2023": {
+            "bets": 59,
+            "wins": 43,
+            "staked": 5900.0,
+            "returned": 6062.0,
+            "profit": 162.0,
+            "roi_pct": 2.75,
+            "accuracy": 72.88
+          },
+          "2024": {
+            "bets": 159,
+            "wins": 113,
+            "staked": 15900.0,
+            "returned": 16246.0,
+            "profit": 346.0,
+            "roi_pct": 2.18,
+            "accuracy": 71.07
+          },
+          "2025": {
+            "bets": 188,
+            "wins": 141,
+            "staked": 18800.0,
+            "returned": 20600.0,
+            "profit": 1800.0,
+            "roi_pct": 9.57,
+            "accuracy": 75.0
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "directed_h2h_outcome min_matches=3 min_rate=80% max_odds=3.0",
+      "pattern": "directed_h2h_outcome",
+      "min_matches": 3,
+      "min_rate_pct": 80.0,
+      "max_odds": 3.0,
+      "score": 1053.0,
+      "eligible": true,
+      "rejection_reasons": [],
+      "simulation": {
+        "bets": 955,
+        "wins": 621,
+        "accuracy": 65.03,
+        "final_bankroll": 13580.0,
+        "profit": 3580.0,
+        "roi_pct": 3.75,
+        "max_drawdown": 1802.0,
+        "max_drawdown_pct": 12.77,
+        "by_season": {
+          "2022": {
+            "bets": 162,
+            "wins": 103,
+            "staked": 16200.0,
+            "returned": 16662.0,
+            "profit": 462.0,
+            "roi_pct": 2.85,
+            "accuracy": 63.58
+          },
+          "2023": {
+            "bets": 196,
+            "wins": 120,
+            "staked": 19600.0,
+            "returned": 19096.0,
+            "profit": -504.0,
+            "roi_pct": -2.57,
+            "accuracy": 61.22
+          },
+          "2024": {
+            "bets": 295,
+            "wins": 194,
+            "staked": 29500.0,
+            "returned": 30109.0,
+            "profit": 609.0,
+            "roi_pct": 2.06,
+            "accuracy": 65.76
+          },
+          "2025": {
+            "bets": 302,
+            "wins": 204,
+            "staked": 30200.0,
+            "returned": 33213.0,
+            "profit": 3013.0,
+            "roi_pct": 9.98,
+            "accuracy": 67.55
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "directed_h2h_outcome min_matches=3 min_rate=80% max_odds=2.0",
+      "pattern": "directed_h2h_outcome",
+      "min_matches": 3,
+      "min_rate_pct": 80.0,
+      "max_odds": 2.0,
+      "score": 510.75,
+      "eligible": true,
+      "rejection_reasons": [],
+      "simulation": {
+        "bets": 721,
+        "wins": 519,
+        "accuracy": 71.98,
+        "final_bankroll": 12859.0,
+        "profit": 2859.0,
+        "roi_pct": 3.97,
+        "max_drawdown": 1320.0,
+        "max_drawdown_pct": 10.16,
+        "by_season": {
+          "2022": {
+            "bets": 116,
+            "wins": 83,
+            "staked": 11600.0,
+            "returned": 11748.0,
+            "profit": 148.0,
+            "roi_pct": 1.28,
+            "accuracy": 71.55
+          },
+          "2023": {
+            "bets": 149,
+            "wins": 99,
+            "staked": 14900.0,
+            "returned": 14147.0,
+            "profit": -753.0,
+            "roi_pct": -5.05,
+            "accuracy": 66.44
+          },
+          "2024": {
+            "bets": 229,
+            "wins": 170,
+            "staked": 22900.0,
+            "returned": 24636.0,
+            "profit": 1736.0,
+            "roi_pct": 7.58,
+            "accuracy": 74.24
+          },
+          "2025": {
+            "bets": 227,
+            "wins": 167,
+            "staked": 22700.0,
+            "returned": 24428.0,
+            "profit": 1728.0,
+            "roi_pct": 7.61,
+            "accuracy": 73.57
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "directed_h2h_outcome min_matches=2 min_rate=80% max_odds=2.5",
+      "pattern": "directed_h2h_outcome",
+      "min_matches": 2,
+      "min_rate_pct": 80.0,
+      "max_odds": 2.5,
+      "score": 457.75,
+      "eligible": true,
+      "rejection_reasons": [],
+      "simulation": {
+        "bets": 1832,
+        "wins": 1182,
+        "accuracy": 64.52,
+        "final_bankroll": 13317.0,
+        "profit": 3317.0,
+        "roi_pct": 1.81,
+        "max_drawdown": 2277.0,
+        "max_drawdown_pct": 16.58,
+        "by_season": {
+          "2021": {
+            "bets": 371,
+            "wins": 229,
+            "staked": 37100.0,
+            "returned": 36217.0,
+            "profit": -883.0,
+            "roi_pct": -2.38,
+            "accuracy": 61.73
+          },
+          "2022": {
+            "bets": 348,
+            "wins": 227,
+            "staked": 34800.0,
+            "returned": 36206.0,
+            "profit": 1406.0,
+            "roi_pct": 4.04,
+            "accuracy": 65.23
+          },
+          "2023": {
+            "bets": 338,
+            "wins": 215,
+            "staked": 33800.0,
+            "returned": 33821.0,
+            "profit": 21.0,
+            "roi_pct": 0.06,
+            "accuracy": 63.61
+          },
+          "2024": {
+            "bets": 404,
+            "wins": 263,
+            "staked": 40400.0,
+            "returned": 41232.0,
+            "profit": 832.0,
+            "roi_pct": 2.06,
+            "accuracy": 65.1
+          },
+          "2025": {
+            "bets": 371,
+            "wins": 248,
+            "staked": 37100.0,
+            "returned": 39041.0,
+            "profit": 1941.0,
+            "roi_pct": 5.23,
+            "accuracy": 66.85
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "pair_dominant_result min_matches=5 min_rate=100% max_odds=2.0",
+      "pattern": "pair_dominant_result",
+      "min_matches": 5,
+      "min_rate_pct": 100.0,
+      "max_odds": 2.0,
+      "score": 343.75,
+      "eligible": true,
+      "rejection_reasons": [],
+      "simulation": {
+        "bets": 189,
+        "wins": 145,
+        "accuracy": 76.72,
+        "final_bankroll": 10627.0,
+        "profit": 627.0,
+        "roi_pct": 3.32,
+        "max_drawdown": 523.0,
+        "max_drawdown_pct": 4.73,
+        "by_season": {
+          "2021": {
+            "bets": 18,
+            "wins": 15,
+            "staked": 1800.0,
+            "returned": 1908.0,
+            "profit": 108.0,
+            "roi_pct": 6.0,
+            "accuracy": 83.33
+          },
+          "2022": {
+            "bets": 55,
+            "wins": 42,
+            "staked": 5500.0,
+            "returned": 5658.0,
+            "profit": 158.0,
+            "roi_pct": 2.87,
+            "accuracy": 76.36
+          },
+          "2023": {
+            "bets": 44,
+            "wins": 33,
+            "staked": 4400.0,
+            "returned": 4528.0,
+            "profit": 128.0,
+            "roi_pct": 2.91,
+            "accuracy": 75.0
+          },
+          "2024": {
+            "bets": 33,
+            "wins": 25,
+            "staked": 3300.0,
+            "returned": 3446.0,
+            "profit": 146.0,
+            "roi_pct": 4.42,
+            "accuracy": 75.76
+          },
+          "2025": {
+            "bets": 39,
+            "wins": 30,
+            "staked": 3900.0,
+            "returned": 3987.0,
+            "profit": 87.0,
+            "roi_pct": 2.23,
+            "accuracy": 76.92
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "pair_dominant_result min_matches=5 min_rate=60% max_odds=2.5",
+      "pattern": "pair_dominant_result",
+      "min_matches": 5,
+      "min_rate_pct": 60.0,
+      "max_odds": 2.5,
+      "score": 270.5,
+      "eligible": true,
+      "rejection_reasons": [],
+      "simulation": {
+        "bets": 2548,
+        "wins": 1596,
+        "accuracy": 62.64,
+        "final_bankroll": 13690.0,
+        "profit": 3690.0,
+        "roi_pct": 1.45,
+        "max_drawdown": 3135.0,
+        "max_drawdown_pct": 20.37,
+        "by_season": {
+          "2021": {
+            "bets": 231,
+            "wins": 140,
+            "staked": 23100.0,
+            "returned": 23617.0,
+            "profit": 517.0,
+            "roi_pct": 2.24,
+            "accuracy": 60.61
+          },
+          "2022": {
+            "bets": 517,
+            "wins": 333,
+            "staked": 51700.0,
+            "returned": 54619.0,
+            "profit": 2919.0,
+            "roi_pct": 5.65,
+            "accuracy": 64.41
+          },
+          "2023": {
+            "bets": 541,
+            "wins": 342,
+            "staked": 54100.0,
+            "returned": 55156.0,
+            "profit": 1056.0,
+            "roi_pct": 1.95,
+            "accuracy": 63.22
+          },
+          "2024": {
+            "bets": 650,
+            "wins": 400,
+            "staked": 65000.0,
+            "returned": 63592.0,
+            "profit": -1408.0,
+            "roi_pct": -2.17,
+            "accuracy": 61.54
+          },
+          "2025": {
+            "bets": 609,
+            "wins": 381,
+            "staked": 60900.0,
+            "returned": 61506.0,
+            "profit": 606.0,
+            "roi_pct": 1.0,
+            "accuracy": 62.56
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "directed_h2h_outcome min_matches=3 min_rate=90% max_odds=2.5",
+      "pattern": "directed_h2h_outcome",
+      "min_matches": 3,
+      "min_rate_pct": 90.0,
+      "max_odds": 2.5,
+      "score": -54.75,
+      "eligible": true,
+      "rejection_reasons": [],
+      "simulation": {
+        "bets": 655,
+        "wins": 446,
+        "accuracy": 68.09,
+        "final_bankroll": 12582.0,
+        "profit": 2582.0,
+        "roi_pct": 3.94,
+        "max_drawdown": 1796.0,
+        "max_drawdown_pct": 13.82,
+        "by_season": {
+          "2022": {
+            "bets": 145,
+            "wins": 97,
+            "staked": 14500.0,
+            "returned": 15001.0,
+            "profit": 501.0,
+            "roi_pct": 3.46,
+            "accuracy": 66.9
+          },
+          "2023": {
+            "bets": 175,
+            "wins": 109,
+            "staked": 17500.0,
+            "returned": 16545.0,
+            "profit": -955.0,
+            "roi_pct": -5.46,
+            "accuracy": 62.29
+          },
+          "2024": {
+            "bets": 182,
+            "wins": 133,
+            "staked": 18200.0,
+            "returned": 20062.0,
+            "profit": 1862.0,
+            "roi_pct": 10.23,
+            "accuracy": 73.08
+          },
+          "2025": {
+            "bets": 153,
+            "wins": 107,
+            "staked": 15300.0,
+            "returned": 16474.0,
+            "profit": 1174.0,
+            "roi_pct": 7.67,
+            "accuracy": 69.93
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "directed_h2h_outcome min_matches=3 min_rate=100% max_odds=2.5",
+      "pattern": "directed_h2h_outcome",
+      "min_matches": 3,
+      "min_rate_pct": 100.0,
+      "max_odds": 2.5,
+      "score": -54.75,
+      "eligible": true,
+      "rejection_reasons": [],
+      "simulation": {
+        "bets": 655,
+        "wins": 446,
+        "accuracy": 68.09,
+        "final_bankroll": 12582.0,
+        "profit": 2582.0,
+        "roi_pct": 3.94,
+        "max_drawdown": 1796.0,
+        "max_drawdown_pct": 13.82,
+        "by_season": {
+          "2022": {
+            "bets": 145,
+            "wins": 97,
+            "staked": 14500.0,
+            "returned": 15001.0,
+            "profit": 501.0,
+            "roi_pct": 3.46,
+            "accuracy": 66.9
+          },
+          "2023": {
+            "bets": 175,
+            "wins": 109,
+            "staked": 17500.0,
+            "returned": 16545.0,
+            "profit": -955.0,
+            "roi_pct": -5.46,
+            "accuracy": 62.29
+          },
+          "2024": {
+            "bets": 182,
+            "wins": 133,
+            "staked": 18200.0,
+            "returned": 20062.0,
+            "profit": 1862.0,
+            "roi_pct": 10.23,
+            "accuracy": 73.08
+          },
+          "2025": {
+            "bets": 153,
+            "wins": 107,
+            "staked": 15300.0,
+            "returned": 16474.0,
+            "profit": 1174.0,
+            "roi_pct": 7.67,
+            "accuracy": 69.93
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "directed_h2h_outcome min_matches=3 min_rate=90% max_odds=3.0",
+      "pattern": "directed_h2h_outcome",
+      "min_matches": 3,
+      "min_rate_pct": 90.0,
+      "max_odds": 3.0,
+      "score": -151.0,
+      "eligible": true,
+      "rejection_reasons": [],
+      "simulation": {
+        "bets": 703,
+        "wins": 463,
+        "accuracy": 65.86,
+        "final_bankroll": 12486.0,
+        "profit": 2486.0,
+        "roi_pct": 3.54,
+        "max_drawdown": 1808.0,
+        "max_drawdown_pct": 14.28,
+        "by_season": {
+          "2022": {
+            "bets": 162,
+            "wins": 103,
+            "staked": 16200.0,
+            "returned": 16662.0,
+            "profit": 462.0,
+            "roi_pct": 2.85,
+            "accuracy": 63.58
+          },
+          "2023": {
+            "bets": 191,
+            "wins": 115,
+            "staked": 19100.0,
+            "returned": 18168.0,
+            "profit": -932.0,
+            "roi_pct": -4.88,
+            "accuracy": 60.21
+          },
+          "2024": {
+            "bets": 190,
+            "wins": 134,
+            "staked": 19000.0,
+            "returned": 20350.0,
+            "profit": 1350.0,
+            "roi_pct": 7.11,
+            "accuracy": 70.53
+          },
+          "2025": {
+            "bets": 160,
+            "wins": 111,
+            "staked": 16000.0,
+            "returned": 17606.0,
+            "profit": 1606.0,
+            "roi_pct": 10.04,
+            "accuracy": 69.38
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "directed_h2h_outcome min_matches=3 min_rate=100% max_odds=3.0",
+      "pattern": "directed_h2h_outcome",
+      "min_matches": 3,
+      "min_rate_pct": 100.0,
+      "max_odds": 3.0,
+      "score": -151.0,
+      "eligible": true,
+      "rejection_reasons": [],
+      "simulation": {
+        "bets": 703,
+        "wins": 463,
+        "accuracy": 65.86,
+        "final_bankroll": 12486.0,
+        "profit": 2486.0,
+        "roi_pct": 3.54,
+        "max_drawdown": 1808.0,
+        "max_drawdown_pct": 14.28,
+        "by_season": {
+          "2022": {
+            "bets": 162,
+            "wins": 103,
+            "staked": 16200.0,
+            "returned": 16662.0,
+            "profit": 462.0,
+            "roi_pct": 2.85,
+            "accuracy": 63.58
+          },
+          "2023": {
+            "bets": 191,
+            "wins": 115,
+            "staked": 19100.0,
+            "returned": 18168.0,
+            "profit": -932.0,
+            "roi_pct": -4.88,
+            "accuracy": 60.21
+          },
+          "2024": {
+            "bets": 190,
+            "wins": 134,
+            "staked": 19000.0,
+            "returned": 20350.0,
+            "profit": 1350.0,
+            "roi_pct": 7.11,
+            "accuracy": 70.53
+          },
+          "2025": {
+            "bets": 160,
+            "wins": 111,
+            "staked": 16000.0,
+            "returned": 17606.0,
+            "profit": 1606.0,
+            "roi_pct": 10.04,
+            "accuracy": 69.38
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "pair_no_draw_favourite min_matches=5 min_rate=100% max_odds=none",
+      "pattern": "pair_no_draw_favourite",
+      "min_matches": 5,
+      "min_rate_pct": 100.0,
+      "max_odds": null,
+      "score": -290.75,
+      "eligible": true,
+      "rejection_reasons": [],
+      "simulation": {
+        "bets": 1122,
+        "wins": 688,
+        "accuracy": 61.32,
+        "final_bankroll": 12550.0,
+        "profit": 2550.0,
+        "roi_pct": 2.27,
+        "max_drawdown": 2440.0,
+        "max_drawdown_pct": 17.8,
+        "by_season": {
+          "2021": {
+            "bets": 120,
+            "wins": 74,
+            "staked": 12000.0,
+            "returned": 12511.0,
+            "profit": 511.0,
+            "roi_pct": 4.26,
+            "accuracy": 61.67
+          },
+          "2022": {
+            "bets": 298,
+            "wins": 182,
+            "staked": 29800.0,
+            "returned": 30650.0,
+            "profit": 850.0,
+            "roi_pct": 2.85,
+            "accuracy": 61.07
+          },
+          "2023": {
+            "bets": 238,
+            "wins": 145,
+            "staked": 23800.0,
+            "returned": 24425.0,
+            "profit": 625.0,
+            "roi_pct": 2.63,
+            "accuracy": 60.92
+          },
+          "2024": {
+            "bets": 266,
+            "wins": 160,
+            "staked": 26600.0,
+            "returned": 26117.0,
+            "profit": -483.0,
+            "roi_pct": -1.82,
+            "accuracy": 60.15
+          },
+          "2025": {
+            "bets": 200,
+            "wins": 127,
+            "staked": 20000.0,
+            "returned": 21047.0,
+            "profit": 1047.0,
+            "roi_pct": 5.24,
+            "accuracy": 63.5
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "pair_no_draw_favourite min_matches=5 min_rate=100% max_odds=4.0",
+      "pattern": "pair_no_draw_favourite",
+      "min_matches": 5,
+      "min_rate_pct": 100.0,
+      "max_odds": 4.0,
+      "score": -290.75,
+      "eligible": true,
+      "rejection_reasons": [],
+      "simulation": {
+        "bets": 1122,
+        "wins": 688,
+        "accuracy": 61.32,
+        "final_bankroll": 12550.0,
+        "profit": 2550.0,
+        "roi_pct": 2.27,
+        "max_drawdown": 2440.0,
+        "max_drawdown_pct": 17.8,
+        "by_season": {
+          "2021": {
+            "bets": 120,
+            "wins": 74,
+            "staked": 12000.0,
+            "returned": 12511.0,
+            "profit": 511.0,
+            "roi_pct": 4.26,
+            "accuracy": 61.67
+          },
+          "2022": {
+            "bets": 298,
+            "wins": 182,
+            "staked": 29800.0,
+            "returned": 30650.0,
+            "profit": 850.0,
+            "roi_pct": 2.85,
+            "accuracy": 61.07
+          },
+          "2023": {
+            "bets": 238,
+            "wins": 145,
+            "staked": 23800.0,
+            "returned": 24425.0,
+            "profit": 625.0,
+            "roi_pct": 2.63,
+            "accuracy": 60.92
+          },
+          "2024": {
+            "bets": 266,
+            "wins": 160,
+            "staked": 26600.0,
+            "returned": 26117.0,
+            "profit": -483.0,
+            "roi_pct": -1.82,
+            "accuracy": 60.15
+          },
+          "2025": {
+            "bets": 200,
+            "wins": 127,
+            "staked": 20000.0,
+            "returned": 21047.0,
+            "profit": 1047.0,
+            "roi_pct": 5.24,
+            "accuracy": 63.5
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "pair_no_draw_favourite min_matches=5 min_rate=100% max_odds=3.0",
+      "pattern": "pair_no_draw_favourite",
+      "min_matches": 5,
+      "min_rate_pct": 100.0,
+      "max_odds": 3.0,
+      "score": -290.75,
+      "eligible": true,
+      "rejection_reasons": [],
+      "simulation": {
+        "bets": 1122,
+        "wins": 688,
+        "accuracy": 61.32,
+        "final_bankroll": 12550.0,
+        "profit": 2550.0,
+        "roi_pct": 2.27,
+        "max_drawdown": 2440.0,
+        "max_drawdown_pct": 17.8,
+        "by_season": {
+          "2021": {
+            "bets": 120,
+            "wins": 74,
+            "staked": 12000.0,
+            "returned": 12511.0,
+            "profit": 511.0,
+            "roi_pct": 4.26,
+            "accuracy": 61.67
+          },
+          "2022": {
+            "bets": 298,
+            "wins": 182,
+            "staked": 29800.0,
+            "returned": 30650.0,
+            "profit": 850.0,
+            "roi_pct": 2.85,
+            "accuracy": 61.07
+          },
+          "2023": {
+            "bets": 238,
+            "wins": 145,
+            "staked": 23800.0,
+            "returned": 24425.0,
+            "profit": 625.0,
+            "roi_pct": 2.63,
+            "accuracy": 60.92
+          },
+          "2024": {
+            "bets": 266,
+            "wins": 160,
+            "staked": 26600.0,
+            "returned": 26117.0,
+            "profit": -483.0,
+            "roi_pct": -1.82,
+            "accuracy": 60.15
+          },
+          "2025": {
+            "bets": 200,
+            "wins": 127,
+            "staked": 20000.0,
+            "returned": 21047.0,
+            "profit": 1047.0,
+            "roi_pct": 5.24,
+            "accuracy": 63.5
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "pair_dominant_result min_matches=4 min_rate=100% max_odds=2.5",
+      "pattern": "pair_dominant_result",
+      "min_matches": 4,
+      "min_rate_pct": 100.0,
+      "max_odds": 2.5,
+      "score": -705.75,
+      "eligible": true,
+      "rejection_reasons": [],
+      "simulation": {
+        "bets": 373,
+        "wins": 268,
+        "accuracy": 71.85,
+        "final_bankroll": 11122.0,
+        "profit": 1122.0,
+        "roi_pct": 3.01,
+        "max_drawdown": 642.0,
+        "max_drawdown_pct": 5.61,
+        "by_season": {
+          "2021": {
+            "bets": 93,
+            "wins": 66,
+            "staked": 9300.0,
+            "returned": 9273.0,
+            "profit": -27.0,
+            "roi_pct": -0.29,
+            "accuracy": 70.97
+          },
+          "2022": {
+            "bets": 87,
+            "wins": 63,
+            "staked": 8700.0,
+            "returned": 9091.0,
+            "profit": 391.0,
+            "roi_pct": 4.49,
+            "accuracy": 72.41
+          },
+          "2023": {
+            "bets": 79,
+            "wins": 56,
+            "staked": 7900.0,
+            "returned": 8152.0,
+            "profit": 252.0,
+            "roi_pct": 3.19,
+            "accuracy": 70.89
+          },
+          "2024": {
+            "bets": 61,
+            "wins": 43,
+            "staked": 6100.0,
+            "returned": 6400.0,
+            "profit": 300.0,
+            "roi_pct": 4.92,
+            "accuracy": 70.49
+          },
+          "2025": {
+            "bets": 53,
+            "wins": 40,
+            "staked": 5300.0,
+            "returned": 5506.0,
+            "profit": 206.0,
+            "roi_pct": 3.89,
+            "accuracy": 75.47
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "pair_dominant_result min_matches=4 min_rate=100% max_odds=2.0",
+      "pattern": "pair_dominant_result",
+      "min_matches": 4,
+      "min_rate_pct": 100.0,
+      "max_odds": 2.0,
+      "score": -916.75,
+      "eligible": true,
+      "rejection_reasons": [],
+      "simulation": {
+        "bets": 325,
+        "wins": 246,
+        "accuracy": 75.69,
+        "final_bankroll": 10988.0,
+        "profit": 988.0,
+        "roi_pct": 3.04,
+        "max_drawdown": 660.0,
+        "max_drawdown_pct": 5.8,
+        "by_season": {
+          "2021": {
+            "bets": 82,
+            "wins": 60,
+            "staked": 8200.0,
+            "returned": 7901.0,
+            "profit": -299.0,
+            "roi_pct": -3.65,
+            "accuracy": 73.17
+          },
+          "2022": {
+            "bets": 76,
+            "wins": 58,
+            "staked": 7600.0,
+            "returned": 7954.0,
+            "profit": 354.0,
+            "roi_pct": 4.66,
+            "accuracy": 76.32
+          },
+          "2023": {
+            "bets": 65,
+            "wins": 51,
+            "staked": 6500.0,
+            "returned": 7092.0,
+            "profit": 592.0,
+            "roi_pct": 9.11,
+            "accuracy": 78.46
+          },
+          "2024": {
+            "bets": 53,
+            "wins": 39,
+            "staked": 5300.0,
+            "returned": 5490.0,
+            "profit": 190.0,
+            "roi_pct": 3.58,
+            "accuracy": 73.58
+          },
+          "2025": {
+            "bets": 49,
+            "wins": 38,
+            "staked": 4900.0,
+            "returned": 5051.0,
+            "profit": 151.0,
+            "roi_pct": 3.08,
+            "accuracy": 77.55
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "directed_h2h_outcome min_matches=3 min_rate=90% max_odds=2.0",
+      "pattern": "directed_h2h_outcome",
+      "min_matches": 3,
+      "min_rate_pct": 90.0,
+      "max_odds": 2.0,
+      "score": -954.5,
+      "eligible": true,
+      "rejection_reasons": [],
+      "simulation": {
+        "bets": 536,
+        "wins": 389,
+        "accuracy": 72.57,
+        "final_bankroll": 11627.0,
+        "profit": 1627.0,
+        "roi_pct": 3.04,
+        "max_drawdown": 1635.0,
+        "max_drawdown_pct": 13.76,
+        "by_season": {
+          "2022": {
+            "bets": 116,
+            "wins": 83,
+            "staked": 11600.0,
+            "returned": 11748.0,
+            "profit": 148.0,
+            "roi_pct": 1.28,
+            "accuracy": 71.55
+          },
+          "2023": {
+            "bets": 145,
+            "wins": 95,
+            "staked": 14500.0,
+            "returned": 13444.0,
+            "profit": -1056.0,
+            "roi_pct": -7.28,
+            "accuracy": 65.52
+          },
+          "2024": {
+            "bets": 150,
+            "wins": 119,
+            "staked": 15000.0,
+            "returned": 16972.0,
+            "profit": 1972.0,
+            "roi_pct": 13.15,
+            "accuracy": 79.33
+          },
+          "2025": {
+            "bets": 125,
+            "wins": 92,
+            "staked": 12500.0,
+            "returned": 13063.0,
+            "profit": 563.0,
+            "roi_pct": 4.5,
+            "accuracy": 73.6
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "directed_h2h_outcome min_matches=3 min_rate=100% max_odds=2.0",
+      "pattern": "directed_h2h_outcome",
+      "min_matches": 3,
+      "min_rate_pct": 100.0,
+      "max_odds": 2.0,
+      "score": -954.5,
+      "eligible": true,
+      "rejection_reasons": [],
+      "simulation": {
+        "bets": 536,
+        "wins": 389,
+        "accuracy": 72.57,
+        "final_bankroll": 11627.0,
+        "profit": 1627.0,
+        "roi_pct": 3.04,
+        "max_drawdown": 1635.0,
+        "max_drawdown_pct": 13.76,
+        "by_season": {
+          "2022": {
+            "bets": 116,
+            "wins": 83,
+            "staked": 11600.0,
+            "returned": 11748.0,
+            "profit": 148.0,
+            "roi_pct": 1.28,
+            "accuracy": 71.55
+          },
+          "2023": {
+            "bets": 145,
+            "wins": 95,
+            "staked": 14500.0,
+            "returned": 13444.0,
+            "profit": -1056.0,
+            "roi_pct": -7.28,
+            "accuracy": 65.52
+          },
+          "2024": {
+            "bets": 150,
+            "wins": 119,
+            "staked": 15000.0,
+            "returned": 16972.0,
+            "profit": 1972.0,
+            "roi_pct": 13.15,
+            "accuracy": 79.33
+          },
+          "2025": {
+            "bets": 125,
+            "wins": 92,
+            "staked": 12500.0,
+            "returned": 13063.0,
+            "profit": 563.0,
+            "roi_pct": 4.5,
+            "accuracy": 73.6
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "pair_no_draw_favourite min_matches=5 min_rate=100% max_odds=2.5",
+      "pattern": "pair_no_draw_favourite",
+      "min_matches": 5,
+      "min_rate_pct": 100.0,
+      "max_odds": 2.5,
+      "score": -1205.0,
+      "eligible": true,
+      "rejection_reasons": [],
+      "simulation": {
+        "bets": 1077,
+        "wins": 668,
+        "accuracy": 62.02,
+        "final_bankroll": 11860.0,
+        "profit": 1860.0,
+        "roi_pct": 1.73,
+        "max_drawdown": 2633.0,
+        "max_drawdown_pct": 19.53,
+        "by_season": {
+          "2021": {
+            "bets": 119,
+            "wins": 73,
+            "staked": 11900.0,
+            "returned": 12256.0,
+            "profit": 356.0,
+            "roi_pct": 2.99,
+            "accuracy": 61.34
+          },
+          "2022": {
+            "bets": 284,
+            "wins": 177,
+            "staked": 28400.0,
+            "returned": 29344.0,
+            "profit": 944.0,
+            "roi_pct": 3.32,
+            "accuracy": 62.32
+          },
+          "2023": {
+            "bets": 221,
+            "wins": 139,
+            "staked": 22100.0,
+            "returned": 22880.0,
+            "profit": 780.0,
+            "roi_pct": 3.53,
+            "accuracy": 62.9
+          },
+          "2024": {
+            "bets": 258,
+            "wins": 155,
+            "staked": 25800.0,
+            "returned": 24806.0,
+            "profit": -994.0,
+            "roi_pct": -3.85,
+            "accuracy": 60.08
+          },
+          "2025": {
+            "bets": 195,
+            "wins": 124,
+            "staked": 19500.0,
+            "returned": 20274.0,
+            "profit": 774.0,
+            "roi_pct": 3.97,
+            "accuracy": 63.59
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "pair_dominant_result min_matches=5 min_rate=100% max_odds=2.5",
+      "pattern": "pair_dominant_result",
+      "min_matches": 5,
+      "min_rate_pct": 100.0,
+      "max_odds": 2.5,
+      "score": -1273.0,
+      "eligible": true,
+      "rejection_reasons": [],
+      "simulation": {
+        "bets": 214,
+        "wins": 156,
+        "accuracy": 72.9,
+        "final_bankroll": 10567.0,
+        "profit": 567.0,
+        "roi_pct": 2.65,
+        "max_drawdown": 654.0,
+        "max_drawdown_pct": 5.95,
+        "by_season": {
+          "2021": {
+            "bets": 24,
+            "wins": 19,
+            "staked": 2400.0,
+            "returned": 2823.0,
+            "profit": 423.0,
+            "roi_pct": 17.62,
+            "accuracy": 79.17
+          },
+          "2022": {
+            "bets": 63,
+            "wins": 45,
+            "staked": 6300.0,
+            "returned": 6328.0,
+            "profit": 28.0,
+            "roi_pct": 0.44,
+            "accuracy": 71.43
+          },
+          "2023": {
+            "bets": 50,
+            "wins": 35,
+            "staked": 5000.0,
+            "returned": 4948.0,
+            "profit": -52.0,
+            "roi_pct": -1.04,
+            "accuracy": 70.0
+          },
+          "2024": {
+            "bets": 38,
+            "wins": 27,
+            "staked": 3800.0,
+            "returned": 3881.0,
+            "profit": 81.0,
+            "roi_pct": 2.13,
+            "accuracy": 71.05
+          },
+          "2025": {
+            "bets": 39,
+            "wins": 30,
+            "staked": 3900.0,
+            "returned": 3987.0,
+            "profit": 87.0,
+            "roi_pct": 2.23,
+            "accuracy": 76.92
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "pair_dominant_result min_matches=5 min_rate=90% max_odds=2.0",
+      "pattern": "pair_dominant_result",
+      "min_matches": 5,
+      "min_rate_pct": 90.0,
+      "max_odds": 2.0,
+      "score": -1441.25,
+      "eligible": true,
+      "rejection_reasons": [],
+      "simulation": {
+        "bets": 213,
+        "wins": 161,
+        "accuracy": 75.59,
+        "final_bankroll": 10399.0,
+        "profit": 399.0,
+        "roi_pct": 1.87,
+        "max_drawdown": 596.0,
+        "max_drawdown_pct": 5.44,
+        "by_season": {
+          "2021": {
+            "bets": 18,
+            "wins": 15,
+            "staked": 1800.0,
+            "returned": 1908.0,
+            "profit": 108.0,
+            "roi_pct": 6.0,
+            "accuracy": 83.33
+          },
+          "2022": {
+            "bets": 55,
+            "wins": 42,
+            "staked": 5500.0,
+            "returned": 5658.0,
+            "profit": 158.0,
+            "roi_pct": 2.87,
+            "accuracy": 76.36
+          },
+          "2023": {
+            "bets": 44,
+            "wins": 33,
+            "staked": 4400.0,
+            "returned": 4528.0,
+            "profit": 128.0,
+            "roi_pct": 2.91,
+            "accuracy": 75.0
+          },
+          "2024": {
+            "bets": 41,
+            "wins": 31,
+            "staked": 4100.0,
+            "returned": 4274.0,
+            "profit": 174.0,
+            "roi_pct": 4.24,
+            "accuracy": 75.61
+          },
+          "2025": {
+            "bets": 55,
+            "wins": 40,
+            "staked": 5500.0,
+            "returned": 5331.0,
+            "profit": -169.0,
+            "roi_pct": -3.07,
+            "accuracy": 72.73
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "directed_h2h_outcome min_matches=3 min_rate=75% max_odds=2.0",
+      "pattern": "directed_h2h_outcome",
+      "min_matches": 3,
+      "min_rate_pct": 75.0,
+      "max_odds": 2.0,
+      "score": -1551.5,
+      "eligible": true,
+      "rejection_reasons": [],
+      "simulation": {
+        "bets": 1028,
+        "wins": 708,
+        "accuracy": 68.87,
+        "final_bankroll": 11612.0,
+        "profit": 1612.0,
+        "roi_pct": 1.57,
+        "max_drawdown": 2850.0,
+        "max_drawdown_pct": 23.85,
+        "by_season": {
+          "2022": {
+            "bets": 116,
+            "wins": 83,
+            "staked": 11600.0,
+            "returned": 11748.0,
+            "profit": 148.0,
+            "roi_pct": 1.28,
+            "accuracy": 71.55
+          },
+          "2023": {
+            "bets": 273,
+            "wins": 178,
+            "staked": 27300.0,
+            "returned": 26346.0,
+            "profit": -954.0,
+            "roi_pct": -3.49,
+            "accuracy": 65.2
+          },
+          "2024": {
+            "bets": 337,
+            "wins": 230,
+            "staked": 33700.0,
+            "returned": 34179.0,
+            "profit": 479.0,
+            "roi_pct": 1.42,
+            "accuracy": 68.25
+          },
+          "2025": {
+            "bets": 302,
+            "wins": 217,
+            "staked": 30200.0,
+            "returned": 32139.0,
+            "profit": 1939.0,
+            "roi_pct": 6.42,
+            "accuracy": 71.85
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "directed_h2h_outcome min_matches=3 min_rate=67% max_odds=2.0",
+      "pattern": "directed_h2h_outcome",
+      "min_matches": 3,
+      "min_rate_pct": 67.0,
+      "max_odds": 2.0,
+      "score": -1591.5,
+      "eligible": true,
+      "rejection_reasons": [],
+      "simulation": {
+        "bets": 1032,
+        "wins": 710,
+        "accuracy": 68.8,
+        "final_bankroll": 11572.0,
+        "profit": 1572.0,
+        "roi_pct": 1.52,
+        "max_drawdown": 2850.0,
+        "max_drawdown_pct": 23.73,
+        "by_season": {
+          "2022": {
+            "bets": 116,
+            "wins": 83,
+            "staked": 11600.0,
+            "returned": 11748.0,
+            "profit": 148.0,
+            "roi_pct": 1.28,
+            "accuracy": 71.55
+          },
+          "2023": {
+            "bets": 273,
+            "wins": 178,
+            "staked": 27300.0,
+            "returned": 26346.0,
+            "profit": -954.0,
+            "roi_pct": -3.49,
+            "accuracy": 65.2
+          },
+          "2024": {
+            "bets": 339,
+            "wins": 231,
+            "staked": 33900.0,
+            "returned": 34374.0,
+            "profit": 474.0,
+            "roi_pct": 1.4,
+            "accuracy": 68.14
+          },
+          "2025": {
+            "bets": 304,
+            "wins": 218,
+            "staked": 30400.0,
+            "returned": 32304.0,
+            "profit": 1904.0,
+            "roi_pct": 6.26,
+            "accuracy": 71.71
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "pair_dominant_result min_matches=5 min_rate=75% max_odds=2.5",
+      "pattern": "pair_dominant_result",
+      "min_matches": 5,
+      "min_rate_pct": 75.0,
+      "max_odds": 2.5,
+      "score": -2305.25,
+      "eligible": true,
+      "rejection_reasons": [],
+      "simulation": {
+        "bets": 1126,
+        "wins": 736,
+        "accuracy": 65.36,
+        "final_bankroll": 10851.0,
+        "profit": 851.0,
+        "roi_pct": 0.76,
+        "max_drawdown": 3085.0,
+        "max_drawdown_pct": 24.7,
+        "by_season": {
+          "2021": {
+            "bets": 101,
+            "wins": 65,
+            "staked": 10100.0,
+            "returned": 10350.0,
+            "profit": 250.0,
+            "roi_pct": 2.48,
+            "accuracy": 64.36
+          },
+          "2022": {
+            "bets": 227,
+            "wins": 150,
+            "staked": 22700.0,
+            "returned": 23563.0,
+            "profit": 863.0,
+            "roi_pct": 3.8,
+            "accuracy": 66.08
+          },
+          "2023": {
+            "bets": 253,
+            "wins": 164,
+            "staked": 25300.0,
+            "returned": 25389.0,
+            "profit": 89.0,
+            "roi_pct": 0.35,
+            "accuracy": 64.82
+          },
+          "2024": {
+            "bets": 300,
+            "wins": 196,
+            "staked": 30000.0,
+            "returned": 30104.0,
+            "profit": 104.0,
+            "roi_pct": 0.35,
+            "accuracy": 65.33
+          },
+          "2025": {
+            "bets": 245,
+            "wins": 161,
+            "staked": 24500.0,
+            "returned": 24045.0,
+            "profit": -455.0,
+            "roi_pct": -1.86,
+            "accuracy": 65.71
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "directed_h2h_outcome min_matches=3 min_rate=90% max_odds=4.0",
+      "pattern": "directed_h2h_outcome",
+      "min_matches": 3,
+      "min_rate_pct": 90.0,
+      "max_odds": 4.0,
+      "score": 717.5,
+      "eligible": false,
+      "rejection_reasons": [
+        "not_profitable_enough_seasons"
+      ],
+      "simulation": {
+        "bets": 793,
+        "wins": 495,
+        "accuracy": 62.42,
+        "final_bankroll": 14476.0,
+        "profit": 4476.0,
+        "roi_pct": 5.64,
+        "max_drawdown": 1448.0,
+        "max_drawdown_pct": 9.91,
+        "by_season": {
+          "2022": {
+            "bets": 188,
+            "wins": 109,
+            "staked": 18800.0,
+            "returned": 18662.0,
+            "profit": -138.0,
+            "roi_pct": -0.73,
+            "accuracy": 57.98
+          },
+          "2023": {
+            "bets": 217,
+            "wins": 125,
+            "staked": 21700.0,
+            "returned": 21663.0,
+            "profit": -37.0,
+            "roi_pct": -0.17,
+            "accuracy": 57.6
+          },
+          "2024": {
+            "bets": 218,
+            "wins": 145,
+            "staked": 21800.0,
+            "returned": 24105.0,
+            "profit": 2305.0,
+            "roi_pct": 10.57,
+            "accuracy": 66.51
+          },
+          "2025": {
+            "bets": 170,
+            "wins": 116,
+            "staked": 17000.0,
+            "returned": 19346.0,
+            "profit": 2346.0,
+            "roi_pct": 13.8,
+            "accuracy": 68.24
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "directed_h2h_outcome min_matches=3 min_rate=100% max_odds=4.0",
+      "pattern": "directed_h2h_outcome",
+      "min_matches": 3,
+      "min_rate_pct": 100.0,
+      "max_odds": 4.0,
+      "score": 717.5,
+      "eligible": false,
+      "rejection_reasons": [
+        "not_profitable_enough_seasons"
+      ],
+      "simulation": {
+        "bets": 793,
+        "wins": 495,
+        "accuracy": 62.42,
+        "final_bankroll": 14476.0,
+        "profit": 4476.0,
+        "roi_pct": 5.64,
+        "max_drawdown": 1448.0,
+        "max_drawdown_pct": 9.91,
+        "by_season": {
+          "2022": {
+            "bets": 188,
+            "wins": 109,
+            "staked": 18800.0,
+            "returned": 18662.0,
+            "profit": -138.0,
+            "roi_pct": -0.73,
+            "accuracy": 57.98
+          },
+          "2023": {
+            "bets": 217,
+            "wins": 125,
+            "staked": 21700.0,
+            "returned": 21663.0,
+            "profit": -37.0,
+            "roi_pct": -0.17,
+            "accuracy": 57.6
+          },
+          "2024": {
+            "bets": 218,
+            "wins": 145,
+            "staked": 21800.0,
+            "returned": 24105.0,
+            "profit": 2305.0,
+            "roi_pct": 10.57,
+            "accuracy": 66.51
+          },
+          "2025": {
+            "bets": 170,
+            "wins": 116,
+            "staked": 17000.0,
+            "returned": 19346.0,
+            "profit": 2346.0,
+            "roi_pct": 13.8,
+            "accuracy": 68.24
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "away_team_any_result min_matches=5 min_rate=90% max_odds=2.5",
+      "pattern": "away_team_any_result",
+      "min_matches": 5,
+      "min_rate_pct": 90.0,
+      "max_odds": 2.5,
+      "score": 702.0,
+      "eligible": false,
+      "rejection_reasons": [
+        "too_few_bets",
+        "thin_season_sample"
+      ],
+      "simulation": {
+        "bets": 30,
+        "wins": 26,
+        "accuracy": 86.67,
+        "final_bankroll": 10807.0,
+        "profit": 807.0,
+        "roi_pct": 26.9,
+        "max_drawdown": 200.0,
+        "max_drawdown_pct": 1.84,
+        "by_season": {
+          "2019": {
+            "bets": 23,
+            "wins": 19,
+            "staked": 2300.0,
+            "returned": 2943.0,
+            "profit": 643.0,
+            "roi_pct": 27.96,
+            "accuracy": 82.61
+          },
+          "2020": {
+            "bets": 1,
+            "wins": 1,
+            "staked": 100.0,
+            "returned": 120.0,
+            "profit": 20.0,
+            "roi_pct": 20.0,
+            "accuracy": 100.0
+          },
+          "2021": {
+            "bets": 5,
+            "wins": 5,
+            "staked": 500.0,
+            "returned": 608.0,
+            "profit": 108.0,
+            "roi_pct": 21.6,
+            "accuracy": 100.0
+          },
+          "2023": {
+            "bets": 1,
+            "wins": 1,
+            "staked": 100.0,
+            "returned": 136.0,
+            "profit": 36.0,
+            "roi_pct": 36.0,
+            "accuracy": 100.0
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "away_team_any_result min_matches=5 min_rate=90% max_odds=none",
+      "pattern": "away_team_any_result",
+      "min_matches": 5,
+      "min_rate_pct": 90.0,
+      "max_odds": null,
+      "score": 564.5,
+      "eligible": false,
+      "rejection_reasons": [
+        "too_few_bets",
+        "thin_season_sample"
+      ],
+      "simulation": {
+        "bets": 31,
+        "wins": 26,
+        "accuracy": 83.87,
+        "final_bankroll": 10707.0,
+        "profit": 707.0,
+        "roi_pct": 22.81,
+        "max_drawdown": 275.0,
+        "max_drawdown_pct": 2.54,
+        "by_season": {
+          "2019": {
+            "bets": 24,
+            "wins": 19,
+            "staked": 2400.0,
+            "returned": 2943.0,
+            "profit": 543.0,
+            "roi_pct": 22.62,
+            "accuracy": 79.17
+          },
+          "2020": {
+            "bets": 1,
+            "wins": 1,
+            "staked": 100.0,
+            "returned": 120.0,
+            "profit": 20.0,
+            "roi_pct": 20.0,
+            "accuracy": 100.0
+          },
+          "2021": {
+            "bets": 5,
+            "wins": 5,
+            "staked": 500.0,
+            "returned": 608.0,
+            "profit": 108.0,
+            "roi_pct": 21.6,
+            "accuracy": 100.0
+          },
+          "2023": {
+            "bets": 1,
+            "wins": 1,
+            "staked": 100.0,
+            "returned": 136.0,
+            "profit": 36.0,
+            "roi_pct": 36.0,
+            "accuracy": 100.0
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "away_team_any_result min_matches=5 min_rate=90% max_odds=4.0",
+      "pattern": "away_team_any_result",
+      "min_matches": 5,
+      "min_rate_pct": 90.0,
+      "max_odds": 4.0,
+      "score": 564.5,
+      "eligible": false,
+      "rejection_reasons": [
+        "too_few_bets",
+        "thin_season_sample"
+      ],
+      "simulation": {
+        "bets": 31,
+        "wins": 26,
+        "accuracy": 83.87,
+        "final_bankroll": 10707.0,
+        "profit": 707.0,
+        "roi_pct": 22.81,
+        "max_drawdown": 275.0,
+        "max_drawdown_pct": 2.54,
+        "by_season": {
+          "2019": {
+            "bets": 24,
+            "wins": 19,
+            "staked": 2400.0,
+            "returned": 2943.0,
+            "profit": 543.0,
+            "roi_pct": 22.62,
+            "accuracy": 79.17
+          },
+          "2020": {
+            "bets": 1,
+            "wins": 1,
+            "staked": 100.0,
+            "returned": 120.0,
+            "profit": 20.0,
+            "roi_pct": 20.0,
+            "accuracy": 100.0
+          },
+          "2021": {
+            "bets": 5,
+            "wins": 5,
+            "staked": 500.0,
+            "returned": 608.0,
+            "profit": 108.0,
+            "roi_pct": 21.6,
+            "accuracy": 100.0
+          },
+          "2023": {
+            "bets": 1,
+            "wins": 1,
+            "staked": 100.0,
+            "returned": 136.0,
+            "profit": 36.0,
+            "roi_pct": 36.0,
+            "accuracy": 100.0
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "away_team_any_result min_matches=5 min_rate=90% max_odds=3.0",
+      "pattern": "away_team_any_result",
+      "min_matches": 5,
+      "min_rate_pct": 90.0,
+      "max_odds": 3.0,
+      "score": 564.5,
+      "eligible": false,
+      "rejection_reasons": [
+        "too_few_bets",
+        "thin_season_sample"
+      ],
+      "simulation": {
+        "bets": 31,
+        "wins": 26,
+        "accuracy": 83.87,
+        "final_bankroll": 10707.0,
+        "profit": 707.0,
+        "roi_pct": 22.81,
+        "max_drawdown": 275.0,
+        "max_drawdown_pct": 2.54,
+        "by_season": {
+          "2019": {
+            "bets": 24,
+            "wins": 19,
+            "staked": 2400.0,
+            "returned": 2943.0,
+            "profit": 543.0,
+            "roi_pct": 22.62,
+            "accuracy": 79.17
+          },
+          "2020": {
+            "bets": 1,
+            "wins": 1,
+            "staked": 100.0,
+            "returned": 120.0,
+            "profit": 20.0,
+            "roi_pct": 20.0,
+            "accuracy": 100.0
+          },
+          "2021": {
+            "bets": 5,
+            "wins": 5,
+            "staked": 500.0,
+            "returned": 608.0,
+            "profit": 108.0,
+            "roi_pct": 21.6,
+            "accuracy": 100.0
+          },
+          "2023": {
+            "bets": 1,
+            "wins": 1,
+            "staked": 100.0,
+            "returned": 136.0,
+            "profit": 36.0,
+            "roi_pct": 36.0,
+            "accuracy": 100.0
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "away_team_any_result min_matches=5 min_rate=90% max_odds=2.0",
+      "pattern": "away_team_any_result",
+      "min_matches": 5,
+      "min_rate_pct": 90.0,
+      "max_odds": 2.0,
+      "score": 487.0,
+      "eligible": false,
+      "rejection_reasons": [
+        "too_few_bets",
+        "thin_season_sample"
+      ],
+      "simulation": {
+        "bets": 28,
+        "wins": 24,
+        "accuracy": 85.71,
+        "final_bankroll": 10592.0,
+        "profit": 592.0,
+        "roi_pct": 21.14,
+        "max_drawdown": 200.0,
+        "max_drawdown_pct": 1.88,
+        "by_season": {
+          "2019": {
+            "bets": 21,
+            "wins": 17,
+            "staked": 2100.0,
+            "returned": 2528.0,
+            "profit": 428.0,
+            "roi_pct": 20.38,
+            "accuracy": 80.95
+          },
+          "2020": {
+            "bets": 1,
+            "wins": 1,
+            "staked": 100.0,
+            "returned": 120.0,
+            "profit": 20.0,
+            "roi_pct": 20.0,
+            "accuracy": 100.0
+          },
+          "2021": {
+            "bets": 5,
+            "wins": 5,
+            "staked": 500.0,
+            "returned": 608.0,
+            "profit": 108.0,
+            "roi_pct": 21.6,
+            "accuracy": 100.0
+          },
+          "2023": {
+            "bets": 1,
+            "wins": 1,
+            "staked": 100.0,
+            "returned": 136.0,
+            "profit": 36.0,
+            "roi_pct": 36.0,
+            "accuracy": 100.0
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "away_team_any_result min_matches=5 min_rate=100% max_odds=2.5",
+      "pattern": "away_team_any_result",
+      "min_matches": 5,
+      "min_rate_pct": 100.0,
+      "max_odds": 2.5,
+      "score": 402.0,
+      "eligible": false,
+      "rejection_reasons": [
+        "too_few_bets",
+        "thin_season_sample"
+      ],
+      "simulation": {
+        "bets": 17,
+        "wins": 15,
+        "accuracy": 88.24,
+        "final_bankroll": 10507.0,
+        "profit": 507.0,
+        "roi_pct": 29.82,
+        "max_drawdown": 200.0,
+        "max_drawdown_pct": 1.9,
+        "by_season": {
+          "2019": {
+            "bets": 12,
+            "wins": 10,
+            "staked": 1200.0,
+            "returned": 1589.0,
+            "profit": 389.0,
+            "roi_pct": 32.42,
+            "accuracy": 83.33
+          },
+          "2020": {
+            "bets": 1,
+            "wins": 1,
+            "staked": 100.0,
+            "returned": 120.0,
+            "profit": 20.0,
+            "roi_pct": 20.0,
+            "accuracy": 100.0
+          },
+          "2021": {
+            "bets": 4,
+            "wins": 4,
+            "staked": 400.0,
+            "returned": 498.0,
+            "profit": 98.0,
+            "roi_pct": 24.5,
+            "accuracy": 100.0
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "away_team_any_result min_matches=5 min_rate=100% max_odds=none",
+      "pattern": "away_team_any_result",
+      "min_matches": 5,
+      "min_rate_pct": 100.0,
+      "max_odds": null,
+      "score": 302.0,
+      "eligible": false,
+      "rejection_reasons": [
+        "too_few_bets",
+        "thin_season_sample"
+      ],
+      "simulation": {
+        "bets": 18,
+        "wins": 15,
+        "accuracy": 83.33,
+        "final_bankroll": 10407.0,
+        "profit": 407.0,
+        "roi_pct": 22.61,
+        "max_drawdown": 200.0,
+        "max_drawdown_pct": 1.92,
+        "by_season": {
+          "2019": {
+            "bets": 13,
+            "wins": 10,
+            "staked": 1300.0,
+            "returned": 1589.0,
+            "profit": 289.0,
+            "roi_pct": 22.23,
+            "accuracy": 76.92
+          },
+          "2020": {
+            "bets": 1,
+            "wins": 1,
+            "staked": 100.0,
+            "returned": 120.0,
+            "profit": 20.0,
+            "roi_pct": 20.0,
+            "accuracy": 100.0
+          },
+          "2021": {
+            "bets": 4,
+            "wins": 4,
+            "staked": 400.0,
+            "returned": 498.0,
+            "profit": 98.0,
+            "roi_pct": 24.5,
+            "accuracy": 100.0
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "away_team_any_result min_matches=5 min_rate=100% max_odds=4.0",
+      "pattern": "away_team_any_result",
+      "min_matches": 5,
+      "min_rate_pct": 100.0,
+      "max_odds": 4.0,
+      "score": 302.0,
+      "eligible": false,
+      "rejection_reasons": [
+        "too_few_bets",
+        "thin_season_sample"
+      ],
+      "simulation": {
+        "bets": 18,
+        "wins": 15,
+        "accuracy": 83.33,
+        "final_bankroll": 10407.0,
+        "profit": 407.0,
+        "roi_pct": 22.61,
+        "max_drawdown": 200.0,
+        "max_drawdown_pct": 1.92,
+        "by_season": {
+          "2019": {
+            "bets": 13,
+            "wins": 10,
+            "staked": 1300.0,
+            "returned": 1589.0,
+            "profit": 289.0,
+            "roi_pct": 22.23,
+            "accuracy": 76.92
+          },
+          "2020": {
+            "bets": 1,
+            "wins": 1,
+            "staked": 100.0,
+            "returned": 120.0,
+            "profit": 20.0,
+            "roi_pct": 20.0,
+            "accuracy": 100.0
+          },
+          "2021": {
+            "bets": 4,
+            "wins": 4,
+            "staked": 400.0,
+            "returned": 498.0,
+            "profit": 98.0,
+            "roi_pct": 24.5,
+            "accuracy": 100.0
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "away_team_any_result min_matches=5 min_rate=100% max_odds=3.0",
+      "pattern": "away_team_any_result",
+      "min_matches": 5,
+      "min_rate_pct": 100.0,
+      "max_odds": 3.0,
+      "score": 302.0,
+      "eligible": false,
+      "rejection_reasons": [
+        "too_few_bets",
+        "thin_season_sample"
+      ],
+      "simulation": {
+        "bets": 18,
+        "wins": 15,
+        "accuracy": 83.33,
+        "final_bankroll": 10407.0,
+        "profit": 407.0,
+        "roi_pct": 22.61,
+        "max_drawdown": 200.0,
+        "max_drawdown_pct": 1.92,
+        "by_season": {
+          "2019": {
+            "bets": 13,
+            "wins": 10,
+            "staked": 1300.0,
+            "returned": 1589.0,
+            "profit": 289.0,
+            "roi_pct": 22.23,
+            "accuracy": 76.92
+          },
+          "2020": {
+            "bets": 1,
+            "wins": 1,
+            "staked": 100.0,
+            "returned": 120.0,
+            "profit": 20.0,
+            "roi_pct": 20.0,
+            "accuracy": 100.0
+          },
+          "2021": {
+            "bets": 4,
+            "wins": 4,
+            "staked": 400.0,
+            "returned": 498.0,
+            "profit": 98.0,
+            "roi_pct": 24.5,
+            "accuracy": 100.0
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "away_team_any_result min_matches=5 min_rate=100% max_odds=2.0",
+      "pattern": "away_team_any_result",
+      "min_matches": 5,
+      "min_rate_pct": 100.0,
+      "max_odds": 2.0,
+      "score": 292.0,
+      "eligible": false,
+      "rejection_reasons": [
+        "too_few_bets",
+        "thin_season_sample"
+      ],
+      "simulation": {
+        "bets": 16,
+        "wins": 14,
+        "accuracy": 87.5,
+        "final_bankroll": 10397.0,
+        "profit": 397.0,
+        "roi_pct": 24.81,
+        "max_drawdown": 200.0,
+        "max_drawdown_pct": 1.92,
+        "by_season": {
+          "2019": {
+            "bets": 11,
+            "wins": 9,
+            "staked": 1100.0,
+            "returned": 1379.0,
+            "profit": 279.0,
+            "roi_pct": 25.36,
+            "accuracy": 81.82
+          },
+          "2020": {
+            "bets": 1,
+            "wins": 1,
+            "staked": 100.0,
+            "returned": 120.0,
+            "profit": 20.0,
+            "roi_pct": 20.0,
+            "accuracy": 100.0
+          },
+          "2021": {
+            "bets": 4,
+            "wins": 4,
+            "staked": 400.0,
+            "returned": 498.0,
+            "profit": 98.0,
+            "roi_pct": 24.5,
+            "accuracy": 100.0
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "directed_h2h_outcome min_matches=5 min_rate=90% max_odds=2.5",
+      "pattern": "directed_h2h_outcome",
+      "min_matches": 5,
+      "min_rate_pct": 90.0,
+      "max_odds": 2.5,
+      "score": 33.5,
+      "eligible": false,
+      "rejection_reasons": [
+        "too_few_bets"
+      ],
+      "simulation": {
+        "bets": 79,
+        "wins": 58,
+        "accuracy": 73.42,
+        "final_bankroll": 10301.0,
+        "profit": 301.0,
+        "roi_pct": 3.81,
+        "max_drawdown": 483.0,
+        "max_drawdown_pct": 4.63,
+        "by_season": {
+          "2024": {
+            "bets": 30,
+            "wins": 22,
+            "staked": 3000.0,
+            "returned": 3104.0,
+            "profit": 104.0,
+            "roi_pct": 3.47,
+            "accuracy": 73.33
+          },
+          "2025": {
+            "bets": 49,
+            "wins": 36,
+            "staked": 4900.0,
+            "returned": 5097.0,
+            "profit": 197.0,
+            "roi_pct": 4.02,
+            "accuracy": 73.47
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "directed_h2h_outcome min_matches=5 min_rate=100% max_odds=2.5",
+      "pattern": "directed_h2h_outcome",
+      "min_matches": 5,
+      "min_rate_pct": 100.0,
+      "max_odds": 2.5,
+      "score": 33.5,
+      "eligible": false,
+      "rejection_reasons": [
+        "too_few_bets"
+      ],
+      "simulation": {
+        "bets": 79,
+        "wins": 58,
+        "accuracy": 73.42,
+        "final_bankroll": 10301.0,
+        "profit": 301.0,
+        "roi_pct": 3.81,
+        "max_drawdown": 483.0,
+        "max_drawdown_pct": 4.63,
+        "by_season": {
+          "2024": {
+            "bets": 30,
+            "wins": 22,
+            "staked": 3000.0,
+            "returned": 3104.0,
+            "profit": 104.0,
+            "roi_pct": 3.47,
+            "accuracy": 73.33
+          },
+          "2025": {
+            "bets": 49,
+            "wins": 36,
+            "staked": 4900.0,
+            "returned": 5097.0,
+            "profit": 197.0,
+            "roi_pct": 4.02,
+            "accuracy": 73.47
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "home_team_any_result min_matches=5 min_rate=100% max_odds=2.0",
+      "pattern": "home_team_any_result",
+      "min_matches": 5,
+      "min_rate_pct": 100.0,
+      "max_odds": 2.0,
+      "score": 16.0,
+      "eligible": false,
+      "rejection_reasons": [
+        "too_few_bets",
+        "thin_season_sample"
+      ],
+      "simulation": {
+        "bets": 11,
+        "wins": 9,
+        "accuracy": 81.82,
+        "final_bankroll": 10068.0,
+        "profit": 68.0,
+        "roi_pct": 6.18,
+        "max_drawdown": 100.0,
+        "max_drawdown_pct": 0.98,
+        "by_season": {
+          "2019": {
+            "bets": 8,
+            "wins": 7,
+            "staked": 800.0,
+            "returned": 808.0,
+            "profit": 8.0,
+            "roi_pct": 1.0,
+            "accuracy": 87.5
+          },
+          "2021": {
+            "bets": 3,
+            "wins": 2,
+            "staked": 300.0,
+            "returned": 360.0,
+            "profit": 60.0,
+            "roi_pct": 20.0,
+            "accuracy": 66.67
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "directed_h2h_outcome min_matches=5 min_rate=75% max_odds=2.5",
+      "pattern": "directed_h2h_outcome",
+      "min_matches": 5,
+      "min_rate_pct": 75.0,
+      "max_odds": 2.5,
+      "score": -278.75,
+      "eligible": false,
+      "rejection_reasons": [
+        "not_profitable_enough_seasons",
+        "thin_season_sample"
+      ],
+      "simulation": {
+        "bets": 305,
+        "wins": 209,
+        "accuracy": 68.52,
+        "final_bankroll": 12035.0,
+        "profit": 2035.0,
+        "roi_pct": 6.67,
+        "max_drawdown": 1469.0,
+        "max_drawdown_pct": 11.85,
+        "by_season": {
+          "2023": {
+            "bets": 5,
+            "wins": 5,
+            "staked": 500.0,
+            "returned": 928.0,
+            "profit": 428.0,
+            "roi_pct": 85.6,
+            "accuracy": 100.0
+          },
+          "2024": {
+            "bets": 124,
+            "wins": 79,
+            "staked": 12400.0,
+            "returned": 12083.0,
+            "profit": -317.0,
+            "roi_pct": -2.56,
+            "accuracy": 63.71
+          },
+          "2025": {
+            "bets": 176,
+            "wins": 125,
+            "staked": 17600.0,
+            "returned": 19524.0,
+            "profit": 1924.0,
+            "roi_pct": 10.93,
+            "accuracy": 71.02
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "directed_h2h_outcome min_matches=5 min_rate=80% max_odds=2.5",
+      "pattern": "directed_h2h_outcome",
+      "min_matches": 5,
+      "min_rate_pct": 80.0,
+      "max_odds": 2.5,
+      "score": -278.75,
+      "eligible": false,
+      "rejection_reasons": [
+        "not_profitable_enough_seasons",
+        "thin_season_sample"
+      ],
+      "simulation": {
+        "bets": 303,
+        "wins": 208,
+        "accuracy": 68.65,
+        "final_bankroll": 12035.0,
+        "profit": 2035.0,
+        "roi_pct": 6.72,
+        "max_drawdown": 1469.0,
+        "max_drawdown_pct": 11.85,
+        "by_season": {
+          "2023": {
+            "bets": 5,
+            "wins": 5,
+            "staked": 500.0,
+            "returned": 928.0,
+            "profit": 428.0,
+            "roi_pct": 85.6,
+            "accuracy": 100.0
+          },
+          "2024": {
+            "bets": 124,
+            "wins": 79,
+            "staked": 12400.0,
+            "returned": 12083.0,
+            "profit": -317.0,
+            "roi_pct": -2.56,
+            "accuracy": 63.71
+          },
+          "2025": {
+            "bets": 174,
+            "wins": 124,
+            "staked": 17400.0,
+            "returned": 19324.0,
+            "profit": 1924.0,
+            "roi_pct": 11.06,
+            "accuracy": 71.26
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "directed_h2h_outcome min_matches=5 min_rate=67% max_odds=2.5",
+      "pattern": "directed_h2h_outcome",
+      "min_matches": 5,
+      "min_rate_pct": 67.0,
+      "max_odds": 2.5,
+      "score": -300.0,
+      "eligible": false,
+      "rejection_reasons": [
+        "not_profitable_enough_seasons",
+        "thin_season_sample"
+      ],
+      "simulation": {
+        "bets": 311,
+        "wins": 212,
+        "accuracy": 68.17,
+        "final_bankroll": 12015.0,
+        "profit": 2015.0,
+        "roi_pct": 6.48,
+        "max_drawdown": 1469.0,
+        "max_drawdown_pct": 11.87,
+        "by_season": {
+          "2023": {
+            "bets": 5,
+            "wins": 5,
+            "staked": 500.0,
+            "returned": 928.0,
+            "profit": 428.0,
+            "roi_pct": 85.6,
+            "accuracy": 100.0
+          },
+          "2024": {
+            "bets": 126,
+            "wins": 80,
+            "staked": 12600.0,
+            "returned": 12278.0,
+            "profit": -322.0,
+            "roi_pct": -2.56,
+            "accuracy": 63.49
+          },
+          "2025": {
+            "bets": 180,
+            "wins": 127,
+            "staked": 18000.0,
+            "returned": 19909.0,
+            "profit": 1909.0,
+            "roi_pct": 10.61,
+            "accuracy": 70.56
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "directed_h2h_outcome min_matches=4 min_rate=90% max_odds=2.5",
+      "pattern": "directed_h2h_outcome",
+      "min_matches": 4,
+      "min_rate_pct": 90.0,
+      "max_odds": 2.5,
+      "score": -661.25,
+      "eligible": false,
+      "rejection_reasons": [
+        "not_profitable_enough_seasons"
+      ],
+      "simulation": {
+        "bets": 252,
+        "wins": 181,
+        "accuracy": 71.83,
+        "final_bankroll": 11144.0,
+        "profit": 1144.0,
+        "roi_pct": 4.54,
+        "max_drawdown": 570.0,
+        "max_drawdown_pct": 5.08,
+        "by_season": {
+          "2023": {
+            "bets": 61,
+            "wins": 42,
+            "staked": 6100.0,
+            "returned": 6019.0,
+            "profit": -81.0,
+            "roi_pct": -1.33,
+            "accuracy": 68.85
+          },
+          "2024": {
+            "bets": 90,
+            "wins": 66,
+            "staked": 9000.0,
+            "returned": 9487.0,
+            "profit": 487.0,
+            "roi_pct": 5.41,
+            "accuracy": 73.33
+          },
+          "2025": {
+            "bets": 101,
+            "wins": 73,
+            "staked": 10100.0,
+            "returned": 10838.0,
+            "profit": 738.0,
+            "roi_pct": 7.31,
+            "accuracy": 72.28
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "directed_h2h_outcome min_matches=4 min_rate=100% max_odds=2.5",
+      "pattern": "directed_h2h_outcome",
+      "min_matches": 4,
+      "min_rate_pct": 100.0,
+      "max_odds": 2.5,
+      "score": -661.25,
+      "eligible": false,
+      "rejection_reasons": [
+        "not_profitable_enough_seasons"
+      ],
+      "simulation": {
+        "bets": 252,
+        "wins": 181,
+        "accuracy": 71.83,
+        "final_bankroll": 11144.0,
+        "profit": 1144.0,
+        "roi_pct": 4.54,
+        "max_drawdown": 570.0,
+        "max_drawdown_pct": 5.08,
+        "by_season": {
+          "2023": {
+            "bets": 61,
+            "wins": 42,
+            "staked": 6100.0,
+            "returned": 6019.0,
+            "profit": -81.0,
+            "roi_pct": -1.33,
+            "accuracy": 68.85
+          },
+          "2024": {
+            "bets": 90,
+            "wins": 66,
+            "staked": 9000.0,
+            "returned": 9487.0,
+            "profit": 487.0,
+            "roi_pct": 5.41,
+            "accuracy": 73.33
+          },
+          "2025": {
+            "bets": 101,
+            "wins": 73,
+            "staked": 10100.0,
+            "returned": 10838.0,
+            "profit": 738.0,
+            "roi_pct": 7.31,
+            "accuracy": 72.28
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "directed_h2h_outcome min_matches=4 min_rate=90% max_odds=2.0",
+      "pattern": "directed_h2h_outcome",
+      "min_matches": 4,
+      "min_rate_pct": 90.0,
+      "max_odds": 2.0,
+      "score": -843.25,
+      "eligible": false,
+      "rejection_reasons": [
+        "not_profitable_enough_seasons"
+      ],
+      "simulation": {
+        "bets": 221,
+        "wins": 167,
+        "accuracy": 75.57,
+        "final_bankroll": 11076.0,
+        "profit": 1076.0,
+        "roi_pct": 4.87,
+        "max_drawdown": 768.0,
+        "max_drawdown_pct": 6.89,
+        "by_season": {
+          "2023": {
+            "bets": 55,
+            "wins": 39,
+            "staked": 5500.0,
+            "returned": 5359.0,
+            "profit": -141.0,
+            "roi_pct": -2.56,
+            "accuracy": 70.91
+          },
+          "2024": {
+            "bets": 80,
+            "wins": 62,
+            "staked": 8000.0,
+            "returned": 8582.0,
+            "profit": 582.0,
+            "roi_pct": 7.27,
+            "accuracy": 77.5
+          },
+          "2025": {
+            "bets": 86,
+            "wins": 66,
+            "staked": 8600.0,
+            "returned": 9235.0,
+            "profit": 635.0,
+            "roi_pct": 7.38,
+            "accuracy": 76.74
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "directed_h2h_outcome min_matches=4 min_rate=100% max_odds=2.0",
+      "pattern": "directed_h2h_outcome",
+      "min_matches": 4,
+      "min_rate_pct": 100.0,
+      "max_odds": 2.0,
+      "score": -843.25,
+      "eligible": false,
+      "rejection_reasons": [
+        "not_profitable_enough_seasons"
+      ],
+      "simulation": {
+        "bets": 221,
+        "wins": 167,
+        "accuracy": 75.57,
+        "final_bankroll": 11076.0,
+        "profit": 1076.0,
+        "roi_pct": 4.87,
+        "max_drawdown": 768.0,
+        "max_drawdown_pct": 6.89,
+        "by_season": {
+          "2023": {
+            "bets": 55,
+            "wins": 39,
+            "staked": 5500.0,
+            "returned": 5359.0,
+            "profit": -141.0,
+            "roi_pct": -2.56,
+            "accuracy": 70.91
+          },
+          "2024": {
+            "bets": 80,
+            "wins": 62,
+            "staked": 8000.0,
+            "returned": 8582.0,
+            "profit": 582.0,
+            "roi_pct": 7.27,
+            "accuracy": 77.5
+          },
+          "2025": {
+            "bets": 86,
+            "wins": 66,
+            "staked": 8600.0,
+            "returned": 9235.0,
+            "profit": 635.0,
+            "roi_pct": 7.38,
+            "accuracy": 76.74
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "directed_h2h_outcome min_matches=5 min_rate=75% max_odds=2.0",
+      "pattern": "directed_h2h_outcome",
+      "min_matches": 5,
+      "min_rate_pct": 75.0,
+      "max_odds": 2.0,
+      "score": -848.0,
+      "eligible": false,
+      "rejection_reasons": [
+        "not_profitable_enough_seasons",
+        "thin_season_sample"
+      ],
+      "simulation": {
+        "bets": 261,
+        "wins": 186,
+        "accuracy": 71.26,
+        "final_bankroll": 11338.0,
+        "profit": 1338.0,
+        "roi_pct": 5.13,
+        "max_drawdown": 1296.0,
+        "max_drawdown_pct": 11.17,
+        "by_season": {
+          "2023": {
+            "bets": 4,
+            "wins": 4,
+            "staked": 400.0,
+            "returned": 703.0,
+            "profit": 303.0,
+            "roi_pct": 75.75,
+            "accuracy": 100.0
+          },
+          "2024": {
+            "bets": 107,
+            "wins": 72,
+            "staked": 10700.0,
+            "returned": 10548.0,
+            "profit": -152.0,
+            "roi_pct": -1.42,
+            "accuracy": 67.29
+          },
+          "2025": {
+            "bets": 150,
+            "wins": 110,
+            "staked": 15000.0,
+            "returned": 16187.0,
+            "profit": 1187.0,
+            "roi_pct": 7.91,
+            "accuracy": 73.33
+          }
+        }
+      }
+    },
+    {
+      "type": "historical_pattern",
+      "name": "directed_h2h_outcome min_matches=4 min_rate=90% max_odds=4.0",
+      "pattern": "directed_h2h_outcome",
+      "min_matches": 4,
+      "min_rate_pct": 90.0,
+      "max_odds": 4.0,
+      "score": -863.75,
+      "eligible": false,
+      "rejection_reasons": [
+        "not_profitable_enough_seasons"
+      ],
+      "simulation": {
+        "bets": 284,
+        "wins": 191,
+        "accuracy": 67.25,
+        "final_bankroll": 11254.0,
+        "profit": 1254.0,
+        "roi_pct": 4.42,
+        "max_drawdown": 1144.0,
+        "max_drawdown_pct": 10.1,
+        "by_season": {
+          "2023": {
+            "bets": 72,
+            "wins": 46,
+            "staked": 7200.0,
+            "returned": 7292.0,
+            "profit": 92.0,
+            "roi_pct": 1.28,
+            "accuracy": 63.89
+          },
+          "2024": {
+            "bets": 104,
+            "wins": 68,
+            "staked": 10400.0,
+            "returned": 10217.0,
+            "profit": -183.0,
+            "roi_pct": -1.76,
+            "accuracy": 65.38
+          },
+          "2025": {
+            "bets": 108,
+            "wins": 77,
+            "staked": 10800.0,
+            "returned": 12145.0,
+            "profit": 1345.0,
+            "roi_pct": 12.45,
+            "accuracy": 71.3
+          }
+        }
+      }
+    }
+  ]
+}

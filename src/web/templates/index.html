@@ -737,7 +737,11 @@
 let currentPage = 'dashboard';
 let matchesCache = [];
 let predictionsCache = {};
+let dashboardRefreshTimer = null;
 let liveRefreshTimer = null;
+let dsRefreshTimer = null;
+const DASHBOARD_REFRESH_MS = 60000;
+const DS_REFRESH_MS = 300000;
 
 function setStatus(msg) {
     document.getElementById('status-bar').textContent = msg;
@@ -750,6 +754,13 @@ function showPage(page) {
     document.getElementById('nav-' + page).classList.add('active');
     currentPage = page;
 
+    if (page === 'dashboard') {
+        loadDashboard();
+        startDashboardRefresh();
+    } else {
+        stopDashboardRefresh();
+    }
+
     // Auto-refresh live
     if (page === 'live') {
         refreshLive();
@@ -761,6 +772,22 @@ function showPage(page) {
     if (page === 'history') {
         updateAndFetchHistory();
     }
+    if (page === 'danske_spil') {
+        startDsRefresh();
+    } else {
+        stopDsRefresh();
+    }
+}
+
+function startDashboardRefresh() {
+    stopDashboardRefresh();
+    dashboardRefreshTimer = setInterval(() => {
+        if (currentPage === 'dashboard') refreshDashboard({silent: true});
+        updateSidebarInfo();
+    }, DASHBOARD_REFRESH_MS);
+}
+function stopDashboardRefresh() {
+    if (dashboardRefreshTimer) { clearInterval(dashboardRefreshTimer); dashboardRefreshTimer = null; }
 }
 
 function startLiveRefresh() {
@@ -769,6 +796,17 @@ function startLiveRefresh() {
 }
 function stopLiveRefresh() {
     if (liveRefreshTimer) { clearInterval(liveRefreshTimer); liveRefreshTimer = null; }
+}
+
+function startDsRefresh() {
+    stopDsRefresh();
+    fetchDanskeSpil();
+    dsRefreshTimer = setInterval(() => {
+        if (currentPage === 'danske_spil') fetchDanskeSpil({silent: true});
+    }, DS_REFRESH_MS);
+}
+function stopDsRefresh() {
+    if (dsRefreshTimer) { clearInterval(dsRefreshTimer); dsRefreshTimer = null; }
 }
 
 async function api(endpoint, opts = {}) {
@@ -812,13 +850,14 @@ function outcomeColor(o) {
 // DASHBOARD
 // ═══════════════════════════════════════════
 let _aiFetching = false;
-async function loadDashboard() {
-    setStatus('⏳ Indlæser data...');
-    const data = await api('matches');
+async function loadDashboard(opts = {}) {
+    const silent = !!opts.silent;
+    if (!silent) setStatus('⏳ Indlæser data...');
+    const data = await api(opts.force ? 'matches?force=1' : 'matches');
     if (data.error) { setStatus('❌ Fejl: ' + data.error); return; }
     matchesCache = data.matches || [];
     renderDashboard(matchesCache);
-    setStatus('✅ Data indlæst');
+    if (!silent) setStatus('✅ Data indlæst');
     updateSidebarInfo();
 
     // Auto-fetch AI predictions if there are finished matches without predictions
@@ -836,18 +875,15 @@ async function loadDashboard() {
             }
         } catch(e) { console.log('AI auto-fetch failed:', e); }
         _aiFetching = false;
-        setStatus('✅ Data indlæst');
+        if (!silent) setStatus('✅ Data indlæst');
     }
 }
 
-async function refreshDashboard() {
-    setStatus('🔄 Opdaterer...');
-    const data = await api('matches?force=1');
-    if (data.error) { setStatus('❌ Fejl: ' + data.error); return; }
-    matchesCache = data.matches || [];
-    renderDashboard(matchesCache);
-    setStatus('✅ Opdateret');
-    updateSidebarInfo();
+async function refreshDashboard(opts = {}) {
+    const silent = !!opts.silent;
+    if (!silent) setStatus('🔄 Opdaterer...');
+    await loadDashboard({force: true, silent});
+    if (!silent) setStatus('✅ Opdateret');
 }
 
 async function loadUpcoming() {
@@ -1146,16 +1182,27 @@ function renderAiSites(consensus) {
 // ═══════════════════════════════════════════
 // DANSKE SPIL
 // ═══════════════════════════════════════════
-async function fetchDanskeSpil() {
+let _dsFetching = false;
+async function fetchDanskeSpil(opts = {}) {
+    if (_dsFetching) return;
+    _dsFetching = true;
+    const silent = !!opts.silent;
     const status = document.getElementById('ds-status');
     const container = document.getElementById('ds-container');
     const summary = document.getElementById('ds-summary');
-    status.textContent = '⏳ Henter fra alle kilder… (ca. 15-30 sek)';
-    container.innerHTML = '<div class="loading-msg"><span class="spinner"></span> Henter AI-sites + ML + Danske Spil…</div>';
-    setStatus('🔄 Henter AI-sites + ML + Danske Spil…');
+    status.textContent = silent ? '🔄 Auto-opdaterer odds og konsensus…' : '⏳ Henter fra alle kilder… (ca. 15-30 sek)';
+    if (!silent) {
+        container.innerHTML = '<div class="loading-msg"><span class="spinner"></span> Henter AI-sites + ML + Danske Spil…</div>';
+        setStatus('🔄 Henter AI-sites + ML + Danske Spil…');
+    }
 
-    const data = await api('consensus_danske_spil');
-    if (data.error) { status.textContent = '❌ Fejl: ' + data.error; container.innerHTML=''; return; }
+    const data = await api('consensus_danske_spil?force=1');
+    if (data.error) {
+        status.textContent = '❌ Fejl: ' + data.error;
+        if (!silent) container.innerHTML = '';
+        _dsFetching = false;
+        return;
+    }
 
     const stats = data.stats || {};
     const playable = data.playable || [];
@@ -1170,7 +1217,8 @@ async function fetchDanskeSpil() {
         ['🇩🇰 Spilbare', stats.playable||0, (stats.playable||0)>0?'var(--accent-green)':'var(--accent-red)'],
     ].map(([label,val,col]) => `<div class="stat-card"><div class="label">${label}</div><div class="value" style="color:${col}">${val}</div></div>`).join('');
 
-    status.textContent = `✅ ${stats.agreed||0} enige · ${stats.playable||0} spilbare hos DS · ${stats.ds_events||0} DS kampe`;
+    const updateMsg = data.last_update ? ` · opdateret ${data.last_update}` : '';
+    status.textContent = `✅ ${stats.agreed||0} enige · ${stats.playable||0} spilbare hos DS · ${stats.ds_events||0} DS kampe${updateMsg}`;
     setStatus(`Konsensus: ${stats.playable||0} spilbare kampe hos Danske Spil`);
 
     let html = '';
@@ -1202,6 +1250,7 @@ async function fetchDanskeSpil() {
     }
 
     container.innerHTML = html;
+    _dsFetching = false;
 }
 
 function toggleRest() {
@@ -1771,12 +1820,7 @@ window.LEAGUES = {};
 
     // Load dashboard
     loadDashboard();
-
-    // Auto-refresh every 60s
-    setInterval(() => {
-        if (currentPage === 'dashboard') loadDashboard();
-        updateSidebarInfo();
-    }, 60000);
+    startDashboardRefresh();
 })();
 </script>
 </body>

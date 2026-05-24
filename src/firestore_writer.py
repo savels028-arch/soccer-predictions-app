@@ -150,6 +150,62 @@ class FirestoreWriter:
 
         self.db.collection("matches").document(mid).update(update)
 
+    def add_odds_snapshot(
+        self,
+        mid: str,
+        source: str,
+        odds: dict,
+        market: str = "1x2",
+        extra: Optional[dict] = None,
+    ) -> str:
+        """Append an odds snapshot for line movement and CLV tracking."""
+        home_o = odds.get("home_odds") or odds.get("odds_home") or odds.get("home") or 0
+        draw_o = odds.get("draw_odds") or odds.get("odds_draw") or odds.get("draw") or 0
+        away_o = odds.get("away_odds") or odds.get("odds_away") or odds.get("away") or 0
+        doc: Dict[str, Any] = {
+            "matchId": mid,
+            "source": source,
+            "market": market,
+            "capturedAt": firestore.SERVER_TIMESTAMP,
+            "odds": {"home": home_o, "draw": draw_o, "away": away_o},
+        }
+        if home_o and draw_o and away_o and home_o > 1 and draw_o > 1 and away_o > 1:
+            total = 1/home_o + 1/draw_o + 1/away_o
+            doc["impliedProbability"] = {
+                "home": round(1/home_o / total, 4),
+                "draw": round(1/draw_o / total, 4),
+                "away": round(1/away_o / total, 4),
+            }
+        if extra:
+            doc["extra"] = extra
+        ref = self.db.collection("matches").document(mid).collection("odds_snapshots").add(doc)
+        return ref[1].id
+
+    def save_pick_snapshot(self, mid: str, pick: dict) -> str:
+        """Persist the exact pick and odds seen when the model made the decision."""
+        doc = {
+            "matchId": mid,
+            "capturedAt": firestore.SERVER_TIMESTAMP,
+            **pick,
+        }
+        ref = self.db.collection("pick_snapshots").add(doc)
+        return ref[1].id
+
+    def save_match_context(self, mid: str, context: dict, source: str = "api_football") -> str:
+        """Store lineup/injury/player context for a match."""
+        doc = {
+            "matchId": mid,
+            "source": source,
+            "updatedAt": firestore.SERVER_TIMESTAMP,
+            **context,
+        }
+        self.db.collection("match_context").document(f"{mid}_{source}").set(doc, merge=True)
+        self.db.collection("matches").document(mid).set({
+            "contextSummary": context.get("summary", {}),
+            "contextUpdatedAt": firestore.SERVER_TIMESTAMP,
+        }, merge=True)
+        return f"{mid}_{source}"
+
     def update_match_result(self, mid: str, home_goals: int, away_goals: int):
         """Update match with final result."""
         outcome = "HOME" if home_goals > away_goals else ("AWAY" if home_goals < away_goals else "DRAW")
@@ -199,7 +255,10 @@ class FirestoreWriter:
                           edge: Dict[str, float] = None,
                           recommended_bet: str = None,
                           confidence: float = 0.0,
-                          model_version: str = "v1") -> str:
+                          model_version: str = "v1",
+                          odds_at_pick: Dict[str, float] = None,
+                          calibration: Dict[str, Any] = None,
+                          context_summary: Dict[str, Any] = None) -> str:
         """Save meta-model / ensemble output for a match."""
         doc: Dict[str, Any] = {
             "matchId": mid,
@@ -216,6 +275,16 @@ class FirestoreWriter:
             doc["edge"] = {k: round(v, 4) for k, v in edge.items()}
         if recommended_bet:
             doc["recommendedBet"] = recommended_bet
+        if odds_at_pick:
+            doc["oddsAtPick"] = {
+                "home": odds_at_pick.get("home", 0),
+                "draw": odds_at_pick.get("draw", 0),
+                "away": odds_at_pick.get("away", 0),
+            }
+        if calibration:
+            doc["calibration"] = calibration
+        if context_summary:
+            doc["contextSummary"] = context_summary
 
         # Use matchId as doc ID so we only keep latest output per match
         self.db.collection("model_outputs").document(mid).set(doc)

@@ -1,11 +1,12 @@
 """
 AI Prediction Scraper - Henter forudsigelser fra eksterne AI-sider
-Scraper data fra 5 gratis AI fodbold-prediction-sider:
+Scraper data fra 6 gratis AI fodbold-prediction-sider:
   1. AI-Goalie.com           - Win%, odds, team logos → alt attrs
   2. BetsWithBots.com        - 1X2 %, predicted score, best odds
   3. SoccerTips.ai            - 1X2%, BTTS, Over/Under, H2H
   4. FootballPredictions.ai  - 1X2 tip + schema.org JSON-LD
-  5. OddAlerts.com           - AI football predictions page
+  5. PredictionPitch.com     - public JSON 1X2 %, odds, value signals
+  6. WinFulltime.com         - public JSON 1X2 %, tip, probability
 
 NO API KEYS REQUIRED - all data from public web pages.
 """
@@ -37,7 +38,17 @@ class PredictionScraper:
         "betswithbots.com",
         "soccertips.ai",
         "footballpredictions.ai",
+        "predictionpitch.com",
+        "winfulltime.com",
     ]
+    SOURCE_URLS = {
+        "ai-goalie.com":          "https://ai-goalie.com/",
+        "betswithbots.com":       "https://www.betswithbots.com/",
+        "soccertips.ai":          "https://soccertips.ai/",
+        "footballpredictions.ai": "https://footballpredictions.ai/football-predictions/",
+        "predictionpitch.com":    "https://predictionpitch.com/api/predictions",
+        "winfulltime.com":        "https://winfulltime.com/api/predictions",
+    }
 
     def __init__(self):
         self.session = requests.Session()
@@ -92,6 +103,8 @@ class PredictionScraper:
             ("betswithbots.com",       self._scrape_betswithbots),
             ("soccertips.ai",          self._scrape_soccertips),
             ("footballpredictions.ai", self._scrape_footballpredictions),
+            ("predictionpitch.com",    self._scrape_predictionpitch),
+            ("winfulltime.com",        self._scrape_winfulltime),
         ]
         for src, fn in scrapers:
             try:
@@ -586,6 +599,129 @@ class PredictionScraper:
 
         return predictions
 
+    # ══════════════════════════════════════════════
+    #  5. PREDICTIONPITCH.COM
+    # ══════════════════════════════════════════════
+    def _scrape_predictionpitch(self, target_date: Optional[str] = None) -> List[Dict]:
+        """Fetch public JSON predictions with 1X2 probabilities and odds."""
+        html = self._safe_get("https://predictionpitch.com/api/predictions")
+        if not html:
+            return []
+
+        try:
+            rows = json.loads(html)
+        except Exception as exc:
+            logger.warning("PredictionPitch JSON parse failed: %s", exc)
+            return []
+
+        predictions: List[Dict] = []
+        for row in rows if isinstance(rows, list) else []:
+            try:
+                home = (row.get("homeTeam") or "").strip()
+                away = (row.get("awayTeam") or "").strip()
+                if not home or not away:
+                    continue
+
+                match_time = row.get("matchTime") or ""
+                if target_date and match_time[:10] != target_date:
+                    continue
+
+                h_pct = row.get("homeWinProb")
+                d_pct = row.get("drawProb")
+                a_pct = row.get("awayWinProb")
+                if h_pct is None or d_pct is None or a_pct is None:
+                    continue
+
+                probs = [float(h_pct), float(d_pct), float(a_pct)]
+                winner = ["1", "X", "2"][probs.index(max(probs))]
+                over25 = row.get("overUnder25")
+                btts_yes = row.get("bttsYesProb")
+
+                predictions.append({
+                    "home_team": home,
+                    "away_team": away,
+                    "league": row.get("league", ""),
+                    "kickoff_time": match_time,
+                    "home_win_pct": round(float(h_pct), 2),
+                    "draw_pct": round(float(d_pct), 2),
+                    "away_win_pct": round(float(a_pct), 2),
+                    "predicted_winner": winner,
+                    "over_under_25": (
+                        "Over" if over25 is not None and float(over25) >= 50 else
+                        "Under" if over25 is not None else None
+                    ),
+                    "btts": (
+                        "Yes" if btts_yes is not None and float(btts_yes) >= 50 else
+                        "No" if btts_yes is not None else None
+                    ),
+                    "odds_home": row.get("bestHomeOdds") or row.get("homeOdds"),
+                    "odds_draw": row.get("bestDrawOdds") or row.get("drawOdds"),
+                    "odds_away": row.get("bestAwayOdds") or row.get("awayOdds"),
+                    "value_bet": bool(row.get("isValueBet")),
+                    "value_bet_market": row.get("valueBetMarket"),
+                })
+            except Exception:
+                continue
+
+        return predictions
+
+    # ══════════════════════════════════════════════
+    #  6. WINFULLTIME.COM
+    # ══════════════════════════════════════════════
+    def _scrape_winfulltime(self, target_date: Optional[str] = None) -> List[Dict]:
+        """Fetch public JSON predictions from WinFulltime."""
+        html = self._safe_get("https://winfulltime.com/api/predictions")
+        if not html:
+            return []
+
+        try:
+            payload = json.loads(html)
+        except Exception as exc:
+            logger.warning("WinFulltime JSON parse failed: %s", exc)
+            return []
+
+        predictions: List[Dict] = []
+        for row in payload.get("matches", []) if isinstance(payload, dict) else []:
+            try:
+                match_name = row.get("match") or ""
+                if " - " not in match_name:
+                    continue
+                home, away = [part.strip() for part in match_name.split(" - ", 1)]
+                if not home or not away:
+                    continue
+
+                match_date = row.get("date") or payload.get("date") or ""
+                if target_date and match_date != target_date:
+                    continue
+
+                probs = row.get("probabilities") or {}
+                h_pct = probs.get("homeWin")
+                d_pct = probs.get("draw")
+                a_pct = probs.get("awayWin")
+                if h_pct is None or d_pct is None or a_pct is None:
+                    continue
+
+                prob_values = [float(h_pct), float(d_pct), float(a_pct)]
+                winner = ["1", "X", "2"][prob_values.index(max(prob_values))]
+                tip = str(row.get("tip") or "").upper()
+                if tip in {"1", "X", "2"}:
+                    winner = tip
+
+                predictions.append({
+                    "home_team": home,
+                    "away_team": away,
+                    "league": row.get("league", ""),
+                    "kickoff_time": row.get("time", ""),
+                    "home_win_pct": round(float(h_pct), 2),
+                    "draw_pct": round(float(d_pct), 2),
+                    "away_win_pct": round(float(a_pct), 2),
+                    "predicted_winner": winner,
+                })
+            except Exception:
+                continue
+
+        return predictions
+
     # ──────────────────────────────────────────────
     #  UTILITY
     # ──────────────────────────────────────────────
@@ -594,15 +730,12 @@ class PredictionScraper:
 
     def get_source_status(self) -> Dict[str, bool]:
         status: Dict[str, bool] = {}
-        urls = {
-            "ai-goalie.com":          "https://ai-goalie.com/",
-            "betswithbots.com":       "https://www.betswithbots.com/",
-            "soccertips.ai":          "https://soccertips.ai/",
-            "footballpredictions.ai": "https://footballpredictions.ai/football-predictions/",
-        }
-        for name, url in urls.items():
+        for name, url in self.SOURCE_URLS.items():
             try:
-                resp = self.session.head(url, timeout=5)
+                resp = self.session.head(url, timeout=5, allow_redirects=True)
+                if resp.status_code in (403, 405) or resp.status_code >= 500:
+                    resp = self.session.get(url, timeout=8, stream=True)
+                    resp.close()
                 status[name] = resp.status_code in (200, 301, 302)
             except Exception:
                 status[name] = False

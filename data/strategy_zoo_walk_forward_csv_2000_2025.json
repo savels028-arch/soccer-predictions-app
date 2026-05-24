@@ -1,0 +1,4426 @@
+{
+  "generated_at": "2026-05-13T00:56:37.939694Z",
+  "objective": "csv_strategy_zoo_walk_forward_no_hindsight_selection",
+  "source": "football-data.co.uk CSV",
+  "start_season": 2000,
+  "end_season": 2025,
+  "first_test_season": 2012,
+  "source_matches": 91366,
+  "usable_matches": 84357,
+  "strategies_tested": [
+    "away_any_history",
+    "direct_h2h",
+    "favorite_direct_h2h_agree",
+    "favorite_pair_agree",
+    "home_any_history",
+    "market_favorite",
+    "pair_history"
+  ],
+  "rules": {
+    "starting_bankroll": 10000.0,
+    "single_stake": 100.0,
+    "coupon_stake": 100.0,
+    "min_train_bets": 150,
+    "no_future_leakage": true,
+    "no_hindsight_strategy_selection": true
+  },
+  "evaluated_single_candidates": 150100,
+  "evaluated_coupon_candidates": 456,
+  "combined_single": {
+    "starting_bankroll": 10000.0,
+    "stake": 100.0,
+    "bets": 537,
+    "wins": 376,
+    "accuracy": 70.02,
+    "staked": 53700.0,
+    "returned": 52199.0,
+    "final_bankroll": 8499.0,
+    "profit": -1501.0,
+    "growth_pct": -15.01,
+    "roi_pct": -2.8,
+    "max_drawdown": 2922.0,
+    "max_drawdown_pct": 29.17,
+    "min_bankroll": 7094.0,
+    "stopped_bankroll_depleted": false,
+    "skipped_no_odds": 0,
+    "by_season": {
+      "2012": {
+        "bets": 15,
+        "wins": 10,
+        "staked": 1500.0,
+        "returned": 1376.0,
+        "profit": -124.0,
+        "roi_pct": -8.27,
+        "accuracy": 66.67
+      },
+      "2013": {
+        "bets": 37,
+        "wins": 20,
+        "staked": 3700.0,
+        "returned": 2849.0,
+        "profit": -851.0,
+        "roi_pct": -23.0,
+        "accuracy": 54.05
+      },
+      "2014": {
+        "bets": 28,
+        "wins": 21,
+        "staked": 2800.0,
+        "returned": 2700.0,
+        "profit": -100.0,
+        "roi_pct": -3.57,
+        "accuracy": 75.0
+      },
+      "2015": {
+        "bets": 22,
+        "wins": 13,
+        "staked": 2200.0,
+        "returned": 1999.0,
+        "profit": -201.0,
+        "roi_pct": -9.14,
+        "accuracy": 59.09
+      },
+      "2016": {
+        "bets": 52,
+        "wins": 33,
+        "staked": 5200.0,
+        "returned": 4696.0,
+        "profit": -504.0,
+        "roi_pct": -9.69,
+        "accuracy": 63.46
+      },
+      "2017": {
+        "bets": 47,
+        "wins": 23,
+        "staked": 4700.0,
+        "returned": 3793.0,
+        "profit": -907.0,
+        "roi_pct": -19.3,
+        "accuracy": 48.94
+      },
+      "2018": {
+        "bets": 48,
+        "wins": 37,
+        "staked": 4800.0,
+        "returned": 4978.0,
+        "profit": 178.0,
+        "roi_pct": 3.71,
+        "accuracy": 77.08
+      },
+      "2019": {
+        "bets": 48,
+        "wins": 34,
+        "staked": 4800.0,
+        "returned": 4830.0,
+        "profit": 30.0,
+        "roi_pct": 0.62,
+        "accuracy": 70.83
+      },
+      "2020": {
+        "bets": 55,
+        "wins": 38,
+        "staked": 5500.0,
+        "returned": 5427.0,
+        "profit": -73.0,
+        "roi_pct": -1.33,
+        "accuracy": 69.09
+      },
+      "2021": {
+        "bets": 36,
+        "wins": 30,
+        "staked": 3600.0,
+        "returned": 3937.0,
+        "profit": 337.0,
+        "roi_pct": 9.36,
+        "accuracy": 83.33
+      },
+      "2022": {
+        "bets": 30,
+        "wins": 27,
+        "staked": 3000.0,
+        "returned": 3592.0,
+        "profit": 592.0,
+        "roi_pct": 19.73,
+        "accuracy": 90.0
+      },
+      "2023": {
+        "bets": 27,
+        "wins": 20,
+        "staked": 2700.0,
+        "returned": 2715.0,
+        "profit": 15.0,
+        "roi_pct": 0.56,
+        "accuracy": 74.07
+      },
+      "2024": {
+        "bets": 50,
+        "wins": 38,
+        "staked": 5000.0,
+        "returned": 5101.0,
+        "profit": 101.0,
+        "roi_pct": 2.02,
+        "accuracy": 76.0
+      },
+      "2025": {
+        "bets": 42,
+        "wins": 32,
+        "staked": 4200.0,
+        "returned": 4206.0,
+        "profit": 6.0,
+        "roi_pct": 0.14,
+        "accuracy": 76.19
+      }
+    }
+  },
+  "combined_coupon": {
+    "starting_bankroll": 10000.0,
+    "stake": 100.0,
+    "min_legs": 2,
+    "max_legs": 4,
+    "sort_by": "walk_forward_selected",
+    "max_per_league": null,
+    "coupons": 161,
+    "winning_coupons": 90,
+    "coupon_hit_rate": 55.9,
+    "legs_played": 334,
+    "avg_legs": 2.07,
+    "staked": 16100.0,
+    "returned": 20452.08,
+    "final_bankroll": 14352.07,
+    "profit": 4352.07,
+    "growth_pct": 43.52,
+    "roi_pct": 27.03,
+    "max_drawdown": 626.12,
+    "max_drawdown_pct": 4.27,
+    "min_bankroll": 10000.0,
+    "stopped_bankroll_depleted": false,
+    "skipped_no_odds": 0,
+    "by_season": {
+      "2012": {
+        "bets": 8,
+        "wins": 4,
+        "staked": 800.0,
+        "returned": 1831.9,
+        "profit": 1031.9,
+        "roi_pct": 128.99,
+        "accuracy": 50.0
+      },
+      "2014": {
+        "bets": 8,
+        "wins": 3,
+        "staked": 800.0,
+        "returned": 691.5,
+        "profit": -108.5,
+        "roi_pct": -13.56,
+        "accuracy": 37.5
+      },
+      "2015": {
+        "bets": 9,
+        "wins": 5,
+        "staked": 900.0,
+        "returned": 1097.73,
+        "profit": 197.73,
+        "roi_pct": 21.97,
+        "accuracy": 55.56
+      },
+      "2016": {
+        "bets": 7,
+        "wins": 4,
+        "staked": 700.0,
+        "returned": 937.24,
+        "profit": 237.24,
+        "roi_pct": 33.89,
+        "accuracy": 57.14
+      },
+      "2017": {
+        "bets": 1,
+        "wins": 0,
+        "staked": 100.0,
+        "returned": 0.0,
+        "profit": -100.0,
+        "roi_pct": -100.0,
+        "accuracy": 0.0
+      },
+      "2018": {
+        "bets": 5,
+        "wins": 3,
+        "staked": 500.0,
+        "returned": 501.22,
+        "profit": 1.22,
+        "roi_pct": 0.24,
+        "accuracy": 60.0
+      },
+      "2019": {
+        "bets": 9,
+        "wins": 5,
+        "staked": 900.0,
+        "returned": 954.72,
+        "profit": 54.72,
+        "roi_pct": 6.08,
+        "accuracy": 55.56
+      },
+      "2020": {
+        "bets": 22,
+        "wins": 10,
+        "staked": 2200.0,
+        "returned": 1979.14,
+        "profit": -220.86,
+        "roi_pct": -10.04,
+        "accuracy": 45.45
+      },
+      "2021": {
+        "bets": 22,
+        "wins": 13,
+        "staked": 2200.0,
+        "returned": 2834.02,
+        "profit": 634.02,
+        "roi_pct": 28.82,
+        "accuracy": 59.09
+      },
+      "2022": {
+        "bets": 20,
+        "wins": 14,
+        "staked": 2000.0,
+        "returned": 3413.42,
+        "profit": 1413.42,
+        "roi_pct": 70.67,
+        "accuracy": 70.0
+      },
+      "2023": {
+        "bets": 8,
+        "wins": 5,
+        "staked": 800.0,
+        "returned": 1039.08,
+        "profit": 239.08,
+        "roi_pct": 29.89,
+        "accuracy": 62.5
+      },
+      "2024": {
+        "bets": 18,
+        "wins": 10,
+        "staked": 1800.0,
+        "returned": 2199.74,
+        "profit": 399.74,
+        "roi_pct": 22.21,
+        "accuracy": 55.56
+      },
+      "2025": {
+        "bets": 24,
+        "wins": 14,
+        "staked": 2400.0,
+        "returned": 2972.36,
+        "profit": 572.36,
+        "roi_pct": 23.85,
+        "accuracy": 58.33
+      }
+    }
+  },
+  "folds": [
+    {
+      "test_season": 2012,
+      "evaluated_single_candidates": 8179,
+      "chosen_single": {
+        "type": "csv_strategy_zoo_single",
+        "mode": "csv_strategy_zoo_walk_forward",
+        "version": "market",
+        "name": "csv zoo single strategy=away_any_history leagues=league:PPL count>=2 rate>=67% edge>=none odds=any",
+        "label_style": "away_any_history",
+        "league_filter": "league:PPL",
+        "leagues": [
+          "PPL"
+        ],
+        "min_h2h_matches": null,
+        "min_h2h_rate_pct": null,
+        "confidence_min_pct": null,
+        "model_edge_min_pct": null,
+        "odds_band": null,
+        "max_legs": null,
+        "sort_by": null,
+        "max_per_league": null,
+        "score": 2792.75,
+        "eligible": true,
+        "rejection_reasons": [],
+        "strategy": "away_any_history",
+        "rate_min_pct": 67.0,
+        "history_count_min": 2,
+        "train_simulation": {
+          "bets": 202,
+          "wins": 135,
+          "accuracy": 66.83,
+          "final_bankroll": 13041.0,
+          "profit": 3041.0,
+          "roi_pct": 15.05,
+          "max_drawdown": 479.0,
+          "max_drawdown_pct": 3.67,
+          "by_season": {
+            "2002": {
+              "bets": 26,
+              "wins": 15,
+              "staked": 2600.0,
+              "returned": 2869.0,
+              "profit": 269.0,
+              "roi_pct": 10.35,
+              "accuracy": 57.69
+            },
+            "2003": {
+              "bets": 30,
+              "wins": 21,
+              "staked": 3000.0,
+              "returned": 3184.0,
+              "profit": 184.0,
+              "roi_pct": 6.13,
+              "accuracy": 70.0
+            },
+            "2004": {
+              "bets": 18,
+              "wins": 11,
+              "staked": 1800.0,
+              "returned": 2033.0,
+              "profit": 233.0,
+              "roi_pct": 12.94,
+              "accuracy": 61.11
+            },
+            "2005": {
+              "bets": 21,
+              "wins": 14,
+              "staked": 2100.0,
+              "returned": 2411.0,
+              "profit": 311.0,
+              "roi_pct": 14.81,
+              "accuracy": 66.67
+            },
+            "2006": {
+              "bets": 19,
+              "wins": 13,
+              "staked": 1900.0,
+              "returned": 1962.0,
+              "profit": 62.0,
+              "roi_pct": 3.26,
+              "accuracy": 68.42
+            },
+            "2007": {
+              "bets": 19,
+              "wins": 13,
+              "staked": 1900.0,
+              "returned": 2637.0,
+              "profit": 737.0,
+              "roi_pct": 38.79,
+              "accuracy": 68.42
+            },
+            "2008": {
+              "bets": 19,
+              "wins": 15,
+              "staked": 1900.0,
+              "returned": 2670.0,
+              "profit": 770.0,
+              "roi_pct": 40.53,
+              "accuracy": 78.95
+            },
+            "2009": {
+              "bets": 17,
+              "wins": 10,
+              "staked": 1700.0,
+              "returned": 1735.0,
+              "profit": 35.0,
+              "roi_pct": 2.06,
+              "accuracy": 58.82
+            },
+            "2010": {
+              "bets": 18,
+              "wins": 13,
+              "staked": 1800.0,
+              "returned": 2108.0,
+              "profit": 308.0,
+              "roi_pct": 17.11,
+              "accuracy": 72.22
+            },
+            "2011": {
+              "bets": 15,
+              "wins": 10,
+              "staked": 1500.0,
+              "returned": 1632.0,
+              "profit": 132.0,
+              "roi_pct": 8.8,
+              "accuracy": 66.67
+            }
+          }
+        },
+        "test_simulation": {
+          "starting_bankroll": 10000.0,
+          "stake": 100.0,
+          "bets": 15,
+          "wins": 10,
+          "accuracy": 66.67,
+          "staked": 1500.0,
+          "returned": 1376.0,
+          "final_bankroll": 9876.0,
+          "profit": -124.0,
+          "growth_pct": -1.24,
+          "roi_pct": -8.27,
+          "max_drawdown": 239.0,
+          "max_drawdown_pct": 2.39,
+          "min_bankroll": 9761.0,
+          "stopped_bankroll_depleted": false,
+          "skipped_no_odds": 0,
+          "by_season": {
+            "2012": {
+              "bets": 15,
+              "wins": 10,
+              "staked": 1500.0,
+              "returned": 1376.0,
+              "profit": -124.0,
+              "roi_pct": -8.27,
+              "accuracy": 66.67
+            }
+          }
+        }
+      },
+      "evaluated_coupon_candidates": 30,
+      "chosen_coupon": {
+        "type": "csv_strategy_zoo_walk_forward_coupon",
+        "mode": "csv_strategy_zoo_walk_forward",
+        "version": "market",
+        "name": "csv zoo single strategy=favorite_pair_agree leagues=league:SA count>=6 rate>=60% edge>=2% odds=any coupon max=2 sort=edge_x_confidence max_per_league=2",
+        "label_style": "favorite_pair_agree",
+        "league_filter": "league:SA",
+        "leagues": [
+          "SA"
+        ],
+        "min_h2h_matches": null,
+        "min_h2h_rate_pct": null,
+        "confidence_min_pct": null,
+        "model_edge_min_pct": 2.0,
+        "odds_band": null,
+        "max_legs": 2,
+        "sort_by": "edge_x_confidence",
+        "max_per_league": 2,
+        "score": -2860.51,
+        "eligible": false,
+        "rejection_reasons": [
+          "thin_season_sample"
+        ],
+        "strategy": "favorite_pair_agree",
+        "rate_min_pct": 60.0,
+        "history_count_min": 6,
+        "train_simulation": {
+          "coupons": 42,
+          "winning_coupons": 14,
+          "coupon_hit_rate": 33.33,
+          "final_bankroll": 10764.49,
+          "profit": 764.49,
+          "roi_pct": 18.2,
+          "max_drawdown": 900.0,
+          "max_drawdown_pct": 7.72,
+          "by_season": {
+            "2005": {
+              "bets": 2,
+              "wins": 1,
+              "staked": 200.0,
+              "returned": 314.0,
+              "profit": 114.0,
+              "roi_pct": 57.0,
+              "accuracy": 50.0
+            },
+            "2006": {
+              "bets": 1,
+              "wins": 0,
+              "staked": 100.0,
+              "returned": 0.0,
+              "profit": -100.0,
+              "roi_pct": -100.0,
+              "accuracy": 0.0
+            },
+            "2007": {
+              "bets": 5,
+              "wins": 3,
+              "staked": 500.0,
+              "returned": 1137.4,
+              "profit": 637.4,
+              "roi_pct": 127.48,
+              "accuracy": 60.0
+            },
+            "2008": {
+              "bets": 12,
+              "wins": 4,
+              "staked": 1200.0,
+              "returned": 1294.46,
+              "profit": 94.46,
+              "roi_pct": 7.87,
+              "accuracy": 33.33
+            },
+            "2009": {
+              "bets": 9,
+              "wins": 4,
+              "staked": 900.0,
+              "returned": 1093.63,
+              "profit": 193.63,
+              "roi_pct": 21.51,
+              "accuracy": 44.44
+            },
+            "2010": {
+              "bets": 6,
+              "wins": 2,
+              "staked": 600.0,
+              "returned": 1125.0,
+              "profit": 525.0,
+              "roi_pct": 87.5,
+              "accuracy": 33.33
+            },
+            "2011": {
+              "bets": 7,
+              "wins": 0,
+              "staked": 700.0,
+              "returned": 0.0,
+              "profit": -700.0,
+              "roi_pct": -100.0,
+              "accuracy": 0.0
+            }
+          }
+        },
+        "test_simulation": {
+          "starting_bankroll": 10000.0,
+          "stake": 100.0,
+          "min_legs": 2,
+          "max_legs": 2,
+          "sort_by": "edge_x_confidence",
+          "max_per_league": 2,
+          "coupons": 8,
+          "winning_coupons": 4,
+          "coupon_hit_rate": 50.0,
+          "legs_played": 16,
+          "avg_legs": 2.0,
+          "staked": 800.0,
+          "returned": 1831.9,
+          "final_bankroll": 11031.9,
+          "profit": 1031.9,
+          "growth_pct": 10.32,
+          "roi_pct": 128.99,
+          "max_drawdown": 200.0,
+          "max_drawdown_pct": 1.78,
+          "min_bankroll": 10000.0,
+          "stopped_bankroll_depleted": false,
+          "skipped_no_odds": 0,
+          "by_season": {
+            "2012": {
+              "bets": 8,
+              "wins": 4,
+              "staked": 800.0,
+              "returned": 1831.9,
+              "profit": 1031.9,
+              "roi_pct": 128.99,
+              "accuracy": 50.0
+            }
+          }
+        }
+      }
+    },
+    {
+      "test_season": 2013,
+      "evaluated_single_candidates": 8733,
+      "chosen_single": {
+        "type": "csv_strategy_zoo_single",
+        "mode": "csv_strategy_zoo_walk_forward",
+        "version": "market",
+        "name": "csv zoo single strategy=direct_h2h leagues=league:PD count>=6 rate>=60% edge>=none odds=(1.2, 2.0)",
+        "label_style": "direct_h2h",
+        "league_filter": "league:PD",
+        "leagues": [
+          "PD"
+        ],
+        "min_h2h_matches": null,
+        "min_h2h_rate_pct": null,
+        "confidence_min_pct": null,
+        "model_edge_min_pct": null,
+        "odds_band": [
+          1.2,
+          2.0
+        ],
+        "max_legs": null,
+        "sort_by": null,
+        "max_per_league": null,
+        "score": 1425.5,
+        "eligible": true,
+        "rejection_reasons": [],
+        "strategy": "direct_h2h",
+        "rate_min_pct": 60.0,
+        "history_count_min": 6,
+        "train_simulation": {
+          "bets": 186,
+          "wins": 132,
+          "accuracy": 70.97,
+          "final_bankroll": 11713.0,
+          "profit": 1713.0,
+          "roi_pct": 9.21,
+          "max_drawdown": 544.0,
+          "max_drawdown_pct": 4.63,
+          "by_season": {
+            "2008": {
+              "bets": 31,
+              "wins": 21,
+              "staked": 3100.0,
+              "returned": 3162.0,
+              "profit": 62.0,
+              "roi_pct": 2.0,
+              "accuracy": 67.74
+            },
+            "2009": {
+              "bets": 23,
+              "wins": 17,
+              "staked": 2300.0,
+              "returned": 2550.0,
+              "profit": 250.0,
+              "roi_pct": 10.87,
+              "accuracy": 73.91
+            },
+            "2010": {
+              "bets": 43,
+              "wins": 31,
+              "staked": 4300.0,
+              "returned": 4875.0,
+              "profit": 575.0,
+              "roi_pct": 13.37,
+              "accuracy": 72.09
+            },
+            "2011": {
+              "bets": 38,
+              "wins": 26,
+              "staked": 3800.0,
+              "returned": 4065.0,
+              "profit": 265.0,
+              "roi_pct": 6.97,
+              "accuracy": 68.42
+            },
+            "2012": {
+              "bets": 51,
+              "wins": 37,
+              "staked": 5100.0,
+              "returned": 5661.0,
+              "profit": 561.0,
+              "roi_pct": 11.0,
+              "accuracy": 72.55
+            }
+          }
+        },
+        "test_simulation": {
+          "starting_bankroll": 10000.0,
+          "stake": 100.0,
+          "bets": 37,
+          "wins": 20,
+          "accuracy": 54.05,
+          "staked": 3700.0,
+          "returned": 2849.0,
+          "final_bankroll": 9149.0,
+          "profit": -851.0,
+          "growth_pct": -8.51,
+          "roi_pct": -23.0,
+          "max_drawdown": 1024.0,
+          "max_drawdown_pct": 10.1,
+          "min_bankroll": 9116.0,
+          "stopped_bankroll_depleted": false,
+          "skipped_no_odds": 0,
+          "by_season": {
+            "2013": {
+              "bets": 37,
+              "wins": 20,
+              "staked": 3700.0,
+              "returned": 2849.0,
+              "profit": -851.0,
+              "roi_pct": -23.0,
+              "accuracy": 54.05
+            }
+          }
+        }
+      },
+      "evaluated_coupon_candidates": 0
+    },
+    {
+      "test_season": 2014,
+      "evaluated_single_candidates": 9244,
+      "chosen_single": {
+        "type": "csv_strategy_zoo_single",
+        "mode": "csv_strategy_zoo_walk_forward",
+        "version": "market",
+        "name": "csv zoo single strategy=direct_h2h leagues=league:PD count>=5 rate>=80% edge>=none odds=any",
+        "label_style": "direct_h2h",
+        "league_filter": "league:PD",
+        "leagues": [
+          "PD"
+        ],
+        "min_h2h_matches": null,
+        "min_h2h_rate_pct": null,
+        "confidence_min_pct": null,
+        "model_edge_min_pct": null,
+        "odds_band": null,
+        "max_legs": null,
+        "sort_by": null,
+        "max_per_league": null,
+        "score": -557.5,
+        "eligible": true,
+        "rejection_reasons": [],
+        "strategy": "direct_h2h",
+        "rate_min_pct": 80.0,
+        "history_count_min": 5,
+        "train_simulation": {
+          "bets": 212,
+          "wins": 142,
+          "accuracy": 66.98,
+          "final_bankroll": 12774.0,
+          "profit": 2774.0,
+          "roi_pct": 13.08,
+          "max_drawdown": 546.0,
+          "max_drawdown_pct": 4.16,
+          "by_season": {
+            "2007": {
+              "bets": 32,
+              "wins": 20,
+              "staked": 3200.0,
+              "returned": 4257.0,
+              "profit": 1057.0,
+              "roi_pct": 33.03,
+              "accuracy": 62.5
+            },
+            "2008": {
+              "bets": 22,
+              "wins": 12,
+              "staked": 2200.0,
+              "returned": 2378.0,
+              "profit": 178.0,
+              "roi_pct": 8.09,
+              "accuracy": 54.55
+            },
+            "2009": {
+              "bets": 33,
+              "wins": 22,
+              "staked": 3300.0,
+              "returned": 3693.0,
+              "profit": 393.0,
+              "roi_pct": 11.91,
+              "accuracy": 66.67
+            },
+            "2010": {
+              "bets": 29,
+              "wins": 25,
+              "staked": 2900.0,
+              "returned": 4198.0,
+              "profit": 1298.0,
+              "roi_pct": 44.76,
+              "accuracy": 86.21
+            },
+            "2011": {
+              "bets": 26,
+              "wins": 17,
+              "staked": 2600.0,
+              "returned": 2597.0,
+              "profit": -3.0,
+              "roi_pct": -0.12,
+              "accuracy": 65.38
+            },
+            "2012": {
+              "bets": 40,
+              "wins": 26,
+              "staked": 4000.0,
+              "returned": 4085.0,
+              "profit": 85.0,
+              "roi_pct": 2.12,
+              "accuracy": 65.0
+            },
+            "2013": {
+              "bets": 30,
+              "wins": 20,
+              "staked": 3000.0,
+              "returned": 2766.0,
+              "profit": -234.0,
+              "roi_pct": -7.8,
+              "accuracy": 66.67
+            }
+          }
+        },
+        "test_simulation": {
+          "starting_bankroll": 10000.0,
+          "stake": 100.0,
+          "bets": 28,
+          "wins": 21,
+          "accuracy": 75.0,
+          "staked": 2800.0,
+          "returned": 2700.0,
+          "final_bankroll": 9900.0,
+          "profit": -100.0,
+          "growth_pct": -1.0,
+          "roi_pct": -3.57,
+          "max_drawdown": 434.0,
+          "max_drawdown_pct": 4.24,
+          "min_bankroll": 9794.0,
+          "stopped_bankroll_depleted": false,
+          "skipped_no_odds": 0,
+          "by_season": {
+            "2014": {
+              "bets": 28,
+              "wins": 21,
+              "staked": 2800.0,
+              "returned": 2700.0,
+              "profit": -100.0,
+              "roi_pct": -3.57,
+              "accuracy": 75.0
+            }
+          }
+        }
+      },
+      "evaluated_coupon_candidates": 6,
+      "chosen_coupon": {
+        "type": "csv_strategy_zoo_walk_forward_coupon",
+        "mode": "csv_strategy_zoo_walk_forward",
+        "version": "market",
+        "name": "csv zoo single strategy=favorite_pair_agree leagues=league:SA count>=10 rate>=60% edge>=none odds=(1.2, 2.5) coupon max=2 sort=confidence max_per_league=2",
+        "label_style": "favorite_pair_agree",
+        "league_filter": "league:SA",
+        "leagues": [
+          "SA"
+        ],
+        "min_h2h_matches": null,
+        "min_h2h_rate_pct": null,
+        "confidence_min_pct": null,
+        "model_edge_min_pct": null,
+        "odds_band": [
+          1.2,
+          2.5
+        ],
+        "max_legs": 2,
+        "sort_by": "confidence",
+        "max_per_league": 2,
+        "score": -7102.81,
+        "eligible": false,
+        "rejection_reasons": [
+          "not_profitable",
+          "not_profitable_enough_seasons",
+          "thin_season_sample"
+        ],
+        "strategy": "favorite_pair_agree",
+        "rate_min_pct": 60.0,
+        "history_count_min": 10,
+        "train_simulation": {
+          "coupons": 41,
+          "winning_coupons": 14,
+          "coupon_hit_rate": 34.15,
+          "final_bankroll": 9658.25,
+          "profit": -341.75,
+          "roi_pct": -8.34,
+          "max_drawdown": 1020.04,
+          "max_drawdown_pct": 9.55,
+          "by_season": {
+            "2007": {
+              "bets": 3,
+              "wins": 2,
+              "staked": 300.0,
+              "returned": 616.74,
+              "profit": 316.74,
+              "roi_pct": 105.58,
+              "accuracy": 66.67
+            },
+            "2008": {
+              "bets": 1,
+              "wins": 0,
+              "staked": 100.0,
+              "returned": 0.0,
+              "profit": -100.0,
+              "roi_pct": -100.0,
+              "accuracy": 0.0
+            },
+            "2009": {
+              "bets": 6,
+              "wins": 4,
+              "staked": 600.0,
+              "returned": 1009.41,
+              "profit": 409.41,
+              "roi_pct": 68.23,
+              "accuracy": 66.67
+            },
+            "2010": {
+              "bets": 1,
+              "wins": 0,
+              "staked": 100.0,
+              "returned": 0.0,
+              "profit": -100.0,
+              "roi_pct": -100.0,
+              "accuracy": 0.0
+            },
+            "2011": {
+              "bets": 9,
+              "wins": 1,
+              "staked": 900.0,
+              "returned": 316.54,
+              "profit": -583.46,
+              "roi_pct": -64.83,
+              "accuracy": 11.11
+            },
+            "2012": {
+              "bets": 9,
+              "wins": 6,
+              "staked": 900.0,
+              "returned": 1619.72,
+              "profit": 719.72,
+              "roi_pct": 79.97,
+              "accuracy": 66.67
+            },
+            "2013": {
+              "bets": 12,
+              "wins": 1,
+              "staked": 1200.0,
+              "returned": 195.84,
+              "profit": -1004.16,
+              "roi_pct": -83.68,
+              "accuracy": 8.33
+            }
+          }
+        },
+        "test_simulation": {
+          "starting_bankroll": 10000.0,
+          "stake": 100.0,
+          "min_legs": 2,
+          "max_legs": 2,
+          "sort_by": "confidence",
+          "max_per_league": 2,
+          "coupons": 8,
+          "winning_coupons": 3,
+          "coupon_hit_rate": 37.5,
+          "legs_played": 16,
+          "avg_legs": 2.0,
+          "staked": 800.0,
+          "returned": 691.5,
+          "final_bankroll": 9891.5,
+          "profit": -108.5,
+          "growth_pct": -1.08,
+          "roi_pct": -13.56,
+          "max_drawdown": 500.0,
+          "max_drawdown_pct": 4.87,
+          "min_bankroll": 9777.3,
+          "stopped_bankroll_depleted": false,
+          "skipped_no_odds": 0,
+          "by_season": {
+            "2014": {
+              "bets": 8,
+              "wins": 3,
+              "staked": 800.0,
+              "returned": 691.5,
+              "profit": -108.5,
+              "roi_pct": -13.56,
+              "accuracy": 37.5
+            }
+          }
+        }
+      }
+    },
+    {
+      "test_season": 2015,
+      "evaluated_single_candidates": 9735,
+      "chosen_single": {
+        "type": "csv_strategy_zoo_single",
+        "mode": "csv_strategy_zoo_walk_forward",
+        "version": "market",
+        "name": "csv zoo single strategy=direct_h2h leagues=league:PD count>=6 rate>=60% edge>=2% odds=(1.2, 2.0)",
+        "label_style": "direct_h2h",
+        "league_filter": "league:PD",
+        "leagues": [
+          "PD"
+        ],
+        "min_h2h_matches": null,
+        "min_h2h_rate_pct": null,
+        "confidence_min_pct": null,
+        "model_edge_min_pct": 2.0,
+        "odds_band": [
+          1.2,
+          2.0
+        ],
+        "max_legs": null,
+        "sort_by": null,
+        "max_per_league": null,
+        "score": -619.75,
+        "eligible": true,
+        "rejection_reasons": [],
+        "strategy": "direct_h2h",
+        "rate_min_pct": 60.0,
+        "history_count_min": 6,
+        "train_simulation": {
+          "bets": 170,
+          "wins": 115,
+          "accuracy": 67.65,
+          "final_bankroll": 11404.0,
+          "profit": 1404.0,
+          "roi_pct": 8.26,
+          "max_drawdown": 763.0,
+          "max_drawdown_pct": 6.35,
+          "by_season": {
+            "2008": {
+              "bets": 21,
+              "wins": 14,
+              "staked": 2100.0,
+              "returned": 2231.0,
+              "profit": 131.0,
+              "roi_pct": 6.24,
+              "accuracy": 66.67
+            },
+            "2009": {
+              "bets": 17,
+              "wins": 13,
+              "staked": 1700.0,
+              "returned": 2004.0,
+              "profit": 304.0,
+              "roi_pct": 17.88,
+              "accuracy": 76.47
+            },
+            "2010": {
+              "bets": 27,
+              "wins": 18,
+              "staked": 2700.0,
+              "returned": 3139.0,
+              "profit": 439.0,
+              "roi_pct": 16.26,
+              "accuracy": 66.67
+            },
+            "2011": {
+              "bets": 26,
+              "wins": 20,
+              "staked": 2600.0,
+              "returned": 3247.0,
+              "profit": 647.0,
+              "roi_pct": 24.88,
+              "accuracy": 76.92
+            },
+            "2012": {
+              "bets": 38,
+              "wins": 26,
+              "staked": 3800.0,
+              "returned": 4176.0,
+              "profit": 376.0,
+              "roi_pct": 9.89,
+              "accuracy": 68.42
+            },
+            "2013": {
+              "bets": 19,
+              "wins": 9,
+              "staked": 1900.0,
+              "returned": 1331.0,
+              "profit": -569.0,
+              "roi_pct": -29.95,
+              "accuracy": 47.37
+            },
+            "2014": {
+              "bets": 22,
+              "wins": 15,
+              "staked": 2200.0,
+              "returned": 2276.0,
+              "profit": 76.0,
+              "roi_pct": 3.45,
+              "accuracy": 68.18
+            }
+          }
+        },
+        "test_simulation": {
+          "starting_bankroll": 10000.0,
+          "stake": 100.0,
+          "bets": 22,
+          "wins": 13,
+          "accuracy": 59.09,
+          "staked": 2200.0,
+          "returned": 1999.0,
+          "final_bankroll": 9799.0,
+          "profit": -201.0,
+          "growth_pct": -2.01,
+          "roi_pct": -9.14,
+          "max_drawdown": 247.0,
+          "max_drawdown_pct": 2.47,
+          "min_bankroll": 9753.0,
+          "stopped_bankroll_depleted": false,
+          "skipped_no_odds": 0,
+          "by_season": {
+            "2015": {
+              "bets": 22,
+              "wins": 13,
+              "staked": 2200.0,
+              "returned": 1999.0,
+              "profit": -201.0,
+              "roi_pct": -9.14,
+              "accuracy": 59.09
+            }
+          }
+        }
+      },
+      "evaluated_coupon_candidates": 24,
+      "chosen_coupon": {
+        "type": "csv_strategy_zoo_walk_forward_coupon",
+        "mode": "csv_strategy_zoo_walk_forward",
+        "version": "market",
+        "name": "csv zoo single strategy=direct_h2h leagues=league:PD count>=5 rate>=75% edge>=none odds=any coupon max=2 sort=edge_x_confidence max_per_league=2",
+        "label_style": "direct_h2h",
+        "league_filter": "league:PD",
+        "leagues": [
+          "PD"
+        ],
+        "min_h2h_matches": null,
+        "min_h2h_rate_pct": null,
+        "confidence_min_pct": null,
+        "model_edge_min_pct": null,
+        "odds_band": null,
+        "max_legs": 2,
+        "sort_by": "edge_x_confidence",
+        "max_per_league": 2,
+        "score": -5004.5,
+        "eligible": false,
+        "rejection_reasons": [
+          "not_profitable_enough_seasons",
+          "thin_season_sample"
+        ],
+        "strategy": "direct_h2h",
+        "rate_min_pct": 75.0,
+        "history_count_min": 5,
+        "train_simulation": {
+          "coupons": 42,
+          "winning_coupons": 18,
+          "coupon_hit_rate": 42.86,
+          "final_bankroll": 11516.94,
+          "profit": 1516.94,
+          "roi_pct": 36.12,
+          "max_drawdown": 901.18,
+          "max_drawdown_pct": 7.57,
+          "by_season": {
+            "2007": {
+              "bets": 7,
+              "wins": 3,
+              "staked": 700.0,
+              "returned": 1542.2,
+              "profit": 842.2,
+              "roi_pct": 120.31,
+              "accuracy": 42.86
+            },
+            "2008": {
+              "bets": 2,
+              "wins": 0,
+              "staked": 200.0,
+              "returned": 0.0,
+              "profit": -200.0,
+              "roi_pct": -100.0,
+              "accuracy": 0.0
+            },
+            "2009": {
+              "bets": 4,
+              "wins": 3,
+              "staked": 400.0,
+              "returned": 1351.21,
+              "profit": 951.21,
+              "roi_pct": 237.8,
+              "accuracy": 75.0
+            },
+            "2010": {
+              "bets": 7,
+              "wins": 3,
+              "staked": 700.0,
+              "returned": 908.31,
+              "profit": 208.31,
+              "roi_pct": 29.76,
+              "accuracy": 42.86
+            },
+            "2011": {
+              "bets": 5,
+              "wins": 2,
+              "staked": 500.0,
+              "returned": 355.86,
+              "profit": -144.14,
+              "roi_pct": -28.83,
+              "accuracy": 40.0
+            },
+            "2012": {
+              "bets": 10,
+              "wins": 4,
+              "staked": 1000.0,
+              "returned": 716.6,
+              "profit": -283.4,
+              "roi_pct": -28.34,
+              "accuracy": 40.0
+            },
+            "2013": {
+              "bets": 4,
+              "wins": 1,
+              "staked": 400.0,
+              "returned": 126.36,
+              "profit": -273.64,
+              "roi_pct": -68.41,
+              "accuracy": 25.0
+            },
+            "2014": {
+              "bets": 3,
+              "wins": 2,
+              "staked": 300.0,
+              "returned": 716.4,
+              "profit": 416.4,
+              "roi_pct": 138.8,
+              "accuracy": 66.67
+            }
+          }
+        },
+        "test_simulation": {
+          "starting_bankroll": 10000.0,
+          "stake": 100.0,
+          "min_legs": 2,
+          "max_legs": 2,
+          "sort_by": "edge_x_confidence",
+          "max_per_league": 2,
+          "coupons": 9,
+          "winning_coupons": 5,
+          "coupon_hit_rate": 55.56,
+          "legs_played": 18,
+          "avg_legs": 2.0,
+          "staked": 900.0,
+          "returned": 1097.73,
+          "final_bankroll": 10197.73,
+          "profit": 197.73,
+          "growth_pct": 1.98,
+          "roi_pct": 21.97,
+          "max_drawdown": 261.32,
+          "max_drawdown_pct": 2.56,
+          "min_bankroll": 9759.68,
+          "stopped_bankroll_depleted": false,
+          "skipped_no_odds": 0,
+          "by_season": {
+            "2015": {
+              "bets": 9,
+              "wins": 5,
+              "staked": 900.0,
+              "returned": 1097.73,
+              "profit": 197.73,
+              "roi_pct": 21.97,
+              "accuracy": 55.56
+            }
+          }
+        }
+      }
+    },
+    {
+      "test_season": 2016,
+      "evaluated_single_candidates": 10129,
+      "chosen_single": {
+        "type": "csv_strategy_zoo_single",
+        "mode": "csv_strategy_zoo_walk_forward",
+        "version": "market",
+        "name": "csv zoo single strategy=favorite_direct_h2h_agree leagues=league:PPL count>=10 rate>=60% edge>=none odds=any",
+        "label_style": "favorite_direct_h2h_agree",
+        "league_filter": "league:PPL",
+        "leagues": [
+          "PPL"
+        ],
+        "min_h2h_matches": null,
+        "min_h2h_rate_pct": null,
+        "confidence_min_pct": null,
+        "model_edge_min_pct": null,
+        "odds_band": null,
+        "max_legs": null,
+        "sort_by": null,
+        "max_per_league": null,
+        "score": 675.0,
+        "eligible": true,
+        "rejection_reasons": [],
+        "strategy": "favorite_direct_h2h_agree",
+        "rate_min_pct": 60.0,
+        "history_count_min": 10,
+        "train_simulation": {
+          "bets": 164,
+          "wins": 121,
+          "accuracy": 73.78,
+          "final_bankroll": 10902.0,
+          "profit": 902.0,
+          "roi_pct": 5.5,
+          "max_drawdown": 412.0,
+          "max_drawdown_pct": 3.76,
+          "by_season": {
+            "2012": {
+              "bets": 22,
+              "wins": 15,
+              "staked": 2200.0,
+              "returned": 2284.0,
+              "profit": 84.0,
+              "roi_pct": 3.82,
+              "accuracy": 68.18
+            },
+            "2013": {
+              "bets": 45,
+              "wins": 32,
+              "staked": 4500.0,
+              "returned": 4775.0,
+              "profit": 275.0,
+              "roi_pct": 6.11,
+              "accuracy": 71.11
+            },
+            "2014": {
+              "bets": 43,
+              "wins": 32,
+              "staked": 4300.0,
+              "returned": 4534.0,
+              "profit": 234.0,
+              "roi_pct": 5.44,
+              "accuracy": 74.42
+            },
+            "2015": {
+              "bets": 54,
+              "wins": 42,
+              "staked": 5400.0,
+              "returned": 5709.0,
+              "profit": 309.0,
+              "roi_pct": 5.72,
+              "accuracy": 77.78
+            }
+          }
+        },
+        "test_simulation": {
+          "starting_bankroll": 10000.0,
+          "stake": 100.0,
+          "bets": 52,
+          "wins": 33,
+          "accuracy": 63.46,
+          "staked": 5200.0,
+          "returned": 4696.0,
+          "final_bankroll": 9496.0,
+          "profit": -504.0,
+          "growth_pct": -5.04,
+          "roi_pct": -9.69,
+          "max_drawdown": 766.0,
+          "max_drawdown_pct": 7.57,
+          "min_bankroll": 9357.0,
+          "stopped_bankroll_depleted": false,
+          "skipped_no_odds": 0,
+          "by_season": {
+            "2016": {
+              "bets": 52,
+              "wins": 33,
+              "staked": 5200.0,
+              "returned": 4696.0,
+              "profit": -504.0,
+              "roi_pct": -9.69,
+              "accuracy": 63.46
+            }
+          }
+        }
+      },
+      "evaluated_coupon_candidates": 18,
+      "chosen_coupon": {
+        "type": "csv_strategy_zoo_walk_forward_coupon",
+        "mode": "csv_strategy_zoo_walk_forward",
+        "version": "market",
+        "name": "csv zoo single strategy=favorite_pair_agree leagues=league:SA count>=10 rate>=60% edge>=none odds=any coupon max=2 sort=confidence max_per_league=2",
+        "label_style": "favorite_pair_agree",
+        "league_filter": "league:SA",
+        "leagues": [
+          "SA"
+        ],
+        "min_h2h_matches": null,
+        "min_h2h_rate_pct": null,
+        "confidence_min_pct": null,
+        "model_edge_min_pct": null,
+        "odds_band": null,
+        "max_legs": 2,
+        "sort_by": "confidence",
+        "max_per_league": 2,
+        "score": -7667.28,
+        "eligible": false,
+        "rejection_reasons": [
+          "not_profitable_enough_seasons",
+          "thin_season_sample"
+        ],
+        "strategy": "favorite_pair_agree",
+        "rate_min_pct": 60.0,
+        "history_count_min": 10,
+        "train_simulation": {
+          "coupons": 59,
+          "winning_coupons": 24,
+          "coupon_hit_rate": 40.68,
+          "final_bankroll": 10681.19,
+          "profit": 681.19,
+          "roi_pct": 11.55,
+          "max_drawdown": 1326.86,
+          "max_drawdown_pct": 12.14,
+          "by_season": {
+            "2007": {
+              "bets": 3,
+              "wins": 2,
+              "staked": 300.0,
+              "returned": 616.74,
+              "profit": 316.74,
+              "roi_pct": 105.58,
+              "accuracy": 66.67
+            },
+            "2008": {
+              "bets": 1,
+              "wins": 0,
+              "staked": 100.0,
+              "returned": 0.0,
+              "profit": -100.0,
+              "roi_pct": -100.0,
+              "accuracy": 0.0
+            },
+            "2009": {
+              "bets": 6,
+              "wins": 4,
+              "staked": 600.0,
+              "returned": 1009.41,
+              "profit": 409.41,
+              "roi_pct": 68.23,
+              "accuracy": 66.67
+            },
+            "2010": {
+              "bets": 1,
+              "wins": 0,
+              "staked": 100.0,
+              "returned": 0.0,
+              "profit": -100.0,
+              "roi_pct": -100.0,
+              "accuracy": 0.0
+            },
+            "2011": {
+              "bets": 9,
+              "wins": 1,
+              "staked": 900.0,
+              "returned": 316.54,
+              "profit": -583.46,
+              "roi_pct": -64.83,
+              "accuracy": 11.11
+            },
+            "2012": {
+              "bets": 9,
+              "wins": 6,
+              "staked": 900.0,
+              "returned": 1619.72,
+              "profit": 719.72,
+              "roi_pct": 79.97,
+              "accuracy": 66.67
+            },
+            "2013": {
+              "bets": 13,
+              "wins": 2,
+              "staked": 1300.0,
+              "returned": 559.84,
+              "profit": -740.16,
+              "roi_pct": -56.94,
+              "accuracy": 15.38
+            },
+            "2014": {
+              "bets": 9,
+              "wins": 3,
+              "staked": 900.0,
+              "returned": 691.5,
+              "profit": -208.5,
+              "roi_pct": -23.17,
+              "accuracy": 33.33
+            },
+            "2015": {
+              "bets": 8,
+              "wins": 6,
+              "staked": 800.0,
+              "returned": 1767.44,
+              "profit": 967.44,
+              "roi_pct": 120.93,
+              "accuracy": 75.0
+            }
+          }
+        },
+        "test_simulation": {
+          "starting_bankroll": 10000.0,
+          "stake": 100.0,
+          "min_legs": 2,
+          "max_legs": 2,
+          "sort_by": "confidence",
+          "max_per_league": 2,
+          "coupons": 7,
+          "winning_coupons": 4,
+          "coupon_hit_rate": 57.14,
+          "legs_played": 14,
+          "avg_legs": 2.0,
+          "staked": 700.0,
+          "returned": 937.24,
+          "final_bankroll": 10237.24,
+          "profit": 237.24,
+          "growth_pct": 2.37,
+          "roi_pct": 33.89,
+          "max_drawdown": 200.0,
+          "max_drawdown_pct": 1.93,
+          "min_bankroll": 9928.15,
+          "stopped_bankroll_depleted": false,
+          "skipped_no_odds": 0,
+          "by_season": {
+            "2016": {
+              "bets": 7,
+              "wins": 4,
+              "staked": 700.0,
+              "returned": 937.24,
+              "profit": 237.24,
+              "roi_pct": 33.89,
+              "accuracy": 57.14
+            }
+          }
+        }
+      }
+    },
+    {
+      "test_season": 2017,
+      "evaluated_single_candidates": 10482,
+      "chosen_single": {
+        "type": "csv_strategy_zoo_single",
+        "mode": "csv_strategy_zoo_walk_forward",
+        "version": "market",
+        "name": "csv zoo single strategy=direct_h2h leagues=league:BL1 count>=10 rate>=60% edge>=none odds=any",
+        "label_style": "direct_h2h",
+        "league_filter": "league:BL1",
+        "leagues": [
+          "BL1"
+        ],
+        "min_h2h_matches": null,
+        "min_h2h_rate_pct": null,
+        "confidence_min_pct": null,
+        "model_edge_min_pct": null,
+        "odds_band": null,
+        "max_legs": null,
+        "sort_by": null,
+        "max_per_league": null,
+        "score": -244.75,
+        "eligible": true,
+        "rejection_reasons": [],
+        "strategy": "direct_h2h",
+        "rate_min_pct": 60.0,
+        "history_count_min": 10,
+        "train_simulation": {
+          "bets": 156,
+          "wins": 103,
+          "accuracy": 66.03,
+          "final_bankroll": 11638.0,
+          "profit": 1638.0,
+          "roi_pct": 10.5,
+          "max_drawdown": 521.0,
+          "max_drawdown_pct": 4.45,
+          "by_season": {
+            "2012": {
+              "bets": 23,
+              "wins": 11,
+              "staked": 2300.0,
+              "returned": 1811.0,
+              "profit": -489.0,
+              "roi_pct": -21.26,
+              "accuracy": 47.83
+            },
+            "2013": {
+              "bets": 31,
+              "wins": 21,
+              "staked": 3100.0,
+              "returned": 3592.0,
+              "profit": 492.0,
+              "roi_pct": 15.87,
+              "accuracy": 67.74
+            },
+            "2014": {
+              "bets": 33,
+              "wins": 20,
+              "staked": 3300.0,
+              "returned": 3339.0,
+              "profit": 39.0,
+              "roi_pct": 1.18,
+              "accuracy": 60.61
+            },
+            "2015": {
+              "bets": 40,
+              "wins": 28,
+              "staked": 4000.0,
+              "returned": 4624.0,
+              "profit": 624.0,
+              "roi_pct": 15.6,
+              "accuracy": 70.0
+            },
+            "2016": {
+              "bets": 29,
+              "wins": 23,
+              "staked": 2900.0,
+              "returned": 3872.0,
+              "profit": 972.0,
+              "roi_pct": 33.52,
+              "accuracy": 79.31
+            }
+          }
+        },
+        "test_simulation": {
+          "starting_bankroll": 10000.0,
+          "stake": 100.0,
+          "bets": 47,
+          "wins": 23,
+          "accuracy": 48.94,
+          "staked": 4700.0,
+          "returned": 3793.0,
+          "final_bankroll": 9093.0,
+          "profit": -907.0,
+          "growth_pct": -9.07,
+          "roi_pct": -19.3,
+          "max_drawdown": 1306.0,
+          "max_drawdown_pct": 12.83,
+          "min_bankroll": 8874.0,
+          "stopped_bankroll_depleted": false,
+          "skipped_no_odds": 0,
+          "by_season": {
+            "2017": {
+              "bets": 47,
+              "wins": 23,
+              "staked": 4700.0,
+              "returned": 3793.0,
+              "profit": -907.0,
+              "roi_pct": -19.3,
+              "accuracy": 48.94
+            }
+          }
+        }
+      },
+      "evaluated_coupon_candidates": 36,
+      "chosen_coupon": {
+        "type": "csv_strategy_zoo_walk_forward_coupon",
+        "mode": "csv_strategy_zoo_walk_forward",
+        "version": "market",
+        "name": "csv zoo single strategy=direct_h2h leagues=league:PPL count>=5 rate>=60% edge>=2% odds=(1.2, 2.5) coupon max=2 sort=confidence max_per_league=2",
+        "label_style": "direct_h2h",
+        "league_filter": "league:PPL",
+        "leagues": [
+          "PPL"
+        ],
+        "min_h2h_matches": null,
+        "min_h2h_rate_pct": null,
+        "confidence_min_pct": null,
+        "model_edge_min_pct": 2.0,
+        "odds_band": [
+          1.2,
+          2.5
+        ],
+        "max_legs": 2,
+        "sort_by": "confidence",
+        "max_per_league": 2,
+        "score": -5246.85,
+        "eligible": false,
+        "rejection_reasons": [
+          "not_profitable_enough_seasons",
+          "thin_season_sample"
+        ],
+        "strategy": "direct_h2h",
+        "rate_min_pct": 60.0,
+        "history_count_min": 5,
+        "train_simulation": {
+          "coupons": 56,
+          "winning_coupons": 25,
+          "coupon_hit_rate": 44.64,
+          "final_bankroll": 11084.04,
+          "profit": 1084.04,
+          "roi_pct": 19.36,
+          "max_drawdown": 537.49,
+          "max_drawdown_pct": 4.64,
+          "by_season": {
+            "2007": {
+              "bets": 1,
+              "wins": 1,
+              "staked": 100.0,
+              "returned": 362.25,
+              "profit": 262.25,
+              "roi_pct": 262.25,
+              "accuracy": 100.0
+            },
+            "2008": {
+              "bets": 6,
+              "wins": 4,
+              "staked": 600.0,
+              "returned": 1230.43,
+              "profit": 630.43,
+              "roi_pct": 105.07,
+              "accuracy": 66.67
+            },
+            "2009": {
+              "bets": 5,
+              "wins": 3,
+              "staked": 500.0,
+              "returned": 662.15,
+              "profit": 162.15,
+              "roi_pct": 32.43,
+              "accuracy": 60.0
+            },
+            "2010": {
+              "bets": 5,
+              "wins": 1,
+              "staked": 500.0,
+              "returned": 259.2,
+              "profit": -240.8,
+              "roi_pct": -48.16,
+              "accuracy": 20.0
+            },
+            "2011": {
+              "bets": 8,
+              "wins": 5,
+              "staked": 800.0,
+              "returned": 1342.21,
+              "profit": 542.21,
+              "roi_pct": 67.78,
+              "accuracy": 62.5
+            },
+            "2012": {
+              "bets": 7,
+              "wins": 2,
+              "staked": 700.0,
+              "returned": 559.98,
+              "profit": -140.02,
+              "roi_pct": -20.0,
+              "accuracy": 28.57
+            },
+            "2013": {
+              "bets": 7,
+              "wins": 2,
+              "staked": 700.0,
+              "returned": 451.41,
+              "profit": -248.59,
+              "roi_pct": -35.51,
+              "accuracy": 28.57
+            },
+            "2014": {
+              "bets": 4,
+              "wins": 2,
+              "staked": 400.0,
+              "returned": 430.0,
+              "profit": 30.0,
+              "roi_pct": 7.5,
+              "accuracy": 50.0
+            },
+            "2015": {
+              "bets": 6,
+              "wins": 3,
+              "staked": 600.0,
+              "returned": 872.57,
+              "profit": 272.57,
+              "roi_pct": 45.43,
+              "accuracy": 50.0
+            },
+            "2016": {
+              "bets": 7,
+              "wins": 2,
+              "staked": 700.0,
+              "returned": 513.84,
+              "profit": -186.16,
+              "roi_pct": -26.59,
+              "accuracy": 28.57
+            }
+          }
+        },
+        "test_simulation": {
+          "starting_bankroll": 10000.0,
+          "stake": 100.0,
+          "min_legs": 2,
+          "max_legs": 2,
+          "sort_by": "confidence",
+          "max_per_league": 2,
+          "coupons": 1,
+          "winning_coupons": 0,
+          "coupon_hit_rate": 0.0,
+          "legs_played": 2,
+          "avg_legs": 2.0,
+          "staked": 100.0,
+          "returned": 0.0,
+          "final_bankroll": 9900.0,
+          "profit": -100.0,
+          "growth_pct": -1.0,
+          "roi_pct": -100.0,
+          "max_drawdown": 100.0,
+          "max_drawdown_pct": 1.0,
+          "min_bankroll": 9900.0,
+          "stopped_bankroll_depleted": false,
+          "skipped_no_odds": 0,
+          "by_season": {
+            "2017": {
+              "bets": 1,
+              "wins": 0,
+              "staked": 100.0,
+              "returned": 0.0,
+              "profit": -100.0,
+              "roi_pct": -100.0,
+              "accuracy": 0.0
+            }
+          }
+        }
+      }
+    },
+    {
+      "test_season": 2018,
+      "evaluated_single_candidates": 10789,
+      "chosen_single": {
+        "type": "csv_strategy_zoo_single",
+        "mode": "csv_strategy_zoo_walk_forward",
+        "version": "market",
+        "name": "csv zoo single strategy=favorite_direct_h2h_agree leagues=league:PPL count>=10 rate>=60% edge>=none odds=any",
+        "label_style": "favorite_direct_h2h_agree",
+        "league_filter": "league:PPL",
+        "leagues": [
+          "PPL"
+        ],
+        "min_h2h_matches": null,
+        "min_h2h_rate_pct": null,
+        "confidence_min_pct": null,
+        "model_edge_min_pct": null,
+        "odds_band": null,
+        "max_legs": null,
+        "sort_by": null,
+        "max_per_league": null,
+        "score": -1119.0,
+        "eligible": true,
+        "rejection_reasons": [],
+        "strategy": "favorite_direct_h2h_agree",
+        "rate_min_pct": 60.0,
+        "history_count_min": 10,
+        "train_simulation": {
+          "bets": 259,
+          "wins": 189,
+          "accuracy": 72.97,
+          "final_bankroll": 10890.0,
+          "profit": 890.0,
+          "roi_pct": 3.44,
+          "max_drawdown": 766.0,
+          "max_drawdown_pct": 6.91,
+          "by_season": {
+            "2012": {
+              "bets": 22,
+              "wins": 15,
+              "staked": 2200.0,
+              "returned": 2284.0,
+              "profit": 84.0,
+              "roi_pct": 3.82,
+              "accuracy": 68.18
+            },
+            "2013": {
+              "bets": 45,
+              "wins": 32,
+              "staked": 4500.0,
+              "returned": 4775.0,
+              "profit": 275.0,
+              "roi_pct": 6.11,
+              "accuracy": 71.11
+            },
+            "2014": {
+              "bets": 43,
+              "wins": 32,
+              "staked": 4300.0,
+              "returned": 4534.0,
+              "profit": 234.0,
+              "roi_pct": 5.44,
+              "accuracy": 74.42
+            },
+            "2015": {
+              "bets": 54,
+              "wins": 42,
+              "staked": 5400.0,
+              "returned": 5709.0,
+              "profit": 309.0,
+              "roi_pct": 5.72,
+              "accuracy": 77.78
+            },
+            "2016": {
+              "bets": 52,
+              "wins": 33,
+              "staked": 5200.0,
+              "returned": 4696.0,
+              "profit": -504.0,
+              "roi_pct": -9.69,
+              "accuracy": 63.46
+            },
+            "2017": {
+              "bets": 43,
+              "wins": 35,
+              "staked": 4300.0,
+              "returned": 4792.0,
+              "profit": 492.0,
+              "roi_pct": 11.44,
+              "accuracy": 81.4
+            }
+          }
+        },
+        "test_simulation": {
+          "starting_bankroll": 10000.0,
+          "stake": 100.0,
+          "bets": 48,
+          "wins": 37,
+          "accuracy": 77.08,
+          "staked": 4800.0,
+          "returned": 4978.0,
+          "final_bankroll": 10178.0,
+          "profit": 178.0,
+          "growth_pct": 1.78,
+          "roi_pct": 3.71,
+          "max_drawdown": 288.0,
+          "max_drawdown_pct": 2.82,
+          "min_bankroll": 9913.0,
+          "stopped_bankroll_depleted": false,
+          "skipped_no_odds": 0,
+          "by_season": {
+            "2018": {
+              "bets": 48,
+              "wins": 37,
+              "staked": 4800.0,
+              "returned": 4978.0,
+              "profit": 178.0,
+              "roi_pct": 3.71,
+              "accuracy": 77.08
+            }
+          }
+        }
+      },
+      "evaluated_coupon_candidates": 36,
+      "chosen_coupon": {
+        "type": "csv_strategy_zoo_walk_forward_coupon",
+        "mode": "csv_strategy_zoo_walk_forward",
+        "version": "market",
+        "name": "csv zoo single strategy=favorite_direct_h2h_agree leagues=league:PPL count>=10 rate>=60% edge>=none odds=any coupon max=2 sort=confidence max_per_league=2",
+        "label_style": "favorite_direct_h2h_agree",
+        "league_filter": "league:PPL",
+        "leagues": [
+          "PPL"
+        ],
+        "min_h2h_matches": null,
+        "min_h2h_rate_pct": null,
+        "confidence_min_pct": null,
+        "model_edge_min_pct": null,
+        "odds_band": null,
+        "max_legs": 2,
+        "sort_by": "confidence",
+        "max_per_league": 2,
+        "score": -6830.59,
+        "eligible": false,
+        "rejection_reasons": [
+          "not_profitable",
+          "not_profitable_enough_seasons",
+          "thin_season_sample"
+        ],
+        "strategy": "favorite_direct_h2h_agree",
+        "rate_min_pct": 60.0,
+        "history_count_min": 10,
+        "train_simulation": {
+          "coupons": 38,
+          "winning_coupons": 18,
+          "coupon_hit_rate": 47.37,
+          "final_bankroll": 9603.38,
+          "profit": -396.62,
+          "roi_pct": -10.44,
+          "max_drawdown": 660.64,
+          "max_drawdown_pct": 6.49,
+          "by_season": {
+            "2012": {
+              "bets": 2,
+              "wins": 1,
+              "staked": 200.0,
+              "returned": 278.46,
+              "profit": 78.46,
+              "roi_pct": 39.23,
+              "accuracy": 50.0
+            },
+            "2013": {
+              "bets": 9,
+              "wins": 4,
+              "staked": 900.0,
+              "returned": 854.23,
+              "profit": -45.77,
+              "roi_pct": -5.09,
+              "accuracy": 44.44
+            },
+            "2014": {
+              "bets": 3,
+              "wins": 1,
+              "staked": 300.0,
+              "returned": 257.4,
+              "profit": -42.6,
+              "roi_pct": -14.2,
+              "accuracy": 33.33
+            },
+            "2015": {
+              "bets": 9,
+              "wins": 6,
+              "staked": 900.0,
+              "returned": 964.53,
+              "profit": 64.53,
+              "roi_pct": 7.17,
+              "accuracy": 66.67
+            },
+            "2016": {
+              "bets": 9,
+              "wins": 3,
+              "staked": 900.0,
+              "returned": 485.4,
+              "profit": -414.6,
+              "roi_pct": -46.07,
+              "accuracy": 33.33
+            },
+            "2017": {
+              "bets": 6,
+              "wins": 3,
+              "staked": 600.0,
+              "returned": 563.36,
+              "profit": -36.64,
+              "roi_pct": -6.11,
+              "accuracy": 50.0
+            }
+          }
+        },
+        "test_simulation": {
+          "starting_bankroll": 10000.0,
+          "stake": 100.0,
+          "min_legs": 2,
+          "max_legs": 2,
+          "sort_by": "confidence",
+          "max_per_league": 2,
+          "coupons": 5,
+          "winning_coupons": 3,
+          "coupon_hit_rate": 60.0,
+          "legs_played": 10,
+          "avg_legs": 2.0,
+          "staked": 500.0,
+          "returned": 501.22,
+          "final_bankroll": 10001.22,
+          "profit": 1.22,
+          "growth_pct": 0.01,
+          "roi_pct": 0.24,
+          "max_drawdown": 200.0,
+          "max_drawdown_pct": 1.96,
+          "min_bankroll": 10000.0,
+          "stopped_bankroll_depleted": false,
+          "skipped_no_odds": 0,
+          "by_season": {
+            "2018": {
+              "bets": 5,
+              "wins": 3,
+              "staked": 500.0,
+              "returned": 501.22,
+              "profit": 1.22,
+              "roi_pct": 0.24,
+              "accuracy": 60.0
+            }
+          }
+        }
+      }
+    },
+    {
+      "test_season": 2019,
+      "evaluated_single_candidates": 11102,
+      "chosen_single": {
+        "type": "csv_strategy_zoo_single",
+        "mode": "csv_strategy_zoo_walk_forward",
+        "version": "market",
+        "name": "csv zoo single strategy=favorite_direct_h2h_agree leagues=league:PPL count>=10 rate>=60% edge>=none odds=any",
+        "label_style": "favorite_direct_h2h_agree",
+        "league_filter": "league:PPL",
+        "leagues": [
+          "PPL"
+        ],
+        "min_h2h_matches": null,
+        "min_h2h_rate_pct": null,
+        "confidence_min_pct": null,
+        "model_edge_min_pct": null,
+        "odds_band": null,
+        "max_legs": null,
+        "sort_by": null,
+        "max_per_league": null,
+        "score": -941.0,
+        "eligible": true,
+        "rejection_reasons": [],
+        "strategy": "favorite_direct_h2h_agree",
+        "rate_min_pct": 60.0,
+        "history_count_min": 10,
+        "train_simulation": {
+          "bets": 307,
+          "wins": 226,
+          "accuracy": 73.62,
+          "final_bankroll": 11068.0,
+          "profit": 1068.0,
+          "roi_pct": 3.48,
+          "max_drawdown": 766.0,
+          "max_drawdown_pct": 6.89,
+          "by_season": {
+            "2012": {
+              "bets": 22,
+              "wins": 15,
+              "staked": 2200.0,
+              "returned": 2284.0,
+              "profit": 84.0,
+              "roi_pct": 3.82,
+              "accuracy": 68.18
+            },
+            "2013": {
+              "bets": 45,
+              "wins": 32,
+              "staked": 4500.0,
+              "returned": 4775.0,
+              "profit": 275.0,
+              "roi_pct": 6.11,
+              "accuracy": 71.11
+            },
+            "2014": {
+              "bets": 43,
+              "wins": 32,
+              "staked": 4300.0,
+              "returned": 4534.0,
+              "profit": 234.0,
+              "roi_pct": 5.44,
+              "accuracy": 74.42
+            },
+            "2015": {
+              "bets": 54,
+              "wins": 42,
+              "staked": 5400.0,
+              "returned": 5709.0,
+              "profit": 309.0,
+              "roi_pct": 5.72,
+              "accuracy": 77.78
+            },
+            "2016": {
+              "bets": 52,
+              "wins": 33,
+              "staked": 5200.0,
+              "returned": 4696.0,
+              "profit": -504.0,
+              "roi_pct": -9.69,
+              "accuracy": 63.46
+            },
+            "2017": {
+              "bets": 43,
+              "wins": 35,
+              "staked": 4300.0,
+              "returned": 4792.0,
+              "profit": 492.0,
+              "roi_pct": 11.44,
+              "accuracy": 81.4
+            },
+            "2018": {
+              "bets": 48,
+              "wins": 37,
+              "staked": 4800.0,
+              "returned": 4978.0,
+              "profit": 178.0,
+              "roi_pct": 3.71,
+              "accuracy": 77.08
+            }
+          }
+        },
+        "test_simulation": {
+          "starting_bankroll": 10000.0,
+          "stake": 100.0,
+          "bets": 48,
+          "wins": 34,
+          "accuracy": 70.83,
+          "staked": 4800.0,
+          "returned": 4830.0,
+          "final_bankroll": 10030.0,
+          "profit": 30.0,
+          "growth_pct": 0.3,
+          "roi_pct": 0.62,
+          "max_drawdown": 448.0,
+          "max_drawdown_pct": 4.33,
+          "min_bankroll": 9904.0,
+          "stopped_bankroll_depleted": false,
+          "skipped_no_odds": 0,
+          "by_season": {
+            "2019": {
+              "bets": 48,
+              "wins": 34,
+              "staked": 4800.0,
+              "returned": 4830.0,
+              "profit": 30.0,
+              "roi_pct": 0.62,
+              "accuracy": 70.83
+            }
+          }
+        }
+      },
+      "evaluated_coupon_candidates": 18,
+      "chosen_coupon": {
+        "type": "csv_strategy_zoo_walk_forward_coupon",
+        "mode": "csv_strategy_zoo_walk_forward",
+        "version": "market",
+        "name": "csv zoo single strategy=favorite_direct_h2h_agree leagues=league:PPL count>=10 rate>=60% edge>=none odds=any coupon max=2 sort=confidence max_per_league=2",
+        "label_style": "favorite_direct_h2h_agree",
+        "league_filter": "league:PPL",
+        "leagues": [
+          "PPL"
+        ],
+        "min_h2h_matches": null,
+        "min_h2h_rate_pct": null,
+        "confidence_min_pct": null,
+        "model_edge_min_pct": null,
+        "odds_band": null,
+        "max_legs": 2,
+        "sort_by": "confidence",
+        "max_per_league": 2,
+        "score": -6829.37,
+        "eligible": false,
+        "rejection_reasons": [
+          "not_profitable",
+          "not_profitable_enough_seasons",
+          "thin_season_sample"
+        ],
+        "strategy": "favorite_direct_h2h_agree",
+        "rate_min_pct": 60.0,
+        "history_count_min": 10,
+        "train_simulation": {
+          "coupons": 43,
+          "winning_coupons": 21,
+          "coupon_hit_rate": 48.84,
+          "final_bankroll": 9604.6,
+          "profit": -395.4,
+          "roi_pct": -9.2,
+          "max_drawdown": 660.64,
+          "max_drawdown_pct": 6.49,
+          "by_season": {
+            "2012": {
+              "bets": 2,
+              "wins": 1,
+              "staked": 200.0,
+              "returned": 278.46,
+              "profit": 78.46,
+              "roi_pct": 39.23,
+              "accuracy": 50.0
+            },
+            "2013": {
+              "bets": 9,
+              "wins": 4,
+              "staked": 900.0,
+              "returned": 854.23,
+              "profit": -45.77,
+              "roi_pct": -5.09,
+              "accuracy": 44.44
+            },
+            "2014": {
+              "bets": 3,
+              "wins": 1,
+              "staked": 300.0,
+              "returned": 257.4,
+              "profit": -42.6,
+              "roi_pct": -14.2,
+              "accuracy": 33.33
+            },
+            "2015": {
+              "bets": 9,
+              "wins": 6,
+              "staked": 900.0,
+              "returned": 964.53,
+              "profit": 64.53,
+              "roi_pct": 7.17,
+              "accuracy": 66.67
+            },
+            "2016": {
+              "bets": 9,
+              "wins": 3,
+              "staked": 900.0,
+              "returned": 485.4,
+              "profit": -414.6,
+              "roi_pct": -46.07,
+              "accuracy": 33.33
+            },
+            "2017": {
+              "bets": 6,
+              "wins": 3,
+              "staked": 600.0,
+              "returned": 563.36,
+              "profit": -36.64,
+              "roi_pct": -6.11,
+              "accuracy": 50.0
+            },
+            "2018": {
+              "bets": 5,
+              "wins": 3,
+              "staked": 500.0,
+              "returned": 501.22,
+              "profit": 1.22,
+              "roi_pct": 0.24,
+              "accuracy": 60.0
+            }
+          }
+        },
+        "test_simulation": {
+          "starting_bankroll": 10000.0,
+          "stake": 100.0,
+          "min_legs": 2,
+          "max_legs": 2,
+          "sort_by": "confidence",
+          "max_per_league": 2,
+          "coupons": 9,
+          "winning_coupons": 5,
+          "coupon_hit_rate": 55.56,
+          "legs_played": 18,
+          "avg_legs": 2.0,
+          "staked": 900.0,
+          "returned": 954.72,
+          "final_bankroll": 10054.72,
+          "profit": 54.72,
+          "growth_pct": 0.55,
+          "roi_pct": 6.08,
+          "max_drawdown": 200.0,
+          "max_drawdown_pct": 1.95,
+          "min_bankroll": 9934.56,
+          "stopped_bankroll_depleted": false,
+          "skipped_no_odds": 0,
+          "by_season": {
+            "2019": {
+              "bets": 9,
+              "wins": 5,
+              "staked": 900.0,
+              "returned": 954.72,
+              "profit": 54.72,
+              "roi_pct": 6.08,
+              "accuracy": 55.56
+            }
+          }
+        }
+      }
+    },
+    {
+      "test_season": 2020,
+      "evaluated_single_candidates": 11384,
+      "chosen_single": {
+        "type": "csv_strategy_zoo_single",
+        "mode": "csv_strategy_zoo_walk_forward",
+        "version": "market",
+        "name": "csv zoo single strategy=favorite_direct_h2h_agree leagues=league:PPL count>=10 rate>=60% edge>=none odds=any",
+        "label_style": "favorite_direct_h2h_agree",
+        "league_filter": "league:PPL",
+        "leagues": [
+          "PPL"
+        ],
+        "min_h2h_matches": null,
+        "min_h2h_rate_pct": null,
+        "confidence_min_pct": null,
+        "model_edge_min_pct": null,
+        "odds_band": null,
+        "max_legs": null,
+        "sort_by": null,
+        "max_per_league": null,
+        "score": -911.0,
+        "eligible": true,
+        "rejection_reasons": [],
+        "strategy": "favorite_direct_h2h_agree",
+        "rate_min_pct": 60.0,
+        "history_count_min": 10,
+        "train_simulation": {
+          "bets": 355,
+          "wins": 260,
+          "accuracy": 73.24,
+          "final_bankroll": 11098.0,
+          "profit": 1098.0,
+          "roi_pct": 3.09,
+          "max_drawdown": 766.0,
+          "max_drawdown_pct": 6.71,
+          "by_season": {
+            "2012": {
+              "bets": 22,
+              "wins": 15,
+              "staked": 2200.0,
+              "returned": 2284.0,
+              "profit": 84.0,
+              "roi_pct": 3.82,
+              "accuracy": 68.18
+            },
+            "2013": {
+              "bets": 45,
+              "wins": 32,
+              "staked": 4500.0,
+              "returned": 4775.0,
+              "profit": 275.0,
+              "roi_pct": 6.11,
+              "accuracy": 71.11
+            },
+            "2014": {
+              "bets": 43,
+              "wins": 32,
+              "staked": 4300.0,
+              "returned": 4534.0,
+              "profit": 234.0,
+              "roi_pct": 5.44,
+              "accuracy": 74.42
+            },
+            "2015": {
+              "bets": 54,
+              "wins": 42,
+              "staked": 5400.0,
+              "returned": 5709.0,
+              "profit": 309.0,
+              "roi_pct": 5.72,
+              "accuracy": 77.78
+            },
+            "2016": {
+              "bets": 52,
+              "wins": 33,
+              "staked": 5200.0,
+              "returned": 4696.0,
+              "profit": -504.0,
+              "roi_pct": -9.69,
+              "accuracy": 63.46
+            },
+            "2017": {
+              "bets": 43,
+              "wins": 35,
+              "staked": 4300.0,
+              "returned": 4792.0,
+              "profit": 492.0,
+              "roi_pct": 11.44,
+              "accuracy": 81.4
+            },
+            "2018": {
+              "bets": 48,
+              "wins": 37,
+              "staked": 4800.0,
+              "returned": 4978.0,
+              "profit": 178.0,
+              "roi_pct": 3.71,
+              "accuracy": 77.08
+            },
+            "2019": {
+              "bets": 48,
+              "wins": 34,
+              "staked": 4800.0,
+              "returned": 4830.0,
+              "profit": 30.0,
+              "roi_pct": 0.62,
+              "accuracy": 70.83
+            }
+          }
+        },
+        "test_simulation": {
+          "starting_bankroll": 10000.0,
+          "stake": 100.0,
+          "bets": 55,
+          "wins": 38,
+          "accuracy": 69.09,
+          "staked": 5500.0,
+          "returned": 5427.0,
+          "final_bankroll": 9927.0,
+          "profit": -73.0,
+          "growth_pct": -0.73,
+          "roi_pct": -1.33,
+          "max_drawdown": 531.0,
+          "max_drawdown_pct": 5.25,
+          "min_bankroll": 9584.0,
+          "stopped_bankroll_depleted": false,
+          "skipped_no_odds": 0,
+          "by_season": {
+            "2020": {
+              "bets": 55,
+              "wins": 38,
+              "staked": 5500.0,
+              "returned": 5427.0,
+              "profit": -73.0,
+              "roi_pct": -1.33,
+              "accuracy": 69.09
+            }
+          }
+        }
+      },
+      "evaluated_coupon_candidates": 30,
+      "chosen_coupon": {
+        "type": "csv_strategy_zoo_walk_forward_coupon",
+        "mode": "csv_strategy_zoo_walk_forward",
+        "version": "market",
+        "name": "csv zoo single strategy=direct_h2h leagues=all count>=10 rate>=80% edge>=none odds=any coupon max=2 sort=edge_x_confidence max_per_league=2",
+        "label_style": "direct_h2h",
+        "league_filter": "all",
+        "leagues": [
+          "BL1",
+          "BL2",
+          "BSA",
+          "DED",
+          "ELC",
+          "FL1",
+          "PD",
+          "PL",
+          "PPL",
+          "SA"
+        ],
+        "min_h2h_matches": null,
+        "min_h2h_rate_pct": null,
+        "confidence_min_pct": null,
+        "model_edge_min_pct": null,
+        "odds_band": null,
+        "max_legs": 2,
+        "sort_by": "edge_x_confidence",
+        "max_per_league": 2,
+        "score": -3541.18,
+        "eligible": false,
+        "rejection_reasons": [
+          "not_profitable_enough_seasons"
+        ],
+        "strategy": "direct_h2h",
+        "rate_min_pct": 80.0,
+        "history_count_min": 10,
+        "train_simulation": {
+          "coupons": 139,
+          "winning_coupons": 80,
+          "coupon_hit_rate": 57.55,
+          "final_bankroll": 11354.95,
+          "profit": 1354.95,
+          "roi_pct": 9.75,
+          "max_drawdown": 729.56,
+          "max_drawdown_pct": 6.41,
+          "by_season": {
+            "2012": {
+              "bets": 7,
+              "wins": 3,
+              "staked": 700.0,
+              "returned": 707.1,
+              "profit": 7.1,
+              "roi_pct": 1.01,
+              "accuracy": 42.86
+            },
+            "2013": {
+              "bets": 14,
+              "wins": 8,
+              "staked": 1400.0,
+              "returned": 1402.25,
+              "profit": 2.25,
+              "roi_pct": 0.16,
+              "accuracy": 57.14
+            },
+            "2014": {
+              "bets": 19,
+              "wins": 10,
+              "staked": 1900.0,
+              "returned": 1844.59,
+              "profit": -55.41,
+              "roi_pct": -2.92,
+              "accuracy": 52.63
+            },
+            "2015": {
+              "bets": 20,
+              "wins": 9,
+              "staked": 2000.0,
+              "returned": 1874.58,
+              "profit": -125.42,
+              "roi_pct": -6.27,
+              "accuracy": 45.0
+            },
+            "2016": {
+              "bets": 22,
+              "wins": 12,
+              "staked": 2200.0,
+              "returned": 2258.59,
+              "profit": 58.59,
+              "roi_pct": 2.66,
+              "accuracy": 54.55
+            },
+            "2017": {
+              "bets": 17,
+              "wins": 13,
+              "staked": 1700.0,
+              "returned": 2430.94,
+              "profit": 730.94,
+              "roi_pct": 43.0,
+              "accuracy": 76.47
+            },
+            "2018": {
+              "bets": 25,
+              "wins": 14,
+              "staked": 2500.0,
+              "returned": 2414.52,
+              "profit": -85.48,
+              "roi_pct": -3.42,
+              "accuracy": 56.0
+            },
+            "2019": {
+              "bets": 15,
+              "wins": 11,
+              "staked": 1500.0,
+              "returned": 2322.38,
+              "profit": 822.38,
+              "roi_pct": 54.83,
+              "accuracy": 73.33
+            }
+          }
+        },
+        "test_simulation": {
+          "starting_bankroll": 10000.0,
+          "stake": 100.0,
+          "min_legs": 2,
+          "max_legs": 2,
+          "sort_by": "edge_x_confidence",
+          "max_per_league": 2,
+          "coupons": 22,
+          "winning_coupons": 10,
+          "coupon_hit_rate": 45.45,
+          "legs_played": 44,
+          "avg_legs": 2.0,
+          "staked": 2200.0,
+          "returned": 1979.14,
+          "final_bankroll": 9779.14,
+          "profit": -220.86,
+          "growth_pct": -2.21,
+          "roi_pct": -10.04,
+          "max_drawdown": 505.52,
+          "max_drawdown_pct": 4.92,
+          "min_bankroll": 9779.14,
+          "stopped_bankroll_depleted": false,
+          "skipped_no_odds": 0,
+          "by_season": {
+            "2020": {
+              "bets": 22,
+              "wins": 10,
+              "staked": 2200.0,
+              "returned": 1979.14,
+              "profit": -220.86,
+              "roi_pct": -10.04,
+              "accuracy": 45.45
+            }
+          }
+        }
+      }
+    },
+    {
+      "test_season": 2021,
+      "evaluated_single_candidates": 11654,
+      "chosen_single": {
+        "type": "csv_strategy_zoo_single",
+        "mode": "csv_strategy_zoo_walk_forward",
+        "version": "market",
+        "name": "csv zoo single strategy=favorite_direct_h2h_agree leagues=league:PPL count>=10 rate>=67% edge>=none odds=any",
+        "label_style": "favorite_direct_h2h_agree",
+        "league_filter": "league:PPL",
+        "leagues": [
+          "PPL"
+        ],
+        "min_h2h_matches": null,
+        "min_h2h_rate_pct": null,
+        "confidence_min_pct": null,
+        "model_edge_min_pct": null,
+        "odds_band": null,
+        "max_legs": null,
+        "sort_by": null,
+        "max_per_league": null,
+        "score": -2269.0,
+        "eligible": true,
+        "rejection_reasons": [],
+        "strategy": "favorite_direct_h2h_agree",
+        "rate_min_pct": 67.0,
+        "history_count_min": 10,
+        "train_simulation": {
+          "bets": 292,
+          "wins": 223,
+          "accuracy": 76.37,
+          "final_bankroll": 11298.0,
+          "profit": 1298.0,
+          "roi_pct": 4.45,
+          "max_drawdown": 809.0,
+          "max_drawdown_pct": 7.16,
+          "by_season": {
+            "2012": {
+              "bets": 16,
+              "wins": 12,
+              "staked": 1600.0,
+              "returned": 1712.0,
+              "profit": 112.0,
+              "roi_pct": 7.0,
+              "accuracy": 75.0
+            },
+            "2013": {
+              "bets": 30,
+              "wins": 21,
+              "staked": 3000.0,
+              "returned": 2938.0,
+              "profit": -62.0,
+              "roi_pct": -2.07,
+              "accuracy": 70.0
+            },
+            "2014": {
+              "bets": 28,
+              "wins": 23,
+              "staked": 2800.0,
+              "returned": 3140.0,
+              "profit": 340.0,
+              "roi_pct": 12.14,
+              "accuracy": 82.14
+            },
+            "2015": {
+              "bets": 39,
+              "wins": 33,
+              "staked": 3900.0,
+              "returned": 4375.0,
+              "profit": 475.0,
+              "roi_pct": 12.18,
+              "accuracy": 84.62
+            },
+            "2016": {
+              "bets": 38,
+              "wins": 23,
+              "staked": 3800.0,
+              "returned": 3150.0,
+              "profit": -650.0,
+              "roi_pct": -17.11,
+              "accuracy": 60.53
+            },
+            "2017": {
+              "bets": 30,
+              "wins": 27,
+              "staked": 3000.0,
+              "returned": 3579.0,
+              "profit": 579.0,
+              "roi_pct": 19.3,
+              "accuracy": 90.0
+            },
+            "2018": {
+              "bets": 35,
+              "wins": 27,
+              "staked": 3500.0,
+              "returned": 3530.0,
+              "profit": 30.0,
+              "roi_pct": 0.86,
+              "accuracy": 77.14
+            },
+            "2019": {
+              "bets": 38,
+              "wins": 28,
+              "staked": 3800.0,
+              "returned": 3970.0,
+              "profit": 170.0,
+              "roi_pct": 4.47,
+              "accuracy": 73.68
+            },
+            "2020": {
+              "bets": 38,
+              "wins": 29,
+              "staked": 3800.0,
+              "returned": 4104.0,
+              "profit": 304.0,
+              "roi_pct": 8.0,
+              "accuracy": 76.32
+            }
+          }
+        },
+        "test_simulation": {
+          "starting_bankroll": 10000.0,
+          "stake": 100.0,
+          "bets": 36,
+          "wins": 30,
+          "accuracy": 83.33,
+          "staked": 3600.0,
+          "returned": 3937.0,
+          "final_bankroll": 10337.0,
+          "profit": 337.0,
+          "growth_pct": 3.37,
+          "roi_pct": 9.36,
+          "max_drawdown": 391.0,
+          "max_drawdown_pct": 3.72,
+          "min_bankroll": 10000.0,
+          "stopped_bankroll_depleted": false,
+          "skipped_no_odds": 0,
+          "by_season": {
+            "2021": {
+              "bets": 36,
+              "wins": 30,
+              "staked": 3600.0,
+              "returned": 3937.0,
+              "profit": 337.0,
+              "roi_pct": 9.36,
+              "accuracy": 83.33
+            }
+          }
+        }
+      },
+      "evaluated_coupon_candidates": 30,
+      "chosen_coupon": {
+        "type": "csv_strategy_zoo_walk_forward_coupon",
+        "mode": "csv_strategy_zoo_walk_forward",
+        "version": "market",
+        "name": "csv zoo single strategy=direct_h2h leagues=all count>=10 rate>=80% edge>=none odds=any coupon max=3 sort=edge_x_confidence max_per_league=2",
+        "label_style": "direct_h2h",
+        "league_filter": "all",
+        "leagues": [
+          "BL1",
+          "BL2",
+          "BSA",
+          "DED",
+          "ELC",
+          "FL1",
+          "PD",
+          "PL",
+          "PPL",
+          "SA"
+        ],
+        "min_h2h_matches": null,
+        "min_h2h_rate_pct": null,
+        "confidence_min_pct": null,
+        "model_edge_min_pct": null,
+        "odds_band": null,
+        "max_legs": 3,
+        "sort_by": "edge_x_confidence",
+        "max_per_league": 2,
+        "score": -4023.1,
+        "eligible": false,
+        "rejection_reasons": [
+          "not_profitable_enough_seasons"
+        ],
+        "strategy": "direct_h2h",
+        "rate_min_pct": 80.0,
+        "history_count_min": 10,
+        "train_simulation": {
+          "coupons": 149,
+          "winning_coupons": 78,
+          "coupon_hit_rate": 52.35,
+          "final_bankroll": 11072.5,
+          "profit": 1072.5,
+          "roi_pct": 7.2,
+          "max_drawdown": 1059.78,
+          "max_drawdown_pct": 9.23,
+          "by_season": {
+            "2012": {
+              "bets": 6,
+              "wins": 3,
+              "staked": 600.0,
+              "returned": 840.84,
+              "profit": 240.84,
+              "roi_pct": 40.14,
+              "accuracy": 50.0
+            },
+            "2013": {
+              "bets": 12,
+              "wins": 6,
+              "staked": 1200.0,
+              "returned": 1132.64,
+              "profit": -67.36,
+              "roi_pct": -5.61,
+              "accuracy": 50.0
+            },
+            "2014": {
+              "bets": 18,
+              "wins": 9,
+              "staked": 1800.0,
+              "returned": 1803.71,
+              "profit": 3.71,
+              "roi_pct": 0.21,
+              "accuracy": 50.0
+            },
+            "2015": {
+              "bets": 19,
+              "wins": 7,
+              "staked": 1900.0,
+              "returned": 1637.15,
+              "profit": -262.85,
+              "roi_pct": -13.83,
+              "accuracy": 36.84
+            },
+            "2016": {
+              "bets": 21,
+              "wins": 10,
+              "staked": 2100.0,
+              "returned": 1882.11,
+              "profit": -217.89,
+              "roi_pct": -10.38,
+              "accuracy": 47.62
+            },
+            "2017": {
+              "bets": 15,
+              "wins": 9,
+              "staked": 1500.0,
+              "returned": 1781.45,
+              "profit": 281.45,
+              "roi_pct": 18.76,
+              "accuracy": 60.0
+            },
+            "2018": {
+              "bets": 22,
+              "wins": 13,
+              "staked": 2200.0,
+              "returned": 2270.88,
+              "profit": 70.88,
+              "roi_pct": 3.22,
+              "accuracy": 59.09
+            },
+            "2019": {
+              "bets": 15,
+              "wins": 11,
+              "staked": 1500.0,
+              "returned": 2478.28,
+              "profit": 978.28,
+              "roi_pct": 65.22,
+              "accuracy": 73.33
+            },
+            "2020": {
+              "bets": 21,
+              "wins": 10,
+              "staked": 2100.0,
+              "returned": 2145.42,
+              "profit": 45.42,
+              "roi_pct": 2.16,
+              "accuracy": 47.62
+            }
+          }
+        },
+        "test_simulation": {
+          "starting_bankroll": 10000.0,
+          "stake": 100.0,
+          "min_legs": 2,
+          "max_legs": 3,
+          "sort_by": "edge_x_confidence",
+          "max_per_league": 2,
+          "coupons": 22,
+          "winning_coupons": 13,
+          "coupon_hit_rate": 59.09,
+          "legs_played": 49,
+          "avg_legs": 2.23,
+          "staked": 2200.0,
+          "returned": 2834.02,
+          "final_bankroll": 10634.02,
+          "profit": 634.02,
+          "growth_pct": 6.34,
+          "roi_pct": 28.82,
+          "max_drawdown": 342.63,
+          "max_drawdown_pct": 3.12,
+          "min_bankroll": 9975.68,
+          "stopped_bankroll_depleted": false,
+          "skipped_no_odds": 0,
+          "by_season": {
+            "2021": {
+              "bets": 22,
+              "wins": 13,
+              "staked": 2200.0,
+              "returned": 2834.02,
+              "profit": 634.02,
+              "roi_pct": 28.82,
+              "accuracy": 59.09
+            }
+          }
+        }
+      }
+    },
+    {
+      "test_season": 2022,
+      "evaluated_single_candidates": 11890,
+      "chosen_single": {
+        "type": "csv_strategy_zoo_single",
+        "mode": "csv_strategy_zoo_walk_forward",
+        "version": "market",
+        "name": "csv zoo single strategy=favorite_direct_h2h_agree leagues=league:PPL count>=10 rate>=67% edge>=none odds=any",
+        "label_style": "favorite_direct_h2h_agree",
+        "league_filter": "league:PPL",
+        "leagues": [
+          "PPL"
+        ],
+        "min_h2h_matches": null,
+        "min_h2h_rate_pct": null,
+        "confidence_min_pct": null,
+        "model_edge_min_pct": null,
+        "odds_band": null,
+        "max_legs": null,
+        "sort_by": null,
+        "max_per_league": null,
+        "score": -1932.0,
+        "eligible": true,
+        "rejection_reasons": [],
+        "strategy": "favorite_direct_h2h_agree",
+        "rate_min_pct": 67.0,
+        "history_count_min": 10,
+        "train_simulation": {
+          "bets": 328,
+          "wins": 253,
+          "accuracy": 77.13,
+          "final_bankroll": 11635.0,
+          "profit": 1635.0,
+          "roi_pct": 4.98,
+          "max_drawdown": 809.0,
+          "max_drawdown_pct": 6.85,
+          "by_season": {
+            "2012": {
+              "bets": 16,
+              "wins": 12,
+              "staked": 1600.0,
+              "returned": 1712.0,
+              "profit": 112.0,
+              "roi_pct": 7.0,
+              "accuracy": 75.0
+            },
+            "2013": {
+              "bets": 30,
+              "wins": 21,
+              "staked": 3000.0,
+              "returned": 2938.0,
+              "profit": -62.0,
+              "roi_pct": -2.07,
+              "accuracy": 70.0
+            },
+            "2014": {
+              "bets": 28,
+              "wins": 23,
+              "staked": 2800.0,
+              "returned": 3140.0,
+              "profit": 340.0,
+              "roi_pct": 12.14,
+              "accuracy": 82.14
+            },
+            "2015": {
+              "bets": 39,
+              "wins": 33,
+              "staked": 3900.0,
+              "returned": 4375.0,
+              "profit": 475.0,
+              "roi_pct": 12.18,
+              "accuracy": 84.62
+            },
+            "2016": {
+              "bets": 38,
+              "wins": 23,
+              "staked": 3800.0,
+              "returned": 3150.0,
+              "profit": -650.0,
+              "roi_pct": -17.11,
+              "accuracy": 60.53
+            },
+            "2017": {
+              "bets": 30,
+              "wins": 27,
+              "staked": 3000.0,
+              "returned": 3579.0,
+              "profit": 579.0,
+              "roi_pct": 19.3,
+              "accuracy": 90.0
+            },
+            "2018": {
+              "bets": 35,
+              "wins": 27,
+              "staked": 3500.0,
+              "returned": 3530.0,
+              "profit": 30.0,
+              "roi_pct": 0.86,
+              "accuracy": 77.14
+            },
+            "2019": {
+              "bets": 38,
+              "wins": 28,
+              "staked": 3800.0,
+              "returned": 3970.0,
+              "profit": 170.0,
+              "roi_pct": 4.47,
+              "accuracy": 73.68
+            },
+            "2020": {
+              "bets": 38,
+              "wins": 29,
+              "staked": 3800.0,
+              "returned": 4104.0,
+              "profit": 304.0,
+              "roi_pct": 8.0,
+              "accuracy": 76.32
+            },
+            "2021": {
+              "bets": 36,
+              "wins": 30,
+              "staked": 3600.0,
+              "returned": 3937.0,
+              "profit": 337.0,
+              "roi_pct": 9.36,
+              "accuracy": 83.33
+            }
+          }
+        },
+        "test_simulation": {
+          "starting_bankroll": 10000.0,
+          "stake": 100.0,
+          "bets": 30,
+          "wins": 27,
+          "accuracy": 90.0,
+          "staked": 3000.0,
+          "returned": 3592.0,
+          "final_bankroll": 10592.0,
+          "profit": 592.0,
+          "growth_pct": 5.92,
+          "roi_pct": 19.73,
+          "max_drawdown": 100.0,
+          "max_drawdown_pct": 0.94,
+          "min_bankroll": 10000.0,
+          "stopped_bankroll_depleted": false,
+          "skipped_no_odds": 0,
+          "by_season": {
+            "2022": {
+              "bets": 30,
+              "wins": 27,
+              "staked": 3000.0,
+              "returned": 3592.0,
+              "profit": 592.0,
+              "roi_pct": 19.73,
+              "accuracy": 90.0
+            }
+          }
+        }
+      },
+      "evaluated_coupon_candidates": 54,
+      "chosen_coupon": {
+        "type": "csv_strategy_zoo_walk_forward_coupon",
+        "mode": "csv_strategy_zoo_walk_forward",
+        "version": "market",
+        "name": "csv zoo single strategy=direct_h2h leagues=all count>=10 rate>=80% edge>=none odds=any coupon max=4 sort=edge_x_confidence max_per_league=1",
+        "label_style": "direct_h2h",
+        "league_filter": "all",
+        "leagues": [
+          "BL1",
+          "BL2",
+          "BSA",
+          "DED",
+          "ELC",
+          "FL1",
+          "PD",
+          "PL",
+          "PPL",
+          "SA"
+        ],
+        "min_h2h_matches": null,
+        "min_h2h_rate_pct": null,
+        "confidence_min_pct": null,
+        "model_edge_min_pct": null,
+        "odds_band": null,
+        "max_legs": 4,
+        "sort_by": "edge_x_confidence",
+        "max_per_league": 1,
+        "score": -3348.69,
+        "eligible": true,
+        "rejection_reasons": [],
+        "strategy": "direct_h2h",
+        "rate_min_pct": 80.0,
+        "history_count_min": 10,
+        "train_simulation": {
+          "coupons": 153,
+          "winning_coupons": 81,
+          "coupon_hit_rate": 52.94,
+          "final_bankroll": 11773.79,
+          "profit": 1773.79,
+          "roi_pct": 11.59,
+          "max_drawdown": 1101.23,
+          "max_drawdown_pct": 9.18,
+          "by_season": {
+            "2012": {
+              "bets": 5,
+              "wins": 2,
+              "staked": 500.0,
+              "returned": 667.5,
+              "profit": 167.5,
+              "roi_pct": 33.5,
+              "accuracy": 40.0
+            },
+            "2013": {
+              "bets": 10,
+              "wins": 4,
+              "staked": 1000.0,
+              "returned": 768.59,
+              "profit": -231.41,
+              "roi_pct": -23.14,
+              "accuracy": 40.0
+            },
+            "2014": {
+              "bets": 16,
+              "wins": 9,
+              "staked": 1600.0,
+              "returned": 1693.42,
+              "profit": 93.42,
+              "roi_pct": 5.84,
+              "accuracy": 56.25
+            },
+            "2015": {
+              "bets": 17,
+              "wins": 7,
+              "staked": 1700.0,
+              "returned": 1495.2,
+              "profit": -204.8,
+              "roi_pct": -12.05,
+              "accuracy": 41.18
+            },
+            "2016": {
+              "bets": 20,
+              "wins": 9,
+              "staked": 2000.0,
+              "returned": 1712.52,
+              "profit": -287.48,
+              "roi_pct": -14.37,
+              "accuracy": 45.0
+            },
+            "2017": {
+              "bets": 15,
+              "wins": 9,
+              "staked": 1500.0,
+              "returned": 1828.51,
+              "profit": 328.51,
+              "roi_pct": 21.9,
+              "accuracy": 60.0
+            },
+            "2018": {
+              "bets": 19,
+              "wins": 11,
+              "staked": 1900.0,
+              "returned": 1904.8,
+              "profit": 4.8,
+              "roi_pct": 0.25,
+              "accuracy": 57.89
+            },
+            "2019": {
+              "bets": 15,
+              "wins": 11,
+              "staked": 1500.0,
+              "returned": 2478.28,
+              "profit": 978.28,
+              "roi_pct": 65.22,
+              "accuracy": 73.33
+            },
+            "2020": {
+              "bets": 20,
+              "wins": 9,
+              "staked": 2000.0,
+              "returned": 2002.92,
+              "profit": 2.92,
+              "roi_pct": 0.15,
+              "accuracy": 45.0
+            },
+            "2021": {
+              "bets": 16,
+              "wins": 10,
+              "staked": 1600.0,
+              "returned": 2522.04,
+              "profit": 922.04,
+              "roi_pct": 57.63,
+              "accuracy": 62.5
+            }
+          }
+        },
+        "test_simulation": {
+          "starting_bankroll": 10000.0,
+          "stake": 100.0,
+          "min_legs": 2,
+          "max_legs": 4,
+          "sort_by": "edge_x_confidence",
+          "max_per_league": 1,
+          "coupons": 20,
+          "winning_coupons": 14,
+          "coupon_hit_rate": 70.0,
+          "legs_played": 45,
+          "avg_legs": 2.25,
+          "staked": 2000.0,
+          "returned": 3413.42,
+          "final_bankroll": 11413.42,
+          "profit": 1413.42,
+          "growth_pct": 14.13,
+          "roi_pct": 70.67,
+          "max_drawdown": 141.4,
+          "max_drawdown_pct": 1.22,
+          "min_bankroll": 10000.0,
+          "stopped_bankroll_depleted": false,
+          "skipped_no_odds": 0,
+          "by_season": {
+            "2022": {
+              "bets": 20,
+              "wins": 14,
+              "staked": 2000.0,
+              "returned": 3413.42,
+              "profit": 1413.42,
+              "roi_pct": 70.67,
+              "accuracy": 70.0
+            }
+          }
+        }
+      }
+    },
+    {
+      "test_season": 2023,
+      "evaluated_single_candidates": 12085,
+      "chosen_single": {
+        "type": "csv_strategy_zoo_single",
+        "mode": "csv_strategy_zoo_walk_forward",
+        "version": "market",
+        "name": "csv zoo single strategy=favorite_direct_h2h_agree leagues=league:PPL count>=10 rate>=67% edge>=none odds=any",
+        "label_style": "favorite_direct_h2h_agree",
+        "league_filter": "league:PPL",
+        "leagues": [
+          "PPL"
+        ],
+        "min_h2h_matches": null,
+        "min_h2h_rate_pct": null,
+        "confidence_min_pct": null,
+        "model_edge_min_pct": null,
+        "odds_band": null,
+        "max_legs": null,
+        "sort_by": null,
+        "max_per_league": null,
+        "score": -1340.0,
+        "eligible": true,
+        "rejection_reasons": [],
+        "strategy": "favorite_direct_h2h_agree",
+        "rate_min_pct": 67.0,
+        "history_count_min": 10,
+        "train_simulation": {
+          "bets": 358,
+          "wins": 280,
+          "accuracy": 78.21,
+          "final_bankroll": 12227.0,
+          "profit": 2227.0,
+          "roi_pct": 6.22,
+          "max_drawdown": 809.0,
+          "max_drawdown_pct": 6.62,
+          "by_season": {
+            "2012": {
+              "bets": 16,
+              "wins": 12,
+              "staked": 1600.0,
+              "returned": 1712.0,
+              "profit": 112.0,
+              "roi_pct": 7.0,
+              "accuracy": 75.0
+            },
+            "2013": {
+              "bets": 30,
+              "wins": 21,
+              "staked": 3000.0,
+              "returned": 2938.0,
+              "profit": -62.0,
+              "roi_pct": -2.07,
+              "accuracy": 70.0
+            },
+            "2014": {
+              "bets": 28,
+              "wins": 23,
+              "staked": 2800.0,
+              "returned": 3140.0,
+              "profit": 340.0,
+              "roi_pct": 12.14,
+              "accuracy": 82.14
+            },
+            "2015": {
+              "bets": 39,
+              "wins": 33,
+              "staked": 3900.0,
+              "returned": 4375.0,
+              "profit": 475.0,
+              "roi_pct": 12.18,
+              "accuracy": 84.62
+            },
+            "2016": {
+              "bets": 38,
+              "wins": 23,
+              "staked": 3800.0,
+              "returned": 3150.0,
+              "profit": -650.0,
+              "roi_pct": -17.11,
+              "accuracy": 60.53
+            },
+            "2017": {
+              "bets": 30,
+              "wins": 27,
+              "staked": 3000.0,
+              "returned": 3579.0,
+              "profit": 579.0,
+              "roi_pct": 19.3,
+              "accuracy": 90.0
+            },
+            "2018": {
+              "bets": 35,
+              "wins": 27,
+              "staked": 3500.0,
+              "returned": 3530.0,
+              "profit": 30.0,
+              "roi_pct": 0.86,
+              "accuracy": 77.14
+            },
+            "2019": {
+              "bets": 38,
+              "wins": 28,
+              "staked": 3800.0,
+              "returned": 3970.0,
+              "profit": 170.0,
+              "roi_pct": 4.47,
+              "accuracy": 73.68
+            },
+            "2020": {
+              "bets": 38,
+              "wins": 29,
+              "staked": 3800.0,
+              "returned": 4104.0,
+              "profit": 304.0,
+              "roi_pct": 8.0,
+              "accuracy": 76.32
+            },
+            "2021": {
+              "bets": 36,
+              "wins": 30,
+              "staked": 3600.0,
+              "returned": 3937.0,
+              "profit": 337.0,
+              "roi_pct": 9.36,
+              "accuracy": 83.33
+            },
+            "2022": {
+              "bets": 30,
+              "wins": 27,
+              "staked": 3000.0,
+              "returned": 3592.0,
+              "profit": 592.0,
+              "roi_pct": 19.73,
+              "accuracy": 90.0
+            }
+          }
+        },
+        "test_simulation": {
+          "starting_bankroll": 10000.0,
+          "stake": 100.0,
+          "bets": 27,
+          "wins": 20,
+          "accuracy": 74.07,
+          "staked": 2700.0,
+          "returned": 2715.0,
+          "final_bankroll": 10015.0,
+          "profit": 15.0,
+          "growth_pct": 0.15,
+          "roi_pct": 0.56,
+          "max_drawdown": 283.0,
+          "max_drawdown_pct": 2.76,
+          "min_bankroll": 9954.0,
+          "stopped_bankroll_depleted": false,
+          "skipped_no_odds": 0,
+          "by_season": {
+            "2023": {
+              "bets": 27,
+              "wins": 20,
+              "staked": 2700.0,
+              "returned": 2715.0,
+              "profit": 15.0,
+              "roi_pct": 0.56,
+              "accuracy": 74.07
+            }
+          }
+        }
+      },
+      "evaluated_coupon_candidates": 54,
+      "chosen_coupon": {
+        "type": "csv_strategy_zoo_walk_forward_coupon",
+        "mode": "csv_strategy_zoo_walk_forward",
+        "version": "market",
+        "name": "csv zoo single strategy=direct_h2h leagues=top_leagues count>=10 rate>=80% edge>=2% odds=(1.2, 2.0) coupon max=3 sort=edge_x_confidence max_per_league=2",
+        "label_style": "direct_h2h",
+        "league_filter": "top_leagues",
+        "leagues": [
+          "BL1",
+          "DED",
+          "FL1",
+          "PD",
+          "PL",
+          "PPL",
+          "SA"
+        ],
+        "min_h2h_matches": null,
+        "min_h2h_rate_pct": null,
+        "confidence_min_pct": null,
+        "model_edge_min_pct": 2.0,
+        "odds_band": [
+          1.2,
+          2.0
+        ],
+        "max_legs": 3,
+        "sort_by": "edge_x_confidence",
+        "max_per_league": 2,
+        "score": -345.29,
+        "eligible": false,
+        "rejection_reasons": [
+          "thin_season_sample"
+        ],
+        "strategy": "direct_h2h",
+        "rate_min_pct": 80.0,
+        "history_count_min": 10,
+        "train_simulation": {
+          "coupons": 78,
+          "winning_coupons": 43,
+          "coupon_hit_rate": 55.13,
+          "final_bankroll": 11393.35,
+          "profit": 1393.35,
+          "roi_pct": 17.86,
+          "max_drawdown": 392.0,
+          "max_drawdown_pct": 3.4,
+          "by_season": {
+            "2012": {
+              "bets": 3,
+              "wins": 2,
+              "staked": 300.0,
+              "returned": 375.0,
+              "profit": 75.0,
+              "roi_pct": 25.0,
+              "accuracy": 66.67
+            },
+            "2013": {
+              "bets": 5,
+              "wins": 3,
+              "staked": 500.0,
+              "returned": 582.64,
+              "profit": 82.64,
+              "roi_pct": 16.53,
+              "accuracy": 60.0
+            },
+            "2014": {
+              "bets": 4,
+              "wins": 2,
+              "staked": 400.0,
+              "returned": 443.5,
+              "profit": 43.5,
+              "roi_pct": 10.88,
+              "accuracy": 50.0
+            },
+            "2015": {
+              "bets": 10,
+              "wins": 4,
+              "staked": 1000.0,
+              "returned": 1070.12,
+              "profit": 70.12,
+              "roi_pct": 7.01,
+              "accuracy": 40.0
+            },
+            "2016": {
+              "bets": 6,
+              "wins": 2,
+              "staked": 600.0,
+              "returned": 429.45,
+              "profit": -170.55,
+              "roi_pct": -28.43,
+              "accuracy": 33.33
+            },
+            "2017": {
+              "bets": 3,
+              "wins": 2,
+              "staked": 300.0,
+              "returned": 401.05,
+              "profit": 101.05,
+              "roi_pct": 33.68,
+              "accuracy": 66.67
+            },
+            "2018": {
+              "bets": 8,
+              "wins": 4,
+              "staked": 800.0,
+              "returned": 932.0,
+              "profit": 132.0,
+              "roi_pct": 16.5,
+              "accuracy": 50.0
+            },
+            "2019": {
+              "bets": 6,
+              "wins": 4,
+              "staked": 600.0,
+              "returned": 785.6,
+              "profit": 185.6,
+              "roi_pct": 30.93,
+              "accuracy": 66.67
+            },
+            "2020": {
+              "bets": 11,
+              "wins": 6,
+              "staked": 1100.0,
+              "returned": 1222.2,
+              "profit": 122.2,
+              "roi_pct": 11.11,
+              "accuracy": 54.55
+            },
+            "2021": {
+              "bets": 10,
+              "wins": 6,
+              "staked": 1000.0,
+              "returned": 1384.1,
+              "profit": 384.1,
+              "roi_pct": 38.41,
+              "accuracy": 60.0
+            },
+            "2022": {
+              "bets": 12,
+              "wins": 8,
+              "staked": 1200.0,
+              "returned": 1567.69,
+              "profit": 367.69,
+              "roi_pct": 30.64,
+              "accuracy": 66.67
+            }
+          }
+        },
+        "test_simulation": {
+          "starting_bankroll": 10000.0,
+          "stake": 100.0,
+          "min_legs": 2,
+          "max_legs": 3,
+          "sort_by": "edge_x_confidence",
+          "max_per_league": 2,
+          "coupons": 8,
+          "winning_coupons": 5,
+          "coupon_hit_rate": 62.5,
+          "legs_played": 18,
+          "avg_legs": 2.25,
+          "staked": 800.0,
+          "returned": 1039.08,
+          "final_bankroll": 10239.08,
+          "profit": 239.08,
+          "growth_pct": 2.39,
+          "roi_pct": 29.89,
+          "max_drawdown": 300.0,
+          "max_drawdown_pct": 2.93,
+          "min_bankroll": 9953.28,
+          "stopped_bankroll_depleted": false,
+          "skipped_no_odds": 0,
+          "by_season": {
+            "2023": {
+              "bets": 8,
+              "wins": 5,
+              "staked": 800.0,
+              "returned": 1039.08,
+              "profit": 239.08,
+              "roi_pct": 29.89,
+              "accuracy": 62.5
+            }
+          }
+        }
+      }
+    },
+    {
+      "test_season": 2024,
+      "evaluated_single_candidates": 12264,
+      "chosen_single": {
+        "type": "csv_strategy_zoo_single",
+        "mode": "csv_strategy_zoo_walk_forward",
+        "version": "market",
+        "name": "csv zoo single strategy=favorite_direct_h2h_agree leagues=league:PPL count>=10 rate>=60% edge>=none odds=any",
+        "label_style": "favorite_direct_h2h_agree",
+        "league_filter": "league:PPL",
+        "leagues": [
+          "PPL"
+        ],
+        "min_h2h_matches": null,
+        "min_h2h_rate_pct": null,
+        "confidence_min_pct": null,
+        "model_edge_min_pct": null,
+        "odds_band": null,
+        "max_legs": null,
+        "sort_by": null,
+        "max_per_league": null,
+        "score": -1214.0,
+        "eligible": true,
+        "rejection_reasons": [],
+        "strategy": "favorite_direct_h2h_agree",
+        "rate_min_pct": 60.0,
+        "history_count_min": 10,
+        "train_simulation": {
+          "bets": 529,
+          "wins": 394,
+          "accuracy": 74.48,
+          "final_bankroll": 12295.0,
+          "profit": 2295.0,
+          "roi_pct": 4.34,
+          "max_drawdown": 766.0,
+          "max_drawdown_pct": 6.14,
+          "by_season": {
+            "2012": {
+              "bets": 22,
+              "wins": 15,
+              "staked": 2200.0,
+              "returned": 2284.0,
+              "profit": 84.0,
+              "roi_pct": 3.82,
+              "accuracy": 68.18
+            },
+            "2013": {
+              "bets": 45,
+              "wins": 32,
+              "staked": 4500.0,
+              "returned": 4775.0,
+              "profit": 275.0,
+              "roi_pct": 6.11,
+              "accuracy": 71.11
+            },
+            "2014": {
+              "bets": 43,
+              "wins": 32,
+              "staked": 4300.0,
+              "returned": 4534.0,
+              "profit": 234.0,
+              "roi_pct": 5.44,
+              "accuracy": 74.42
+            },
+            "2015": {
+              "bets": 54,
+              "wins": 42,
+              "staked": 5400.0,
+              "returned": 5709.0,
+              "profit": 309.0,
+              "roi_pct": 5.72,
+              "accuracy": 77.78
+            },
+            "2016": {
+              "bets": 52,
+              "wins": 33,
+              "staked": 5200.0,
+              "returned": 4696.0,
+              "profit": -504.0,
+              "roi_pct": -9.69,
+              "accuracy": 63.46
+            },
+            "2017": {
+              "bets": 43,
+              "wins": 35,
+              "staked": 4300.0,
+              "returned": 4792.0,
+              "profit": 492.0,
+              "roi_pct": 11.44,
+              "accuracy": 81.4
+            },
+            "2018": {
+              "bets": 48,
+              "wins": 37,
+              "staked": 4800.0,
+              "returned": 4978.0,
+              "profit": 178.0,
+              "roi_pct": 3.71,
+              "accuracy": 77.08
+            },
+            "2019": {
+              "bets": 48,
+              "wins": 34,
+              "staked": 4800.0,
+              "returned": 4830.0,
+              "profit": 30.0,
+              "roi_pct": 0.62,
+              "accuracy": 70.83
+            },
+            "2020": {
+              "bets": 55,
+              "wins": 38,
+              "staked": 5500.0,
+              "returned": 5427.0,
+              "profit": -73.0,
+              "roi_pct": -1.33,
+              "accuracy": 69.09
+            },
+            "2021": {
+              "bets": 47,
+              "wins": 37,
+              "staked": 4700.0,
+              "returned": 5044.0,
+              "profit": 344.0,
+              "roi_pct": 7.32,
+              "accuracy": 78.72
+            },
+            "2022": {
+              "bets": 38,
+              "wins": 34,
+              "staked": 3800.0,
+              "returned": 4574.0,
+              "profit": 774.0,
+              "roi_pct": 20.37,
+              "accuracy": 89.47
+            },
+            "2023": {
+              "bets": 34,
+              "wins": 25,
+              "staked": 3400.0,
+              "returned": 3552.0,
+              "profit": 152.0,
+              "roi_pct": 4.47,
+              "accuracy": 73.53
+            }
+          }
+        },
+        "test_simulation": {
+          "starting_bankroll": 10000.0,
+          "stake": 100.0,
+          "bets": 50,
+          "wins": 38,
+          "accuracy": 76.0,
+          "staked": 5000.0,
+          "returned": 5101.0,
+          "final_bankroll": 10101.0,
+          "profit": 101.0,
+          "growth_pct": 1.01,
+          "roi_pct": 2.02,
+          "max_drawdown": 577.0,
+          "max_drawdown_pct": 5.64,
+          "min_bankroll": 9651.0,
+          "stopped_bankroll_depleted": false,
+          "skipped_no_odds": 0,
+          "by_season": {
+            "2024": {
+              "bets": 50,
+              "wins": 38,
+              "staked": 5000.0,
+              "returned": 5101.0,
+              "profit": 101.0,
+              "roi_pct": 2.02,
+              "accuracy": 76.0
+            }
+          }
+        }
+      },
+      "evaluated_coupon_candidates": 54,
+      "chosen_coupon": {
+        "type": "csv_strategy_zoo_walk_forward_coupon",
+        "mode": "csv_strategy_zoo_walk_forward",
+        "version": "market",
+        "name": "csv zoo single strategy=direct_h2h leagues=top_leagues count>=10 rate>=75% edge>=5% odds=(1.2, 2.0) coupon max=2 sort=confidence max_per_league=2",
+        "label_style": "direct_h2h",
+        "league_filter": "top_leagues",
+        "leagues": [
+          "BL1",
+          "DED",
+          "FL1",
+          "PD",
+          "PL",
+          "PPL",
+          "SA"
+        ],
+        "min_h2h_matches": null,
+        "min_h2h_rate_pct": null,
+        "confidence_min_pct": null,
+        "model_edge_min_pct": 5.0,
+        "odds_band": [
+          1.2,
+          2.0
+        ],
+        "max_legs": 2,
+        "sort_by": "confidence",
+        "max_per_league": 2,
+        "score": 1347.82,
+        "eligible": false,
+        "rejection_reasons": [
+          "thin_season_sample"
+        ],
+        "strategy": "direct_h2h",
+        "rate_min_pct": 75.0,
+        "history_count_min": 10,
+        "train_simulation": {
+          "coupons": 118,
+          "winning_coupons": 69,
+          "coupon_hit_rate": 58.47,
+          "final_bankroll": 13077.82,
+          "profit": 3077.82,
+          "roi_pct": 26.08,
+          "max_drawdown": 400.0,
+          "max_drawdown_pct": 3.06,
+          "by_season": {
+            "2012": {
+              "bets": 3,
+              "wins": 1,
+              "staked": 300.0,
+              "returned": 180.0,
+              "profit": -120.0,
+              "roi_pct": -40.0,
+              "accuracy": 33.33
+            },
+            "2013": {
+              "bets": 4,
+              "wins": 2,
+              "staked": 400.0,
+              "returned": 400.64,
+              "profit": 0.64,
+              "roi_pct": 0.16,
+              "accuracy": 50.0
+            },
+            "2014": {
+              "bets": 12,
+              "wins": 6,
+              "staked": 1200.0,
+              "returned": 1340.04,
+              "profit": 140.04,
+              "roi_pct": 11.67,
+              "accuracy": 50.0
+            },
+            "2015": {
+              "bets": 10,
+              "wins": 6,
+              "staked": 1000.0,
+              "returned": 1409.2,
+              "profit": 409.2,
+              "roi_pct": 40.92,
+              "accuracy": 60.0
+            },
+            "2016": {
+              "bets": 7,
+              "wins": 4,
+              "staked": 700.0,
+              "returned": 934.24,
+              "profit": 234.24,
+              "roi_pct": 33.46,
+              "accuracy": 57.14
+            },
+            "2017": {
+              "bets": 7,
+              "wins": 4,
+              "staked": 700.0,
+              "returned": 807.69,
+              "profit": 107.69,
+              "roi_pct": 15.38,
+              "accuracy": 57.14
+            },
+            "2018": {
+              "bets": 15,
+              "wins": 8,
+              "staked": 1500.0,
+              "returned": 1757.36,
+              "profit": 257.36,
+              "roi_pct": 17.16,
+              "accuracy": 53.33
+            },
+            "2019": {
+              "bets": 7,
+              "wins": 5,
+              "staked": 700.0,
+              "returned": 1212.56,
+              "profit": 512.56,
+              "roi_pct": 73.22,
+              "accuracy": 71.43
+            },
+            "2020": {
+              "bets": 14,
+              "wins": 8,
+              "staked": 1400.0,
+              "returned": 1642.29,
+              "profit": 242.29,
+              "roi_pct": 17.31,
+              "accuracy": 57.14
+            },
+            "2021": {
+              "bets": 9,
+              "wins": 5,
+              "staked": 900.0,
+              "returned": 1056.78,
+              "profit": 156.78,
+              "roi_pct": 17.42,
+              "accuracy": 55.56
+            },
+            "2022": {
+              "bets": 18,
+              "wins": 12,
+              "staked": 1800.0,
+              "returned": 2554.36,
+              "profit": 754.36,
+              "roi_pct": 41.91,
+              "accuracy": 66.67
+            },
+            "2023": {
+              "bets": 12,
+              "wins": 8,
+              "staked": 1200.0,
+              "returned": 1582.66,
+              "profit": 382.66,
+              "roi_pct": 31.89,
+              "accuracy": 66.67
+            }
+          }
+        },
+        "test_simulation": {
+          "starting_bankroll": 10000.0,
+          "stake": 100.0,
+          "min_legs": 2,
+          "max_legs": 2,
+          "sort_by": "confidence",
+          "max_per_league": 2,
+          "coupons": 18,
+          "winning_coupons": 10,
+          "coupon_hit_rate": 55.56,
+          "legs_played": 36,
+          "avg_legs": 2.0,
+          "staked": 1800.0,
+          "returned": 2199.74,
+          "final_bankroll": 10399.74,
+          "profit": 399.74,
+          "growth_pct": 4.0,
+          "roi_pct": 22.21,
+          "max_drawdown": 300.0,
+          "max_drawdown_pct": 2.88,
+          "min_bankroll": 9875.4,
+          "stopped_bankroll_depleted": false,
+          "skipped_no_odds": 0,
+          "by_season": {
+            "2024": {
+              "bets": 18,
+              "wins": 10,
+              "staked": 1800.0,
+              "returned": 2199.74,
+              "profit": 399.74,
+              "roi_pct": 22.21,
+              "accuracy": 55.56
+            }
+          }
+        }
+      }
+    },
+    {
+      "test_season": 2025,
+      "evaluated_single_candidates": 12430,
+      "chosen_single": {
+        "type": "csv_strategy_zoo_single",
+        "mode": "csv_strategy_zoo_walk_forward",
+        "version": "market",
+        "name": "csv zoo single strategy=favorite_direct_h2h_agree leagues=league:PPL count>=10 rate>=60% edge>=none odds=any",
+        "label_style": "favorite_direct_h2h_agree",
+        "league_filter": "league:PPL",
+        "leagues": [
+          "PPL"
+        ],
+        "min_h2h_matches": null,
+        "min_h2h_rate_pct": null,
+        "confidence_min_pct": null,
+        "model_edge_min_pct": null,
+        "odds_band": null,
+        "max_legs": null,
+        "sort_by": null,
+        "max_per_league": null,
+        "score": -1113.0,
+        "eligible": true,
+        "rejection_reasons": [],
+        "strategy": "favorite_direct_h2h_agree",
+        "rate_min_pct": 60.0,
+        "history_count_min": 10,
+        "train_simulation": {
+          "bets": 579,
+          "wins": 432,
+          "accuracy": 74.61,
+          "final_bankroll": 12396.0,
+          "profit": 2396.0,
+          "roi_pct": 4.14,
+          "max_drawdown": 766.0,
+          "max_drawdown_pct": 6.12,
+          "by_season": {
+            "2012": {
+              "bets": 22,
+              "wins": 15,
+              "staked": 2200.0,
+              "returned": 2284.0,
+              "profit": 84.0,
+              "roi_pct": 3.82,
+              "accuracy": 68.18
+            },
+            "2013": {
+              "bets": 45,
+              "wins": 32,
+              "staked": 4500.0,
+              "returned": 4775.0,
+              "profit": 275.0,
+              "roi_pct": 6.11,
+              "accuracy": 71.11
+            },
+            "2014": {
+              "bets": 43,
+              "wins": 32,
+              "staked": 4300.0,
+              "returned": 4534.0,
+              "profit": 234.0,
+              "roi_pct": 5.44,
+              "accuracy": 74.42
+            },
+            "2015": {
+              "bets": 54,
+              "wins": 42,
+              "staked": 5400.0,
+              "returned": 5709.0,
+              "profit": 309.0,
+              "roi_pct": 5.72,
+              "accuracy": 77.78
+            },
+            "2016": {
+              "bets": 52,
+              "wins": 33,
+              "staked": 5200.0,
+              "returned": 4696.0,
+              "profit": -504.0,
+              "roi_pct": -9.69,
+              "accuracy": 63.46
+            },
+            "2017": {
+              "bets": 43,
+              "wins": 35,
+              "staked": 4300.0,
+              "returned": 4792.0,
+              "profit": 492.0,
+              "roi_pct": 11.44,
+              "accuracy": 81.4
+            },
+            "2018": {
+              "bets": 48,
+              "wins": 37,
+              "staked": 4800.0,
+              "returned": 4978.0,
+              "profit": 178.0,
+              "roi_pct": 3.71,
+              "accuracy": 77.08
+            },
+            "2019": {
+              "bets": 48,
+              "wins": 34,
+              "staked": 4800.0,
+              "returned": 4830.0,
+              "profit": 30.0,
+              "roi_pct": 0.62,
+              "accuracy": 70.83
+            },
+            "2020": {
+              "bets": 55,
+              "wins": 38,
+              "staked": 5500.0,
+              "returned": 5427.0,
+              "profit": -73.0,
+              "roi_pct": -1.33,
+              "accuracy": 69.09
+            },
+            "2021": {
+              "bets": 47,
+              "wins": 37,
+              "staked": 4700.0,
+              "returned": 5044.0,
+              "profit": 344.0,
+              "roi_pct": 7.32,
+              "accuracy": 78.72
+            },
+            "2022": {
+              "bets": 38,
+              "wins": 34,
+              "staked": 3800.0,
+              "returned": 4574.0,
+              "profit": 774.0,
+              "roi_pct": 20.37,
+              "accuracy": 89.47
+            },
+            "2023": {
+              "bets": 34,
+              "wins": 25,
+              "staked": 3400.0,
+              "returned": 3552.0,
+              "profit": 152.0,
+              "roi_pct": 4.47,
+              "accuracy": 73.53
+            },
+            "2024": {
+              "bets": 50,
+              "wins": 38,
+              "staked": 5000.0,
+              "returned": 5101.0,
+              "profit": 101.0,
+              "roi_pct": 2.02,
+              "accuracy": 76.0
+            }
+          }
+        },
+        "test_simulation": {
+          "starting_bankroll": 10000.0,
+          "stake": 100.0,
+          "bets": 42,
+          "wins": 32,
+          "accuracy": 76.19,
+          "staked": 4200.0,
+          "returned": 4206.0,
+          "final_bankroll": 10006.0,
+          "profit": 6.0,
+          "growth_pct": 0.06,
+          "roi_pct": 0.14,
+          "max_drawdown": 298.0,
+          "max_drawdown_pct": 2.93,
+          "min_bankroll": 9744.0,
+          "stopped_bankroll_depleted": false,
+          "skipped_no_odds": 0,
+          "by_season": {
+            "2025": {
+              "bets": 42,
+              "wins": 32,
+              "staked": 4200.0,
+              "returned": 4206.0,
+              "profit": 6.0,
+              "roi_pct": 0.14,
+              "accuracy": 76.19
+            }
+          }
+        }
+      },
+      "evaluated_coupon_candidates": 66,
+      "chosen_coupon": {
+        "type": "csv_strategy_zoo_walk_forward_coupon",
+        "mode": "csv_strategy_zoo_walk_forward",
+        "version": "market",
+        "name": "csv zoo single strategy=direct_h2h leagues=top_leagues count>=10 rate>=75% edge>=none odds=(1.2, 2.0) coupon max=2 sort=edge_x_confidence max_per_league=2",
+        "label_style": "direct_h2h",
+        "league_filter": "top_leagues",
+        "leagues": [
+          "BL1",
+          "DED",
+          "FL1",
+          "PD",
+          "PL",
+          "PPL",
+          "SA"
+        ],
+        "min_h2h_matches": null,
+        "min_h2h_rate_pct": null,
+        "confidence_min_pct": null,
+        "model_edge_min_pct": null,
+        "odds_band": [
+          1.2,
+          2.0
+        ],
+        "max_legs": 2,
+        "sort_by": "edge_x_confidence",
+        "max_per_league": 2,
+        "score": -1193.74,
+        "eligible": true,
+        "rejection_reasons": [],
+        "strategy": "direct_h2h",
+        "rate_min_pct": 75.0,
+        "history_count_min": 10,
+        "train_simulation": {
+          "coupons": 206,
+          "winning_coupons": 118,
+          "coupon_hit_rate": 57.28,
+          "final_bankroll": 13808.85,
+          "profit": 3808.85,
+          "roi_pct": 18.49,
+          "max_drawdown": 805.92,
+          "max_drawdown_pct": 5.84,
+          "by_season": {
+            "2012": {
+              "bets": 5,
+              "wins": 2,
+              "staked": 500.0,
+              "returned": 375.0,
+              "profit": -125.0,
+              "roi_pct": -25.0,
+              "accuracy": 40.0
+            },
+            "2013": {
+              "bets": 7,
+              "wins": 4,
+              "staked": 700.0,
+              "returned": 802.24,
+              "profit": 102.24,
+              "roi_pct": 14.61,
+              "accuracy": 57.14
+            },
+            "2014": {
+              "bets": 18,
+              "wins": 11,
+              "staked": 1800.0,
+              "returned": 2203.99,
+              "profit": 403.99,
+              "roi_pct": 22.44,
+              "accuracy": 61.11
+            },
+            "2015": {
+              "bets": 18,
+              "wins": 9,
+              "staked": 1800.0,
+              "returned": 1986.18,
+              "profit": 186.18,
+              "roi_pct": 10.34,
+              "accuracy": 50.0
+            },
+            "2016": {
+              "bets": 14,
+              "wins": 5,
+              "staked": 1400.0,
+              "returned": 1090.49,
+              "profit": -309.51,
+              "roi_pct": -22.11,
+              "accuracy": 35.71
+            },
+            "2017": {
+              "bets": 11,
+              "wins": 6,
+              "staked": 1100.0,
+              "returned": 1160.46,
+              "profit": 60.46,
+              "roi_pct": 5.5,
+              "accuracy": 54.55
+            },
+            "2018": {
+              "bets": 19,
+              "wins": 10,
+              "staked": 1900.0,
+              "returned": 1999.56,
+              "profit": 99.56,
+              "roi_pct": 5.24,
+              "accuracy": 52.63
+            },
+            "2019": {
+              "bets": 15,
+              "wins": 11,
+              "staked": 1500.0,
+              "returned": 2386.26,
+              "profit": 886.26,
+              "roi_pct": 59.08,
+              "accuracy": 73.33
+            },
+            "2020": {
+              "bets": 22,
+              "wins": 9,
+              "staked": 2200.0,
+              "returned": 1801.49,
+              "profit": -398.51,
+              "roi_pct": -18.11,
+              "accuracy": 40.91
+            },
+            "2021": {
+              "bets": 14,
+              "wins": 9,
+              "staked": 1400.0,
+              "returned": 1961.28,
+              "profit": 561.28,
+              "roi_pct": 40.09,
+              "accuracy": 64.29
+            },
+            "2022": {
+              "bets": 21,
+              "wins": 14,
+              "staked": 2100.0,
+              "returned": 2973.46,
+              "profit": 873.46,
+              "roi_pct": 41.59,
+              "accuracy": 66.67
+            },
+            "2023": {
+              "bets": 17,
+              "wins": 12,
+              "staked": 1700.0,
+              "returned": 2265.25,
+              "profit": 565.25,
+              "roi_pct": 33.25,
+              "accuracy": 70.59
+            },
+            "2024": {
+              "bets": 25,
+              "wins": 16,
+              "staked": 2500.0,
+              "returned": 3403.19,
+              "profit": 903.19,
+              "roi_pct": 36.13,
+              "accuracy": 64.0
+            }
+          }
+        },
+        "test_simulation": {
+          "starting_bankroll": 10000.0,
+          "stake": 100.0,
+          "min_legs": 2,
+          "max_legs": 2,
+          "sort_by": "edge_x_confidence",
+          "max_per_league": 2,
+          "coupons": 24,
+          "winning_coupons": 14,
+          "coupon_hit_rate": 58.33,
+          "legs_played": 48,
+          "avg_legs": 2.0,
+          "staked": 2400.0,
+          "returned": 2972.36,
+          "final_bankroll": 10572.36,
+          "profit": 572.36,
+          "growth_pct": 5.72,
+          "roi_pct": 23.85,
+          "max_drawdown": 400.0,
+          "max_drawdown_pct": 3.68,
+          "min_bankroll": 10000.0,
+          "stopped_bankroll_depleted": false,
+          "skipped_no_odds": 0,
+          "by_season": {
+            "2025": {
+              "bets": 24,
+              "wins": 14,
+              "staked": 2400.0,
+              "returned": 2972.36,
+              "profit": 572.36,
+              "roi_pct": 23.85,
+              "accuracy": 58.33
+            }
+          }
+        }
+      }
+    }
+  ]
+}

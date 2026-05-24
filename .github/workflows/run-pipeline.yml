@@ -8,6 +8,8 @@ on:
     - cron: "0 22 * * *"
     # Weekly retrain with feedback loop: Monday 06:00 UTC (07:00 CET)
     - cron: "0 6 * * 1"
+    # Odds movement snapshots for CLV tracking
+    - cron: "0 1,4,7,10,13,16,19 * * *"
   workflow_dispatch:
     inputs:
       mode:
@@ -19,6 +21,7 @@ on:
           - full
           - evaluate-only
           - odds-only
+          - context-only
           - train
 
 jobs:
@@ -62,19 +65,28 @@ jobs:
             else
               echo "args=--$MODE" >> $GITHUB_OUTPUT
             fi
-          elif [ "$(date -u +%H)" -lt 7 ]; then
-            # Monday 06:00 UTC — dedicated retrain run
-            echo "args=--train" >> $GITHUB_OUTPUT
-          elif [ "$(date -u +%H)" -ge 20 ]; then
-            echo "args=--evaluate-only" >> $GITHUB_OUTPUT
           else
-            echo "args=" >> $GITHUB_OUTPUT
+            case "${{ github.event.schedule }}" in
+              "0 6 * * 1")
+                echo "args=--train" >> $GITHUB_OUTPUT
+                ;;
+              "0 22 * * *")
+                echo "args=--evaluate-only" >> $GITHUB_OUTPUT
+                ;;
+              "0 8 * * *")
+                echo "args=" >> $GITHUB_OUTPUT
+                ;;
+              *)
+                echo "args=--odds-only" >> $GITHUB_OUTPUT
+                ;;
+            esac
           fi
 
       - name: Run pipeline
         run: python run_pipeline.py ${{ steps.mode.outputs.args }} --verbose
         env:
           GOOGLE_APPLICATION_CREDENTIALS: service-account.json
+          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
 
       - name: Trigger cron update
         if: success()

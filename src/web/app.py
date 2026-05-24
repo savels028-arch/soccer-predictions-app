@@ -17,7 +17,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 logger = logging.getLogger(__name__)
 
 
-def create_flask_app(db_manager, data_aggregator, prediction_engine):
+def create_flask_app(db_manager, data_aggregator, prediction_engine, start_background_workers=True):
     """Create and configure Flask application with all API routes."""
 
     app = Flask(__name__,
@@ -27,7 +27,38 @@ def create_flask_app(db_manager, data_aggregator, prediction_engine):
     matches_cache = []
     predictions_cache = {}
     ai_predictions_cache = []
+    consensus_cache = {"data": None, "time": None}
     cache_lock = threading.Lock()
+
+    def _now_label():
+        import datetime as _dt
+        return _dt.datetime.now().strftime("%H:%M:%S")
+
+    def _refresh_matches(force_refresh=False):
+        """Fetch matches and keep the in-memory cache aligned with the DB/API cache."""
+        nonlocal matches_cache
+        matches = data_aggregator.fetch_todays_matches(force_refresh=force_refresh)
+        with cache_lock:
+            matches_cache = matches
+        return matches
+
+    def _normalize_outcome(outcome):
+        """Normalize model/site labels before hit-rate comparisons."""
+        if not outcome:
+            return None
+        raw = str(outcome).strip()
+        key = raw.upper().replace(" ", "_").replace("-", "_")
+        aliases = {
+            "HOME": "HOME_WIN",
+            "HOME_WIN": "HOME_WIN",
+            "1": "HOME_WIN",
+            "AWAY": "AWAY_WIN",
+            "AWAY_WIN": "AWAY_WIN",
+            "2": "AWAY_WIN",
+            "DRAW": "DRAW",
+            "X": "DRAW",
+        }
+        return aliases.get(key, key)
 
     # ═══════════════════════════════════════════
     # PAGES
@@ -57,10 +88,13 @@ def create_flask_app(db_manager, data_aggregator, prediction_engine):
     @app.route("/api/status")
     def api_status():
         try:
+            with cache_lock:
+                last_consensus_update = consensus_cache.get("time")
             return jsonify({
                 "match_count": db_manager.get_match_count(),
                 "prediction_count": db_manager.get_prediction_count(),
                 "is_trained": prediction_engine.is_trained,
+                "last_consensus_update": last_consensus_update,
             })
         except Exception as e:
             return jsonify({"error": str(e)}), 500
@@ -70,12 +104,9 @@ def create_flask_app(db_manager, data_aggregator, prediction_engine):
     # ═══════════════════════════════════════════
     @app.route("/api/matches")
     def api_matches():
-        nonlocal matches_cache
         try:
             force = request.args.get("force", "0") == "1"
-            matches = data_aggregator.fetch_todays_matches(force_refresh=force)
-            with cache_lock:
-                matches_cache = matches
+            matches = _refresh_matches(force_refresh=force)
             return jsonify({"matches": _serialize_matches(matches)})
         except Exception as e:
             logger.error(f"matches error: {e}", exc_info=True)
@@ -162,13 +193,31 @@ def create_flask_app(db_manager, data_aggregator, prediction_engine):
     @app.route("/api/consensus_danske_spil")
     def api_consensus_danske_spil():
         try:
+            force = request.args.get("force", "1") == "1"
+            if not force:
+                with cache_lock:
+                    cached = consensus_cache.get("data")
+                    cached_time = consensus_cache.get("time")
+                if cached:
+                    result = dict(cached)
+                    result["last_update"] = cached_time
+                    return jsonify(result)
+
             with cache_lock:
                 mc = list(matches_cache) if matches_cache else None
+            if not mc:
+                mc = _refresh_matches(force_refresh=True)
             result = data_aggregator.build_consensus_with_danske_spil(
                 prediction_engine=prediction_engine,
                 matches=mc,
-                force_refresh=True,
+                force_refresh=force,
             )
+            with cache_lock:
+                consensus_cache["data"] = result
+                consensus_cache["time"] = _now_label()
+                last_update = consensus_cache["time"]
+            result = dict(result)
+            result["last_update"] = last_update
             return jsonify(result)
         except Exception as e:
             logger.error(f"consensus_danske_spil error: {e}", exc_info=True)
@@ -227,7 +276,7 @@ def create_flask_app(db_manager, data_aggregator, prediction_engine):
         nonlocal ai_predictions_cache
         saved = 0
         try:
-            matches = data_aggregator.fetch_todays_matches(force_refresh=False)
+            matches = _refresh_matches(force_refresh=True)
             # Also try to get AI predictions (use cache, don't force)
             ai_preds = []
             try:
@@ -275,7 +324,7 @@ def create_flask_app(db_manager, data_aggregator, prediction_engine):
                     if preds:
                         ens = next((p for p in preds if p["model_name"] == "ensemble"), None)
                         best = ens or preds[0]
-                        predicted = best.get("predicted_outcome")
+                        predicted = _normalize_outcome(best.get("predicted_outcome"))
                         if predicted:
                             pred_info = {
                                 "predicted_outcome": predicted,
@@ -307,7 +356,7 @@ def create_flask_app(db_manager, data_aggregator, prediction_engine):
                     if ai_match:
                         winner = ai_match.get("consensus_winner")
                         if winner:
-                            predicted = {"1": "HOME_WIN", "X": "DRAW", "2": "AWAY_WIN"}.get(winner, winner)
+                            predicted = _normalize_outcome(winner)
                             conf = ai_match.get("consensus_confidence")
                             conf_val = (conf / 100.0) if conf and conf > 1 else conf
                             pred_info = {
@@ -326,7 +375,7 @@ def create_flask_app(db_manager, data_aggregator, prediction_engine):
                     if ml_preds:
                         ens = next((p for p in ml_preds if p.get("model_name") == "ensemble"), None)
                         best = ens or ml_preds[0]
-                        predicted = best.get("predicted_outcome")
+                        predicted = _normalize_outcome(best.get("predicted_outcome"))
                         if predicted:
                             pred_info = {
                                 "predicted_outcome": predicted,
@@ -335,7 +384,7 @@ def create_flask_app(db_manager, data_aggregator, prediction_engine):
                             }
 
                 if pred_info:
-                    is_correct = pred_info["predicted_outcome"] == actual
+                    is_correct = _normalize_outcome(pred_info["predicted_outcome"]) == actual
                     was_new = db_manager.save_prediction_result({
                         "match_date": m.get("match_date", ""),
                         "home_team": home,
@@ -355,8 +404,7 @@ def create_flask_app(db_manager, data_aggregator, prediction_engine):
                     if was_new:
                         saved += 1
 
-            import datetime
-            _last_history_update["time"] = datetime.datetime.now().strftime("%H:%M:%S")
+            _last_history_update["time"] = _now_label()
             _last_history_update["saved"] = saved
             logger.info(f"History auto-update: {saved} new results saved")
         except Exception as e:
@@ -405,8 +453,9 @@ def create_flask_app(db_manager, data_aggregator, prediction_engine):
                 logger.error(f"History bg worker error: {e}")
             _time.sleep(600)  # Every 10 minutes
 
-    _hist_thread = threading.Thread(target=_history_bg_worker, daemon=True)
-    _hist_thread.start()
+    if start_background_workers:
+        _hist_thread = threading.Thread(target=_history_bg_worker, daemon=True)
+        _hist_thread.start()
 
     # ═══════════════════════════════════════════
     # API: TRAINING
@@ -508,7 +557,7 @@ def create_flask_app(db_manager, data_aggregator, prediction_engine):
                         if preds:
                             ens = next((p for p in preds if p["model_name"] == "ensemble"), None)
                             best = ens or preds[0]
-                            predicted = best.get("predicted_outcome")
+                            predicted = _normalize_outcome(best.get("predicted_outcome"))
                             item["prediction"] = {
                                 "model": best.get("model_name", "?"),
                                 "predicted_outcome": predicted,
@@ -521,9 +570,9 @@ def create_flask_app(db_manager, data_aggregator, prediction_engine):
                             item["prediction_models"] = [
                                 {
                                     "model": p["model_name"],
-                                    "predicted_outcome": p.get("predicted_outcome"),
+                                    "predicted_outcome": _normalize_outcome(p.get("predicted_outcome")),
                                     "confidence": p.get("confidence", 0),
-                                    "is_correct": p.get("predicted_outcome") == actual if p.get("predicted_outcome") else None,
+                                    "is_correct": _normalize_outcome(p.get("predicted_outcome")) == actual if p.get("predicted_outcome") else None,
                                 }
                                 for p in preds
                             ]
@@ -552,7 +601,7 @@ def create_flask_app(db_manager, data_aggregator, prediction_engine):
                         if ai_match:
                             winner = ai_match.get("consensus_winner")
                             if winner:
-                                predicted = {"1": "HOME_WIN", "X": "DRAW", "2": "AWAY_WIN"}.get(winner, winner)
+                                predicted = _normalize_outcome(winner)
                                 conf = ai_match.get("consensus_confidence")
                                 conf_val = (conf / 100.0) if conf and conf > 1 else conf
                                 item["prediction"] = {
@@ -573,7 +622,7 @@ def create_flask_app(db_manager, data_aggregator, prediction_engine):
                         if ml_preds:
                             ens = next((p for p in ml_preds if p.get("model_name") == "ensemble"), None)
                             best = ens or ml_preds[0]
-                            predicted = best.get("predicted_outcome")
+                            predicted = _normalize_outcome(best.get("predicted_outcome"))
                             item["prediction"] = {
                                 "model": best.get("model_name", "?"),
                                 "predicted_outcome": predicted,
@@ -583,9 +632,9 @@ def create_flask_app(db_manager, data_aggregator, prediction_engine):
                             item["prediction_models"] = [
                                 {
                                     "model": p.get("model_name", "?"),
-                                    "predicted_outcome": p.get("predicted_outcome"),
+                                    "predicted_outcome": _normalize_outcome(p.get("predicted_outcome")),
                                     "confidence": p.get("confidence", 0),
-                                    "is_correct": p.get("predicted_outcome") == actual if p.get("predicted_outcome") else None,
+                                    "is_correct": _normalize_outcome(p.get("predicted_outcome")) == actual if p.get("predicted_outcome") else None,
                                 }
                                 for p in ml_preds
                             ]

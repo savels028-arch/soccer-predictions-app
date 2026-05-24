@@ -170,6 +170,128 @@ class ApiFootballClient:
         return None
 
     # ──────────────────────────────────────────
+    # LINEUPS / INJURIES / PLAYER CONTEXT
+    # ──────────────────────────────────────────
+    def get_fixture_lineups(self, fixture_id: int) -> List[Dict]:
+        data = self._get("fixtures/lineups", {"fixture": fixture_id})
+        if data and "response" in data:
+            return data["response"] or []
+        return []
+
+    def get_fixture_injuries(self, fixture_id: int) -> List[Dict]:
+        data = self._get("injuries", {"fixture": fixture_id})
+        if data and "response" in data:
+            return data["response"] or []
+        return []
+
+    def get_fixture_player_stats(self, fixture_id: int) -> List[Dict]:
+        data = self._get("fixtures/players", {"fixture": fixture_id})
+        if data and "response" in data:
+            return data["response"] or []
+        return []
+
+    def get_fixture_statistics(self, fixture_id: int) -> List[Dict]:
+        data = self._get("fixtures/statistics", {"fixture": fixture_id})
+        if data and "response" in data:
+            return data["response"] or []
+        return []
+
+    @staticmethod
+    def _team_lineup_count(lineups: List[Dict], team_id: Optional[int]) -> int:
+        for row in lineups:
+            team = row.get("team", {})
+            if team_id and team.get("id") != team_id:
+                continue
+            start_xi = row.get("startXI") or []
+            if start_xi:
+                return len(start_xi)
+        return 0
+
+    @staticmethod
+    def _team_missing_count(injuries: List[Dict], team_id: Optional[int]) -> int:
+        count = 0
+        for row in injuries:
+            team = row.get("team", {})
+            if team_id and team.get("id") != team_id:
+                continue
+            count += 1
+        return count
+
+    @staticmethod
+    def _team_rating_avg(player_stats: List[Dict], team_id: Optional[int]) -> Optional[float]:
+        ratings = []
+        for team_row in player_stats:
+            team = team_row.get("team", {})
+            if team_id and team.get("id") != team_id:
+                continue
+            for player_row in team_row.get("players", []) or []:
+                for stat in player_row.get("statistics", []) or []:
+                    rating = stat.get("games", {}).get("rating")
+                    if rating in (None, ""):
+                        continue
+                    try:
+                        ratings.append(float(rating))
+                    except (TypeError, ValueError):
+                        continue
+        if not ratings:
+            return None
+        return round(sum(ratings) / len(ratings), 3)
+
+    @staticmethod
+    def _team_stat_value(statistics: List[Dict], team_id: Optional[int], stat_name: str) -> Optional[float]:
+        wanted = stat_name.strip().lower()
+        for team_row in statistics:
+            team = team_row.get("team", {})
+            if team_id and team.get("id") != team_id:
+                continue
+            for stat in team_row.get("statistics", []) or []:
+                if str(stat.get("type", "")).strip().lower() != wanted:
+                    continue
+                value = stat.get("value")
+                if value in (None, ""):
+                    return None
+                try:
+                    return float(str(value).replace("%", ""))
+                except (TypeError, ValueError):
+                    return None
+        return None
+
+    def get_fixture_context(self, fixture_id: int, home_team_id: Optional[int] = None,
+                            away_team_id: Optional[int] = None) -> Dict:
+        """Bundle the pre-match data that can move a prediction edge."""
+        lineups = self.get_fixture_lineups(fixture_id)
+        injuries = self.get_fixture_injuries(fixture_id)
+        players = self.get_fixture_player_stats(fixture_id)
+        statistics = self.get_fixture_statistics(fixture_id)
+
+        summary = {
+            "home_missing_players": self._team_missing_count(injuries, home_team_id),
+            "away_missing_players": self._team_missing_count(injuries, away_team_id),
+            "home_lineup_players": self._team_lineup_count(lineups, home_team_id),
+            "away_lineup_players": self._team_lineup_count(lineups, away_team_id),
+            "home_player_rating_avg": self._team_rating_avg(players, home_team_id),
+            "away_player_rating_avg": self._team_rating_avg(players, away_team_id),
+            "home_xg": self._team_stat_value(statistics, home_team_id, "Expected Goals"),
+            "away_xg": self._team_stat_value(statistics, away_team_id, "Expected Goals"),
+        }
+        summary["has_lineups"] = bool(summary["home_lineup_players"] or summary["away_lineup_players"])
+        summary["has_injuries"] = bool(summary["home_missing_players"] or summary["away_missing_players"])
+        summary["has_player_stats"] = bool(
+            summary["home_player_rating_avg"] is not None
+            or summary["away_player_rating_avg"] is not None
+        )
+        summary["has_xg"] = bool(summary["home_xg"] is not None or summary["away_xg"] is not None)
+
+        return {
+            "fixtureId": fixture_id,
+            "summary": summary,
+            "lineups": lineups,
+            "injuries": injuries,
+            "playerStats": players,
+            "fixtureStatistics": statistics,
+        }
+
+    # ──────────────────────────────────────────
     # NORMALIZATION
     # ──────────────────────────────────────────
     def _normalize_fixtures(self, fixtures: List[Dict]) -> List[Dict]:

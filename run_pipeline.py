@@ -32,6 +32,7 @@ import math
 import logging
 import argparse
 import traceback
+import time
 import numpy as np
 from datetime import datetime, date, timedelta
 from typing import Dict, List, Optional, Any, Tuple
@@ -48,7 +49,7 @@ from src.database.db_manager import DatabaseManager
 from src.predictions.prediction_engine import PredictionEngine
 from src.predictions.feature_engineering import FeatureEngineer, FeatureEngineerV2, EloTracker
 from src.api.data_aggregator import DataAggregator
-from config.settings import AB_TEST, ML_SETTINGS, ML_SETTINGS_V2, PAPER_TRADING
+from config.settings import AB_TEST, DATA_ENRICHMENT, ML_SETTINGS, ML_SETTINGS_V2, PAPER_TRADING
 
 # Optional: CSV + API-Football
 try:
@@ -82,6 +83,54 @@ def _current_season() -> int:
     """Dynamic season: August+ = current year, else previous year."""
     now = date.today()
     return now.year if now.month >= 7 else now.year - 1
+
+
+def _valid_1x2_odds(odds: Dict[str, float]) -> bool:
+    return all(float(odds.get(k) or 0.0) > 1.0 for k in ("home", "draw", "away"))
+
+
+def _market_implied_probabilities(odds: Dict[str, float]) -> Dict[str, float]:
+    if not _valid_1x2_odds(odds):
+        return {}
+    total = sum(1 / float(odds[k]) for k in ("home", "draw", "away"))
+    if total <= 0:
+        return {}
+    return {k: round((1 / float(odds[k])) / total, 4) for k in ("home", "draw", "away")}
+
+
+def _normalize_probability_map(probs: Dict[str, float]) -> Dict[str, float]:
+    cleaned = {k: max(0.001, float(probs.get(k, 0.0))) for k in ("home", "draw", "away")}
+    total = sum(cleaned.values())
+    if total <= 0:
+        return {"home": 0.33, "draw": 0.33, "away": 0.34}
+    return {k: round(v / total, 4) for k, v in cleaned.items()}
+
+
+def _calibrate_probs_by_league(
+    probs: Dict[str, float],
+    priors: Optional[Dict[str, float]],
+    strength: float,
+) -> Tuple[Dict[str, float], Dict[str, Any]]:
+    """Blend model probabilities toward recent league base rates."""
+    if not priors or strength <= 0:
+        return _normalize_probability_map(probs), {"applied": False}
+    strength = min(max(float(strength), 0.0), 0.5)
+    calibrated = {
+        key: (float(probs.get(key, 0.0)) * (1.0 - strength)) + (float(priors.get(key, 0.0)) * strength)
+        for key in ("home", "draw", "away")
+    }
+    return _normalize_probability_map(calibrated), {
+        "applied": True,
+        "method": "league_prior_blend",
+        "strength": strength,
+        "priors": priors,
+    }
+
+
+def _selected_odds(odds: Dict[str, float], pick: Optional[str]) -> float:
+    if not pick:
+        return 0.0
+    return float(odds.get(str(pick).lower()) or 0.0)
 
 
 # ─── Team name matching ─────────────────────
@@ -222,6 +271,126 @@ def find_match_in_list(target_home: str, target_away: str,
     return None
 
 
+def _paper_strategy_recommendation(
+    league_code: str,
+    ensemble: Dict[str, float],
+    edge: Dict[str, float],
+    odds: Dict[str, float],
+    cfg: Dict,
+) -> Optional[str]:
+    """Return a configured paper-trading pick as home/draw/away, or None."""
+    allowed_leagues = set(cfg.get("profitable_leagues") or [])
+    if allowed_leagues and league_code not in allowed_leagues:
+        return None
+    if league_code in set(cfg.get("excluded_leagues") or []):
+        return None
+
+    style = cfg.get("bet_style", "model_pick")
+    if style == "market_underdog":
+        valid_odds = {k: v for k, v in odds.items() if v and v > 1.0}
+        if not valid_odds:
+            return None
+        selected = max(valid_odds, key=valid_odds.get)
+    elif style == "least_likely":
+        selected = min(ensemble, key=ensemble.get)
+    else:
+        selected = max(ensemble, key=ensemble.get)
+
+    outcome_filter = cfg.get("outcome_filter")
+    if outcome_filter and selected != outcome_filter:
+        return None
+
+    min_confidence_pct = cfg.get("min_confidence_pct")
+    if min_confidence_pct is not None and ensemble.get(selected, 0.0) * 100 < min_confidence_pct:
+        return None
+
+    min_edge_pct = cfg.get("min_edge_pct")
+    if min_edge_pct is not None:
+        if not edge or edge.get(selected, -999.0) * 100 < min_edge_pct:
+            return None
+
+    return selected
+
+
+def _score_value(match: Dict[str, Any], *keys: str) -> Optional[int]:
+    for key in keys:
+        value = match.get(key)
+        if value is not None:
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+def _historical_h2h_coupon_pick(
+    home: str,
+    away: str,
+    h2h: List[Dict[str, Any]],
+    odds: Dict[str, float],
+    cfg: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    """Return a no-ML H2H coupon pick when old fixture history is dominant."""
+    counts = {"home": 0, "draw": 0, "away": 0}
+
+    for match in h2h or []:
+        match_home = match.get("home_team_name") or match.get("home_team") or ""
+        match_away = match.get("away_team_name") or match.get("away_team") or ""
+        home_score = _score_value(match, "home_score", "home_goals")
+        away_score = _score_value(match, "away_score", "away_goals")
+        if home_score is None or away_score is None:
+            continue
+
+        same_orientation = fuzzy_match_teams(home, match_home) and fuzzy_match_teams(away, match_away)
+        reversed_orientation = fuzzy_match_teams(home, match_away) and fuzzy_match_teams(away, match_home)
+        if not same_orientation and not reversed_orientation:
+            continue
+
+        if home_score == away_score:
+            counts["draw"] += 1
+        elif same_orientation:
+            counts["home" if home_score > away_score else "away"] += 1
+        else:
+            counts["away" if home_score > away_score else "home"] += 1
+
+    total = sum(counts.values())
+    if total < int(cfg.get("min_h2h_matches", 10)):
+        return None
+
+    ranked = sorted(counts.items(), key=lambda item: item[1], reverse=True)
+    if len(ranked) > 1 and ranked[0][1] == ranked[1][1]:
+        return None
+
+    pick, hits = ranked[0]
+    confidence = hits / total if total else 0.0
+    if confidence * 100 < float(cfg.get("min_h2h_rate_pct", 75.0)):
+        return None
+
+    odds_val = float(odds.get(pick) or 0.0)
+    if odds_val <= 1.0:
+        return None
+    odds_min = cfg.get("odds_min")
+    odds_max = cfg.get("odds_max")
+    if odds_min is not None and odds_val < float(odds_min):
+        return None
+    if odds_max is not None and odds_val > float(odds_max):
+        return None
+
+    edge = confidence - (1.0 / odds_val)
+    min_edge_pct = cfg.get("min_edge_pct")
+    if min_edge_pct is not None and edge * 100 < float(min_edge_pct):
+        return None
+
+    return {
+        "pick": pick,
+        "confidence": confidence,
+        "edge": edge,
+        "odds": odds_val,
+        "h2h_count": total,
+        "h2h_rate_pct": confidence * 100,
+    }
+
+
 # ─────────────────────────────────────────────
 # PIPELINE
 # ─────────────────────────────────────────────
@@ -279,6 +448,9 @@ class PredictionPipeline:
             "results_saved_v2": 0,
             "coupons_evaluated": 0,
             "sources_updated": 0,
+            "odds_snapshots": 0,
+            "pick_snapshots": 0,
+            "match_contexts": 0,
         }
         self._stats_v2 = {
             "ml_predictions": 0,
@@ -386,6 +558,159 @@ class PredictionPipeline:
         return deduped
 
     # ──────────────────────────────────────
+    # STAGE 1B: Enrich match context
+    # ──────────────────────────────────────
+
+    def enrich_match_context(self):
+        """Fetch lineups, injuries, player ratings and xG/event summaries when available."""
+        if not DATA_ENRICHMENT.get("enabled", True):
+            return
+        if not DATA_ENRICHMENT.get("api_football_context", True):
+            return
+        if not self.api_football or not getattr(self.api_football, "api_key", ""):
+            log.info("── Stage 1B: Match context skipped — API_FOOTBALL_KEY not set ──")
+            return
+
+        log.info("── Stage 1B: Fetching lineup/injury/player context ──")
+        max_matches = int(DATA_ENRICHMENT.get("max_context_matches_per_run", 12) or 0)
+        if max_matches <= 0:
+            return
+
+        enriched = 0
+        upcoming = [
+            m for m in self._matches
+            if m.get("status") in ("SCHEDULED", "IN_PLAY", "pre", "LIVE")
+        ]
+        for m in upcoming[:max_matches]:
+            fixture_id = m.get("api_id")
+            extra = m.get("extra_data") or {}
+            if isinstance(extra, str):
+                try:
+                    extra = json.loads(extra)
+                except Exception:
+                    extra = {}
+            home_team_id = extra.get("home_team_id") or m.get("home_team_id")
+            away_team_id = extra.get("away_team_id") or m.get("away_team_id")
+
+            if not fixture_id:
+                continue
+
+            home = m.get("home_team_name", m.get("home_team", ""))
+            away = m.get("away_team_name", m.get("away_team", ""))
+            date_str = m.get("match_date", "")
+            mid = match_id(date_str, home, away)
+            try:
+                context = self.api_football.get_fixture_context(
+                    int(fixture_id),
+                    int(home_team_id) if home_team_id else None,
+                    int(away_team_id) if away_team_id else None,
+                )
+                if not context:
+                    continue
+                self.db.upsert_match_context(mid, "api_football", date_str, home, away, context)
+                self.fs.save_match_context(mid, context, source="api_football")
+                enriched += 1
+            except Exception as e:
+                log.debug(f"  Context fetch failed for {home} vs {away}: {e}")
+
+        self._stats["match_contexts"] = enriched
+        log.info(f"  Enriched {enriched} matches with context")
+
+    def _context_summary_for_match(self, mid: str) -> Dict[str, Any]:
+        context = self.db.get_match_context(mid)
+        if not context:
+            return {}
+        return {
+            "homeMissingPlayers": context.get("home_missing_players", 0),
+            "awayMissingPlayers": context.get("away_missing_players", 0),
+            "homeLineupPlayers": context.get("home_lineup_players", 0),
+            "awayLineupPlayers": context.get("away_lineup_players", 0),
+            "homePlayerRatingAvg": context.get("home_player_rating_avg"),
+            "awayPlayerRatingAvg": context.get("away_player_rating_avg"),
+            "homeXg": context.get("home_xg"),
+            "awayXg": context.get("away_xg"),
+        }
+
+    def _store_odds_snapshot(self, mid: str, match: Dict[str, Any], source: str,
+                             odds: Dict[str, float], extra: Optional[Dict[str, Any]] = None):
+        if not _valid_1x2_odds(odds):
+            return
+        home = match.get("home_team_name", match.get("home_team", ""))
+        away = match.get("away_team_name", match.get("away_team", ""))
+        date_str = match.get("match_date", "")
+        try:
+            self.db.save_odds_snapshot(mid, date_str, home, away, source, odds, extra=extra)
+        except Exception as e:
+            log.debug(f"  Local odds snapshot failed for {home} vs {away}: {e}")
+        try:
+            self.fs.add_odds_snapshot(mid, source, odds, extra=extra)
+        except Exception as e:
+            log.debug(f"  Firestore odds snapshot failed for {home} vs {away}: {e}")
+        self._stats["odds_snapshots"] += 1
+
+    def _league_calibration_for_match(
+        self,
+        league_code: str,
+        match_date: str,
+        probs: Dict[str, float],
+    ) -> Tuple[Dict[str, float], Dict[str, Any]]:
+        if not DATA_ENRICHMENT.get("league_calibration_enabled", True):
+            return _normalize_probability_map(probs), {"applied": False}
+        priors = self.db.get_league_outcome_priors(
+            league_code,
+            before_date=match_date,
+            min_matches=int(DATA_ENRICHMENT.get("league_calibration_min_matches", 80)),
+            limit=int(DATA_ENRICHMENT.get("league_calibration_history_limit", 600)),
+        )
+        return _calibrate_probs_by_league(
+            probs,
+            priors,
+            float(DATA_ENRICHMENT.get("league_calibration_strength", 0.15)),
+        )
+
+    def _save_pick_snapshot(self, mid: str, pred: Dict[str, Any], source: str,
+                            pick: str, odds_map: Dict[str, float], probability: float,
+                            edge: float, model_version: str, strategy: str,
+                            extra: Optional[Dict[str, Any]] = None):
+        odds_at_pick = _selected_odds(odds_map, pick)
+        if odds_at_pick <= 1.0:
+            return
+        try:
+            self.db.save_pick_snapshot(
+                mid,
+                pred.get("match_date", ""),
+                pred.get("home_team", ""),
+                pred.get("away_team", ""),
+                source,
+                pick,
+                odds_at_pick,
+                probability=probability,
+                edge=edge,
+                model_version=model_version,
+                strategy=strategy,
+                extra=extra,
+            )
+        except Exception as e:
+            log.debug(f"  Local pick snapshot failed for {mid}: {e}")
+        try:
+            self.fs.save_pick_snapshot(mid, {
+                "source": source,
+                "modelVersion": model_version,
+                "strategy": strategy,
+                "pick": pick.upper(),
+                "probability": round(probability, 4),
+                "edge": round(edge, 4),
+                "oddsAtPick": round(odds_at_pick, 2),
+                "matchDate": pred.get("match_date", ""),
+                "homeTeam": pred.get("home_team", ""),
+                "awayTeam": pred.get("away_team", ""),
+                "extra": extra or {},
+            })
+        except Exception as e:
+            log.debug(f"  Firestore pick snapshot failed for {mid}: {e}")
+        self._stats["pick_snapshots"] += 1
+
+    # ──────────────────────────────────────
     # STAGE 2: Fetch real odds from Danske Spil
     # ──────────────────────────────────────
 
@@ -418,6 +743,24 @@ class PredictionPipeline:
                             "draw_odds": od.get("draw_odds", 0),
                             "away_odds": od.get("away_odds", 0),
                         })
+                        odds_map = {
+                            "home": od.get("home_odds", 0),
+                            "draw": od.get("draw_odds", 0),
+                            "away": od.get("away_odds", 0),
+                        }
+                        self._store_odds_snapshot(
+                            mid,
+                            m,
+                            "danske_spil",
+                            odds_map,
+                            extra={
+                                "deeplink": od.get("deeplink", ""),
+                                "over25": od.get("over_25_odds"),
+                                "under25": od.get("under_25_odds"),
+                                "bttsYes": od.get("btts_yes_odds"),
+                                "bttsNo": od.get("btts_no_odds"),
+                            },
+                        )
 
                         # Also store Danske Spil's implied probabilities as a "prediction"
                         ho = od.get("home_odds", 0)
@@ -474,6 +817,13 @@ class PredictionPipeline:
                                     self.fs.update_match_odds(mid, {
                                         "home_odds": ho, "draw_odds": do_, "away_odds": ao,
                                     })
+                                    self._store_odds_snapshot(
+                                        mid,
+                                        m,
+                                        "flashscore_average",
+                                        {"home": ho, "draw": do_, "away": ao},
+                                        extra={"flashscoreId": fs_id},
+                                    )
                                     total = 1/ho + 1/do_ + 1/ao
                                     self.fs.add_prediction(mid, "flashscore_market", {
                                         "home": round(1/ho / total, 4),
@@ -560,6 +910,19 @@ class PredictionPipeline:
                 # OddsAtScrape
                 odds_key = _normalize_team(ph) + "_" + _normalize_team(pa)
                 oas = odds_by_match.get(odds_key)
+                if not oas:
+                    try:
+                        site_home_odds = float(pred.get("odds_home") or 0)
+                        site_draw_odds = float(pred.get("odds_draw") or 0)
+                        site_away_odds = float(pred.get("odds_away") or 0)
+                    except (TypeError, ValueError):
+                        site_home_odds = site_draw_odds = site_away_odds = 0.0
+                    if site_home_odds > 1 and site_draw_odds > 1 and site_away_odds > 1:
+                        oas = {
+                            "home": site_home_odds,
+                            "draw": site_draw_odds,
+                            "away": site_away_odds,
+                        }
 
                 extra = {}
                 if pred.get("btts"):
@@ -568,6 +931,10 @@ class PredictionPipeline:
                     extra["overUnder25"] = pred["over_under_25"]
                 if pred.get("predicted_score"):
                     extra["predictedScore"] = pred["predicted_score"]
+                if pred.get("value_bet"):
+                    extra["valueBet"] = True
+                if pred.get("value_bet_market"):
+                    extra["valueBetMarket"] = pred["value_bet_market"]
 
                 try:
                     self.fs.add_prediction(mid, source, probs, oas, extra if extra else None)
@@ -813,37 +1180,71 @@ class PredictionPipeline:
                 if total_weight > 0:
                     for k in ensemble:
                         ensemble[k] /= total_weight
-                        ensemble[k] = round(ensemble[k], 4)
+
+                raw_ensemble = _normalize_probability_map(ensemble)
+                ensemble, calibration_meta = self._league_calibration_for_match(
+                    league,
+                    m.get("match_date", ""),
+                    raw_ensemble,
+                )
+                context_summary = self._context_summary_for_match(mid)
 
                 # Calculate edge vs market
                 edge = {}
-                if od and home_odds and draw_odds and away_odds:
-                    ho, do_, ao = home_odds, draw_odds, away_odds
-                    if ho > 0 and do_ > 0 and ao > 0:
-                        total_impl = 1/ho + 1/do_ + 1/ao
-                        fair = {
-                            "home": 1/ho / total_impl,
-                            "draw": 1/do_ / total_impl,
-                            "away": 1/ao / total_impl,
-                        }
-                        edge = {k: round(ensemble[k] - fair[k], 4) for k in ensemble}
+                odds_map = {
+                    "home": home_odds or 0.0,
+                    "draw": draw_odds or 0.0,
+                    "away": away_odds or 0.0,
+                }
+                fair = _market_implied_probabilities(odds_map)
+                if fair:
+                    edge = {k: round(ensemble[k] - fair[k], 4) for k in ensemble}
 
-                # Determine recommended bet
+                # Determine recommended single bet from the walk-forward paper strategy.
                 best_outcome = max(ensemble, key=ensemble.get)
                 confidence = ensemble[best_outcome]
-                recommended = None
-                if edge:
-                    # Only recommend if edge > 3% and confidence > 50%
-                    best_edge_outcome = max(edge, key=edge.get)
-                    if edge[best_edge_outcome] > 0.03 and ensemble[best_edge_outcome] > 0.50:
-                        recommended = best_edge_outcome.upper()
+                recommended_key = _paper_strategy_recommendation(
+                    league,
+                    ensemble,
+                    edge,
+                    odds_map,
+                    PAPER_TRADING,
+                )
+                recommended = recommended_key.upper() if recommended_key else None
+                if recommended_key:
+                    confidence = ensemble.get(recommended_key, confidence)
 
                 # Save model output
                 self.fs.save_model_output(
                     mid, ensemble, edge if edge else None,
                     recommended, confidence,
-                    model_version=f"ensemble_v1_{len(model_results)}models"
+                    model_version=f"ensemble_v1_{len(model_results)}models",
+                    odds_at_pick=odds_map,
+                    calibration=calibration_meta,
+                    context_summary=context_summary,
                 )
+
+                if recommended_key:
+                    self._save_pick_snapshot(
+                        mid,
+                        {
+                            "home_team": home,
+                            "away_team": away,
+                            "match_date": m.get("match_date", ""),
+                        },
+                        "ML Ensemble v1",
+                        recommended_key,
+                        odds_map,
+                        ensemble.get(recommended_key, 0.0),
+                        edge.get(recommended_key, 0.0) if edge else 0.0,
+                        f"ensemble_v1_{len(model_results)}models",
+                        PAPER_TRADING.get("bet_style", "paper_single"),
+                        extra={
+                            "league": league,
+                            "calibration": calibration_meta,
+                            "contextSummary": context_summary,
+                        },
+                    )
 
                 ml_preds[mid] = {
                     "home_team": home,
@@ -851,10 +1252,13 @@ class PredictionPipeline:
                     "match_date": m.get("match_date", ""),
                     "league": m.get("league_code", m.get("league", "")),
                     "ensemble": ensemble,
+                    "raw_ensemble": raw_ensemble,
                     "edge": edge,
                     "recommended": recommended,
                     "confidence": confidence,
                     "models": model_results,
+                    "calibration": calibration_meta,
+                    "context_summary": context_summary,
                 }
 
             except Exception as e:
@@ -991,21 +1395,24 @@ class PredictionPipeline:
                     except Exception as e:
                         log.debug(f"    Poisson blend skipped: {e}")
 
-                    for k in ensemble_v2:
-                        ensemble_v2[k] = round(ensemble_v2[k], 4)
+                    raw_ensemble_v2 = _normalize_probability_map(ensemble_v2)
+                    ensemble_v2, calibration_meta_v2 = self._league_calibration_for_match(
+                        league,
+                        match_date,
+                        raw_ensemble_v2,
+                    )
+                    context_summary_v2 = self._context_summary_for_match(mid)
 
                     # Edge calculation
                     edge_v2 = {}
-                    if od:
-                        ho, do_, ao = home_odds, draw_odds, away_odds
-                        if ho > 0 and do_ > 0 and ao > 0:
-                            total_impl = 1/ho + 1/do_ + 1/ao
-                            fair = {
-                                "home": 1/ho / total_impl,
-                                "draw": 1/do_ / total_impl,
-                                "away": 1/ao / total_impl,
-                            }
-                            edge_v2 = {k: round(ensemble_v2[k] - fair[k], 4) for k in ensemble_v2}
+                    odds_map_v2 = {
+                        "home": home_odds or 0.0,
+                        "draw": draw_odds or 0.0,
+                        "away": away_odds or 0.0,
+                    }
+                    fair_v2 = _market_implied_probabilities(odds_map_v2)
+                    if fair_v2:
+                        edge_v2 = {k: round(ensemble_v2[k] - fair_v2[k], 4) for k in ensemble_v2}
 
                     best_outcome = max(ensemble_v2, key=ensemble_v2.get)
                     confidence_v2 = ensemble_v2[best_outcome]
@@ -1019,8 +1426,33 @@ class PredictionPipeline:
                     self.fs.save_model_output(
                         f"{mid}_v2", ensemble_v2, edge_v2 if edge_v2 else None,
                         recommended_v2, confidence_v2,
-                        model_version=f"ensemble_v2_{len(model_results_v2)}models"
+                        model_version=f"ensemble_v2_{len(model_results_v2)}models",
+                        odds_at_pick=odds_map_v2,
+                        calibration=calibration_meta_v2,
+                        context_summary=context_summary_v2,
                     )
+
+                    if recommended_v2:
+                        self._save_pick_snapshot(
+                            mid,
+                            {
+                                "home_team": home,
+                                "away_team": away,
+                                "match_date": match_date,
+                            },
+                            "ML Ensemble v2",
+                            recommended_v2,
+                            odds_map_v2,
+                            ensemble_v2.get(recommended_v2.lower(), confidence_v2),
+                            edge_v2.get(recommended_v2.lower(), 0.0) if edge_v2 else 0.0,
+                            f"ensemble_v2_{len(model_results_v2)}models",
+                            "v2_edge_filter",
+                            extra={
+                                "league": league,
+                                "calibration": calibration_meta_v2,
+                                "contextSummary": context_summary_v2,
+                            },
+                        )
 
                     # Compute Poisson predicted score + BTTS/O-U for display
                     poisson_score_str = ""
@@ -1053,10 +1485,13 @@ class PredictionPipeline:
                         "match_date": match_date,
                         "league": league,
                         "ensemble": ensemble_v2,
+                        "raw_ensemble": raw_ensemble_v2,
                         "edge": edge_v2,
                         "recommended": recommended_v2,
                         "confidence": confidence_v2,
                         "models": model_results_v2,
+                        "calibration": calibration_meta_v2,
+                        "context_summary": context_summary_v2,
                         "poisson_score": poisson_score_str,
                         "btts_prob": btts_prob,
                         "over25_prob": over25_prob,
@@ -1172,8 +1607,8 @@ class PredictionPipeline:
     def build_daily_coupon(self):
         """Build today's Vinderkupon from model outputs + odds.
         
-        v2 coupon uses quality filters: min_edge, min_confidence, max_per_league,
-        skip_high_disagreement, and sorts by edge*confidence (EV ranking).
+        Coupon quality filters are controlled from config/settings.py so the
+        live coupon follows the best current backtest strategy.
         """
         log.info("── Stage 6: Building daily coupon ──")
         today = date.today().strftime("%Y-%m-%d")
@@ -1193,8 +1628,13 @@ class PredictionPipeline:
             coupon_cfg = ML_SETTINGS.get("coupon", {})
         min_edge_pct = coupon_cfg.get("min_edge_pct", 5.0)
         min_confidence_pct = coupon_cfg.get("min_confidence_pct", 40.0)
+        min_picks = coupon_cfg.get("min_picks", 2)
+        max_picks = coupon_cfg.get("max_picks", 6)
         max_per_league = coupon_cfg.get("max_per_league", 2)
         skip_disagreement = coupon_cfg.get("skip_high_disagreement", False)
+        sort_by = coupon_cfg.get("sort_by", "edge_x_confidence")
+        allowed_leagues = set(coupon_cfg.get("allowed_leagues", []))
+        coupon_strategy = coupon_cfg.get("strategy", "walk_forward_value_coupon")
 
         # Exclude leagues with negative backtest ROI (e.g. Championship)
         excluded_leagues = set(PAPER_TRADING.get("excluded_leagues", []))
@@ -1205,6 +1645,9 @@ class PredictionPipeline:
         for mid, pred in source_preds.items():
             # Skip excluded leagues (negative ROI in backtest)
             league_code = pred.get("league", "")
+            if allowed_leagues and league_code not in allowed_leagues:
+                skipped_league += 1
+                continue
             if league_code in excluded_leagues:
                 skipped_league += 1
                 continue
@@ -1215,19 +1658,40 @@ class PredictionPipeline:
             if not od:
                 continue
 
-            best_outcome = max(pred["ensemble"], key=pred["ensemble"].get)
-            odds_val = (od.get("home_odds", 0) if best_outcome == "home"
-                       else od.get("away_odds", 0) if best_outcome == "away"
-                       else od.get("draw_odds", 0))
+            odds_map = {
+                "home": od.get("home_odds", 0),
+                "draw": od.get("draw_odds", 0),
+                "away": od.get("away_odds", 0),
+            }
+            h2h_meta = None
+            if coupon_strategy == "historical_h2h_coupon":
+                h2h = self.db.get_h2h(pred["home_team"], pred["away_team"]) or []
+                h2h_meta = _historical_h2h_coupon_pick(
+                    pred["home_team"],
+                    pred["away_team"],
+                    h2h,
+                    odds_map,
+                    coupon_cfg,
+                )
+                if not h2h_meta:
+                    continue
+                best_outcome = h2h_meta["pick"]
+                odds_val = h2h_meta["odds"]
+                edge_val = h2h_meta["edge"]
+                selection_probability = h2h_meta["confidence"]
+                confidence_pct = selection_probability * 100
+            else:
+                best_outcome = max(pred["ensemble"], key=pred["ensemble"].get)
+                odds_val = odds_map.get(best_outcome, 0)
+                edge_val = pred.get("edge", {}).get(best_outcome, 0)
+                selection_probability = pred["ensemble"].get(best_outcome, 0.33)
+                confidence_pct = pred["confidence"] * 100
 
             if odds_val <= 1.0:
                 continue
 
-            edge_val = pred.get("edge", {}).get(best_outcome, 0)
-            confidence_pct = pred["confidence"] * 100
-
             # ── Quality filters ──
-            if edge_val * 100 < min_edge_pct:
+            if min_edge_pct is not None and edge_val * 100 < min_edge_pct:
                 continue
             if confidence_pct < min_confidence_pct:
                 continue
@@ -1239,7 +1703,7 @@ class PredictionPipeline:
                     continue  # models disagree — skip
 
             # Kelly criterion: f* = (bp - q) / b where b=odds-1, p=model_prob, q=1-p
-            model_prob = pred["ensemble"].get(best_outcome, 0.33)
+            model_prob = selection_probability
             b = odds_val - 1.0
             kelly_fraction = 0.0
             if b > 0 and model_prob > 0:
@@ -1256,13 +1720,24 @@ class PredictionPipeline:
                 "odds": round(odds_val, 2),
                 "confidence": round(confidence_pct, 1),
                 "edge": round(edge_val * 100, 1),
-                "ev_score": round(edge_val * pred["confidence"], 6),
+                "ev_score": round(edge_val * selection_probability, 6),
                 "kelly_fraction": round(kelly_fraction, 4),
                 "version": version_label,
+                "strategy": coupon_strategy,
             })
+            if h2h_meta:
+                candidates[-1].update({
+                    "h2h_count": h2h_meta["h2h_count"],
+                    "h2h_rate": round(h2h_meta["h2h_rate_pct"], 1),
+                })
 
-        # ── Sort by EV score (edge × confidence) ── highest value first
-        candidates.sort(key=lambda c: c["ev_score"], reverse=True)
+        # ── Sort by configured strategy ── highest quality first
+        if sort_by == "confidence":
+            candidates.sort(key=lambda c: (c["confidence"], c["edge"], c["odds"]), reverse=True)
+        elif sort_by == "edge":
+            candidates.sort(key=lambda c: (c["edge"], c["confidence"], c["odds"]), reverse=True)
+        else:
+            candidates.sort(key=lambda c: (c["ev_score"], c["confidence"], c["edge"]), reverse=True)
 
         # ── Max per league diversification ──
         picks = []
@@ -1273,45 +1748,42 @@ class PredictionPipeline:
                 continue
             picks.append(c)
             league_counts[lg] = league_counts.get(lg, 0) + 1
-            if len(picks) >= 6:  # max 6 picks
+            if len(picks) >= max_picks:
                 break
 
-        # Ensure at least 2 picks
-        if len(picks) < 2:
-            log.info(f"  Only {len(picks)} quality picks — falling back to top confidence")
-            # Fallback: relax filters, take top 3 by confidence
-            fallback = []
-            for mid, pred in source_preds.items():
-                od = find_match_in_list(pred["home_team"], pred["away_team"], self._odds)
-                if not od:
-                    continue
-                best_outcome = max(pred["ensemble"], key=pred["ensemble"].get)
-                odds_val = (od.get("home_odds", 0) if best_outcome == "home"
-                           else od.get("away_odds", 0) if best_outcome == "away"
-                           else od.get("draw_odds", 0))
-                if odds_val <= 1.0:
-                    continue
-                edge_val = pred.get("edge", {}).get(best_outcome, 0)
-                fallback.append({
-                    "home_team": pred["home_team"],
-                    "away_team": pred["away_team"],
-                    "league": pred["league"],
-                    "match_date": pred["match_date"],
-                    "kickoff": "",
-                    "pick": best_outcome.upper(),
-                    "odds": round(odds_val, 2),
-                    "confidence": round(pred["confidence"] * 100, 1),
-                    "edge": round(edge_val * 100, 1),
-                    "ev_score": 0,
-                    "version": version_label,
-                })
-            fallback.sort(key=lambda c: c["confidence"], reverse=True)
-            picks = fallback[:3]
+        if len(picks) < min_picks:
+            log.info(
+                f"  Only {len(picks)} quality picks — skipping coupon instead of "
+                "relaxing edge/confidence filters"
+            )
+            return
 
         if picks:
             total_odds = 1.0
             for p in picks:
                 total_odds *= p["odds"]
+                pick_mid = match_id(p.get("match_date", ""), p.get("home_team", ""), p.get("away_team", ""))
+                self._save_pick_snapshot(
+                    pick_mid,
+                    {
+                        "home_team": p.get("home_team", ""),
+                        "away_team": p.get("away_team", ""),
+                        "match_date": p.get("match_date", ""),
+                    },
+                    "Daily Coupon",
+                    str(p.get("pick", "")).lower(),
+                    {
+                        str(p.get("pick", "")).lower(): p.get("odds", 0),
+                        "home": p.get("odds", 0) if p.get("pick") == "HOME" else 0,
+                        "draw": p.get("odds", 0) if p.get("pick") == "DRAW" else 0,
+                        "away": p.get("odds", 0) if p.get("pick") == "AWAY" else 0,
+                    },
+                    float(p.get("confidence", 0.0)) / 100,
+                    float(p.get("edge", 0.0)) / 100,
+                    version_label,
+                    p.get("strategy", coupon_strategy),
+                    extra={"couponDate": today, "totalOddsBeforeLeg": round(total_odds, 2)},
+                )
             self.fs.save_daily_coupon(today, picks, total_odds)
             log.info(f"  Daily coupon ({version_label}): {len(picks)} picks, total odds: {total_odds:.2f}")
             if skipped_league:
@@ -1372,6 +1844,10 @@ class PredictionPipeline:
                         # Get odds for paper-trading P&L
                         match_odds = model_out.get("closingOdds") or model_out.get("currentOdds") or {}
                         pred_odds = match_odds.get(predicted.lower(), 0)
+                        odds_at_pick = (mo_data.get("oddsAtPick") or {}).get(predicted.lower(), 0)
+                        clv_pct = 0.0
+                        if odds_at_pick and pred_odds:
+                            clv_pct = round((float(odds_at_pick) / float(pred_odds) - 1.0) * 100, 2)
                         edge_data = mo_data.get("edge", {})
                         pred_edge = round(edge_data.get(predicted.lower(), 0) * 100, 1) if edge_data else 0
 
@@ -1390,6 +1866,8 @@ class PredictionPipeline:
                             "hasModelOutput": True,
                             # Paper-trading fields
                             "odds": round(pred_odds, 2) if pred_odds else 0,
+                            "oddsAtPick": round(odds_at_pick, 2) if odds_at_pick else 0,
+                            "closingLineValuePct": clv_pct,
                             "edge": pred_edge,
                             "profit": round(pred_odds - 1, 2) if (predicted == actual and pred_odds > 0) else -1.0,
                         }
@@ -1788,6 +2266,7 @@ class PredictionPipeline:
 
         # Stage 1: Fetch matches
         self.fetch_matches()
+        self.enrich_match_context()
 
         # Auto-retrain if models not trained or older than 7 days (feedback loop)
         if not self.engine.is_trained or self._should_retrain():
@@ -1834,6 +2313,9 @@ class PredictionPipeline:
         log.info(f"  Results:      {self._stats['results_saved']}")
         log.info(f"  Coupons:      {self._stats['coupons_evaluated']}")
         log.info(f"  Sources:      {self._stats['sources_updated']}")
+        log.info(f"  Odds snaps:   {self._stats['odds_snapshots']}")
+        log.info(f"  Pick snaps:   {self._stats['pick_snapshots']}")
+        log.info(f"  Context:      {self._stats['match_contexts']}")
         log.info("═══════════════════════════════════════")
 
         return self._stats
@@ -1842,6 +2324,7 @@ class PredictionPipeline:
         """Just update odds from Danske Spil."""
         log.info("═ Odds-only update ═")
         self.fetch_matches()
+        self.enrich_match_context()
         self.fetch_odds()
         self.write_legacy_cache()
 
@@ -1856,6 +2339,12 @@ class PredictionPipeline:
                 log.warning("  Evaluate stage aborted — Firestore quota exhausted")
             else:
                 raise
+
+    def run_context_only(self):
+        """Just refresh lineup/injury/player context."""
+        log.info("═ Context-only update ═")
+        self.fetch_matches()
+        self.enrich_match_context()
         try:
             self.update_source_performance()
         except Exception as e:
@@ -1873,7 +2362,11 @@ def main():
     parser = argparse.ArgumentParser(description="AIBets Prediction Pipeline")
     parser.add_argument("--train", action="store_true", help="Train ML models before predicting")
     parser.add_argument("--odds-only", action="store_true", help="Only update odds from Danske Spil")
+    parser.add_argument("--context-only", action="store_true", help="Only update lineup/injury/player context")
     parser.add_argument("--evaluate-only", action="store_true", help="Only evaluate finished matches")
+    parser.add_argument("--watch", action="store_true", help="Keep running and update on an interval")
+    parser.add_argument("--interval-minutes", type=float, default=15.0,
+                        help="Minutes between runs in --watch mode")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
     args = parser.parse_args()
 
@@ -1885,12 +2378,30 @@ def main():
     if args.train:
         pipeline.train_models()
 
-    if args.odds_only:
-        pipeline.run_odds_only()
-    elif args.evaluate_only:
-        pipeline.run_evaluate_only()
+    def run_selected_mode():
+        if args.odds_only:
+            pipeline.run_odds_only()
+        elif args.context_only:
+            pipeline.run_context_only()
+        elif args.evaluate_only:
+            pipeline.run_evaluate_only()
+        else:
+            pipeline.run_full()
+
+    if args.watch:
+        interval_seconds = max(args.interval_minutes, 1.0) * 60
+        log.info("Watch mode enabled: running every %.1f minutes", interval_seconds / 60)
+        while True:
+            try:
+                run_selected_mode()
+            except KeyboardInterrupt:
+                raise
+            except Exception as e:
+                log.error("Watch mode run failed: %s", e, exc_info=True)
+            log.info("Next update in %.1f minutes", interval_seconds / 60)
+            time.sleep(interval_seconds)
     else:
-        pipeline.run_full()
+        run_selected_mode()
 
 
 if __name__ == "__main__":

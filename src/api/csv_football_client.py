@@ -9,6 +9,7 @@ Covers: 25+ leagues, 20+ seasons, with odds from 6+ bookmakers.
 import csv
 import io
 import logging
+from pathlib import Path
 import requests
 import time
 from datetime import datetime
@@ -19,6 +20,15 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from config.settings import LEAGUES
 
 logger = logging.getLogger(__name__)
+
+
+def _season_code_for_year(season: int) -> Optional[str]:
+    """Convert season start year to Football-Data URL code."""
+    if 2000 <= season <= 2030:
+        s1 = str(season)[2:]
+        s2 = str(season + 1)[2:]
+        return f"{s1}{s2}"
+    return None
 
 
 class FootballDataCSVClient:
@@ -44,19 +54,10 @@ class FootballDataCSVClient:
         "BSA": "B1",    # Belgium Jupiler League (not Brazil)
     }
 
-    # Season codes: 2024/25 = "2425", 2023/24 = "2324", etc.
+    # Season codes: 2024/25 = "2425", 2000/01 = "0001", etc.
     AVAILABLE_SEASONS = [
-        (2025, "2526"),
-        (2024, "2425"),
-        (2023, "2324"),
-        (2022, "2223"),
-        (2021, "2122"),
-        (2020, "2021"),
-        (2019, "1920"),
-        (2018, "1819"),
-        (2017, "1718"),
-        (2016, "1617"),
-        (2015, "1516"),
+        (season, _season_code_for_year(season))
+        for season in range(2025, 1999, -1)
     ]
 
     def __init__(self):
@@ -66,6 +67,8 @@ class FootballDataCSVClient:
         })
         self._cache = {}  # in-memory cache: (league, season) -> data
         self._last_request = 0
+        self.cache_dir = Path(__file__).resolve().parents[2] / "data" / "cache" / "football_data_csv"
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
 
     def _rate_limit(self):
         elapsed = time.time() - self._last_request
@@ -98,6 +101,16 @@ class FootballDataCSVClient:
 
         url = f"{self.BASE_URL}/{season_code}/{csv_code}.csv"
         logger.info(f"Downloading CSV: {url}")
+        cache_path = self.cache_dir / f"{season_code}_{csv_code}.csv"
+
+        if cache_path.exists():
+            try:
+                matches = self._parse_csv(cache_path.read_text(encoding="utf-8", errors="ignore"), league_code, season)
+                self._cache[cache_key] = matches
+                logger.info(f"Parsed {len(matches)} cached matches from {league_code} {season}/{season+1}")
+                return matches
+            except Exception as e:
+                logger.warning(f"CSV cache read failed for {cache_path}: {e}")
 
         self._rate_limit()
         try:
@@ -105,6 +118,11 @@ class FootballDataCSVClient:
             if resp.status_code != 200:
                 logger.warning(f"CSV download failed: HTTP {resp.status_code} for {url}")
                 return []
+
+            try:
+                cache_path.write_text(resp.text, encoding="utf-8")
+            except Exception as e:
+                logger.debug(f"CSV cache write failed for {cache_path}: {e}")
 
             matches = self._parse_csv(resp.text, league_code, season)
             self._cache[cache_key] = matches
@@ -137,12 +155,7 @@ class FootballDataCSVClient:
         for s, code in self.AVAILABLE_SEASONS:
             if s == season:
                 return code
-        # Try to generate it
-        if 2010 <= season <= 2030:
-            s1 = str(season)[2:]
-            s2 = str(season + 1)[2:]
-            return f"{s1}{s2}"
-        return None
+        return _season_code_for_year(season)
 
     def _parse_csv(self, csv_text: str, league_code: str, season: int) -> List[Dict]:
         """Parse CSV text into normalized match dicts."""
@@ -223,6 +236,15 @@ class FootballDataCSVClient:
                 "max_home_odds": self._safe_float(row.get("MaxH")),
                 "max_draw_odds": self._safe_float(row.get("MaxD")),
                 "max_away_odds": self._safe_float(row.get("MaxA")),
+                "b365_close_home": self._safe_float(row.get("B365CH")),
+                "b365_close_draw": self._safe_float(row.get("B365CD")),
+                "b365_close_away": self._safe_float(row.get("B365CA")),
+                "avg_close_home_odds": self._safe_float(row.get("AvgCH")),
+                "avg_close_draw_odds": self._safe_float(row.get("AvgCD")),
+                "avg_close_away_odds": self._safe_float(row.get("AvgCA")),
+                "max_close_home_odds": self._safe_float(row.get("MaxCH")),
+                "max_close_draw_odds": self._safe_float(row.get("MaxCD")),
+                "max_close_away_odds": self._safe_float(row.get("MaxCA")),
                 # Over/under 2.5
                 "b365_over25": self._safe_float(row.get("B365>2.5")),
                 "b365_under25": self._safe_float(row.get("B365<2.5")),

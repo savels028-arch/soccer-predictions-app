@@ -88,6 +88,79 @@ CSV_LEAGUES = list(FootballDataCSVClient.LEAGUE_CSV_MAP.keys())
 ALL_SEASONS = [s for s, _ in FootballDataCSVClient.AVAILABLE_SEASONS]  # [2025,...,2015]
 ALL_SEASONS.sort()  # [2015,...,2025]
 
+DEFAULT_STARTING_BANKROLL = 10_000.0
+DEFAULT_SINGLE_STAKE = 100.0
+DEFAULT_COUPON_STAKE = 100.0
+DEFAULT_COUPON_MIN_LEGS = 2
+DEFAULT_COUPON_MAX_LEGS = 4
+MAX_ROBUST_DRAWDOWN = DEFAULT_STARTING_BANKROLL * 0.35
+NEGATIVE_SEASON_PENALTY = DEFAULT_STARTING_BANKROLL * 0.15
+TOP_LEAGUE_CODES = {"PL", "PD", "BL1", "SA", "FL1", "DED", "PPL"}
+OPT_CONF_THRESHOLDS = [x / 100 for x in range(40, 90, 5)]
+OPT_EDGE_THRESHOLDS = [None, 0.0, 0.02, 0.05, 0.08, 0.10, 0.15]
+OPT_COUPON_MAX_LEGS = [2, 3, 4, 5, 6]
+OPT_COUPON_SORTS = ["confidence", "edge", "edge_x_confidence"]
+OPT_COUPON_MAX_PER_LEAGUE = [1, 2, 3]
+OPT_SINGLE_BET_STYLES = ["model_pick", "least_likely", "market_underdog"]
+PATTERN_MIN_MATCHES = [2, 3, 4, 5]
+PATTERN_MIN_HIT_RATES = [0.60, 0.67, 0.75, 0.80, 0.90, 1.00]
+PATTERN_MAX_ODDS = [None, 4.0, 3.0, 2.5, 2.0]
+HISTORY_EDGE_LABEL_STYLES = [
+    "model_pick",
+    "max_model_edge",
+    "market_favorite",
+    "market_underdog",
+    "historical_outcome",
+]
+HISTORY_EDGE_CONF_THRESHOLDS = [None, 0.40, 0.50, 0.55, 0.60, 0.65]
+HISTORY_EDGE_MODEL_EDGE_THRESHOLDS = [None, 0.0, 0.02, 0.05, 0.08, 0.10]
+HISTORY_EDGE_FILTERS = [(2, 0.60), (2, 0.75), (3, 0.67), (3, 0.80), (4, 0.80), (4, 1.00)]
+HISTORY_EDGE_ODDS_BANDS = [None, (1.20, 2.50), (1.50, 3.00), (1.80, 3.50), (2.00, 4.00)]
+HISTORY_EDGE_COUPON_TOP_FILTERS = 60
+CSV_HISTORY_LABEL_STYLES = ["historical_outcome", "market_favorite", "market_underdog"]
+CSV_HISTORY_MIN_MATCHES = [2, 3, 4, 5, 6]
+CSV_HISTORY_MIN_RATES = [0.60, 0.67, 0.75, 0.80, 0.90, 1.00]
+CSV_HISTORY_EDGE_THRESHOLDS = [None, 0.0, 0.02, 0.05, 0.08, 0.10]
+STRATEGY_ZOO_ODDS_BANDS = [
+    None,
+    (1.01, 1.50),
+    (1.20, 2.00),
+    (1.20, 2.50),
+    (1.50, 2.50),
+    (1.50, 3.00),
+    (2.00, 3.50),
+    (3.00, 8.00),
+]
+STRATEGY_ZOO_HISTORY_COUNTS = [2, 3, 5, 6, 10]
+STRATEGY_ZOO_HISTORY_RATES = [0.55, 0.60, 0.67, 0.75, 0.80, 0.90]
+STRATEGY_ZOO_EDGE_THRESHOLDS = [None, 0.0, 0.02, 0.05, 0.08]
+STRATEGY_ZOO_COUPON_TOP_FILTERS = 25
+STRATEGY_ZOO_WF_SOURCE_ALLOWLIST = {
+    "market_favorite",
+    "direct_h2h",
+    "pair_history",
+    "favorite_direct_h2h_agree",
+    "favorite_pair_agree",
+    "home_any_history",
+    "away_any_history",
+}
+STRATEGY_ZOO_WF_ODDS_BANDS = [None, (1.20, 2.00), (1.20, 2.50), (1.50, 3.00)]
+STRATEGY_ZOO_WF_HISTORY_COUNTS = [2, 3, 5, 6, 10]
+STRATEGY_ZOO_WF_HISTORY_RATES = [0.60, 0.67, 0.75, 0.80]
+STRATEGY_ZOO_WF_EDGE_THRESHOLDS = [None, 0.0, 0.02, 0.05]
+STRATEGY_ZOO_WF_MIN_TRAIN_BETS = 150
+STRATEGY_ZOO_WF_COUPON_TOP_FILTERS = 8
+H2H_COUPON_SWEEP_SOURCES = ["direct_h2h", "favorite_direct_h2h_agree", "favorite_pair_agree"]
+H2H_COUPON_SWEEP_COUNTS = [8, 10, 12]
+H2H_COUPON_SWEEP_RATES = [0.75, 0.80, 0.85]
+H2H_COUPON_SWEEP_EDGES = [0.02, 0.05]
+H2H_COUPON_SWEEP_ODDS_BANDS = [(1.20, 2.00), (1.20, 2.50), (1.50, 2.50)]
+H2H_COUPON_SWEEP_ODDS_BASES = ["b365", "b365_close", "avg", "avg_close"]
+H2H_COUPON_SWEEP_MIN_LEAGUE_MATCHES = [0, 100]
+H2H_COUPON_SWEEP_FORM_THRESHOLDS = [None, 0.40]
+H2H_COUPON_SWEEP_COMBINED_ODDS_MAX = [None, 4.0, 5.0, 6.0]
+H2H_COUPON_SWEEP_TOP_FILTERS = 25
+
 
 # ═════════════════════════════════════════════════════════════
 #  DATA LOADING
@@ -246,16 +319,54 @@ def _build_h2h_index(matches: List[Dict]) -> Dict[Tuple[str, str], List[Dict]]:
     for m in matches:
         if m.get("status") != "FINISHED" or m.get("home_score") is None:
             continue
-        h = m["home_team_name"]
-        a = m["away_team_name"]
-        rec = {
-            "home_team": h, "away_team": a,
-            "home_goals": int(m["home_score"]), "away_goals": int(m["away_score"]),
-            "match_date": m.get("match_date", ""), "season": m.get("season", 0),
-        }
-        idx[(h, a)].append(rec)
-        idx[(a, h)].append(rec)
+        _append_h2h_match(idx, m)
     return idx
+
+
+def _append_h2h_match(idx: Dict[Tuple[str, str], List[Dict]], match: Dict):
+    """Append a finished match to the H2H index in both team directions."""
+    if match.get("status") != "FINISHED" or match.get("home_score") is None:
+        return
+    h = match["home_team_name"]
+    a = match["away_team_name"]
+    rec = {
+        "home_team": h, "away_team": a,
+        "home_score": int(match["home_score"]), "away_score": int(match["away_score"]),
+        "match_date": match.get("match_date", ""), "season": match.get("season", 0),
+    }
+    idx[(h, a)].append(rec)
+    idx[(a, h)].append(rec)
+
+
+def _record_finished_match(
+    team_idx: Dict[str, List[Dict]],
+    h2h_idx: Dict[Tuple[str, str], List[Dict]],
+    match: Dict,
+) -> bool:
+    """Add a completed test match to rolling backtest history."""
+    if match.get("status") != "FINISHED" or match.get("home_score") is None:
+        return False
+    home = match["home_team_name"]
+    away = match["away_team_name"]
+    team_idx[home].append(match)
+    team_idx[away].append(match)
+    _append_h2h_match(h2h_idx, match)
+    return True
+
+
+def _compute_team_stats_snapshot(team_matches: List[Dict], team_name: str,
+                                 league_code: str, season: int) -> Optional[Dict]:
+    """Compute a pre-match team snapshot from past matches in the same league/season."""
+    scoped = [
+        m for m in team_matches
+        if m.get("league_code") == league_code
+        and m.get("season") == season
+        and m.get("status") == "FINISHED"
+        and m.get("home_score") is not None
+    ]
+    if len(scoped) < 3:
+        return None
+    return _compute_stats_from_list(team_name, league_code, season, scoped)
 
 
 def _quick_stats(team_name: str, league_code: str, season: int,
@@ -312,6 +423,118 @@ def train_models(models: Dict, X: np.ndarray, y: np.ndarray, config: Dict):
 
     ensemble = EnsembleModel(models, config)
     return models, ensemble, stacking, accuracies
+
+
+def _build_training_data_v1_fast(matches: List[Dict]) -> Tuple[np.ndarray, np.ndarray, List[str]]:
+    """Build v1 training rows from rolling in-memory match history."""
+    X_list = []
+    y_list = []
+    date_list = []
+    team_idx: Dict[str, List[Dict]] = defaultdict(list)
+    h2h_idx: Dict[Tuple[str, str], List[Dict]] = defaultdict(list)
+
+    for match in sorted(matches, key=lambda m: m.get("match_date", "")):
+        if match.get("status") != "FINISHED" or match.get("home_score") is None:
+            continue
+
+        home = match["home_team_name"]
+        away = match["away_team_name"]
+        league = match.get("league_code", "")
+        season = match.get("season", 2025)
+        home_past = team_idx.get(home, [])
+        away_past = team_idx.get(away, [])
+        home_stats = _compute_team_stats_snapshot(home_past, home, league, season)
+        away_stats = _compute_team_stats_snapshot(away_past, away, league, season)
+
+        if home_stats and away_stats:
+            home_stats["team_name"] = home
+            away_stats["team_name"] = away
+            h2h = h2h_idx.get((home, away), [])[-10:]
+            try:
+                features = FeatureEngineer.build_match_features(
+                    home_stats, away_stats, h2h,
+                    match.get("home_odds"), match.get("draw_odds"), match.get("away_odds"),
+                )
+                hs = int(match["home_score"])
+                aws = int(match["away_score"])
+                label = LABEL_HOME if hs > aws else (LABEL_DRAW if hs == aws else LABEL_AWAY)
+                X_list.append(np.nan_to_num(features, nan=0.0, posinf=0.0, neginf=0.0))
+                y_list.append(label)
+                date_list.append(match.get("match_date", ""))
+            except Exception as e:
+                logger.error(f"Fast v1 feature error for {home} vs {away}: {e}")
+
+        _record_finished_match(team_idx, h2h_idx, match)
+
+    if not X_list:
+        return np.empty((0, len(FeatureEngineer.FEATURE_NAMES))), np.empty(0), []
+    return np.array(X_list), np.array(y_list), date_list
+
+
+def _build_training_data_v2_fast(matches: List[Dict]) -> Tuple[np.ndarray, np.ndarray, List[str]]:
+    """Build v2 training rows from rolling in-memory match history."""
+    X_list = []
+    y_list = []
+    date_list = []
+    team_idx: Dict[str, List[Dict]] = defaultdict(list)
+    h2h_idx: Dict[Tuple[str, str], List[Dict]] = defaultdict(list)
+    elo_tracker = EloTracker()
+
+    for match in sorted(matches, key=lambda m: m.get("match_date", "")):
+        if match.get("status") != "FINISHED" or match.get("home_score") is None:
+            continue
+
+        home = match["home_team_name"]
+        away = match["away_team_name"]
+        league = match.get("league_code", "")
+        season = match.get("season", 2025)
+        match_date = match.get("match_date", "")
+        home_past = team_idx.get(home, [])
+        away_past = team_idx.get(away, [])
+        home_stats = _compute_team_stats_snapshot(home_past, home, league, season)
+        away_stats = _compute_team_stats_snapshot(away_past, away, league, season)
+
+        if home_stats and away_stats:
+            home_stats["team_name"] = home
+            away_stats["team_name"] = away
+            h2h = h2h_idx.get((home, away), [])[-10:]
+            try:
+                features = FeatureEngineerV2.build_match_features_v2(
+                    home_stats, away_stats, h2h,
+                    match.get("home_odds"), match.get("draw_odds"), match.get("away_odds"),
+                    ai_predictions=None,
+                    elo_tracker=elo_tracker,
+                    home_form_list=FeatureEngineerV2.compute_form_list(home_past, home),
+                    away_form_list=FeatureEngineerV2.compute_form_list(away_past, away),
+                    home_extra=FeatureEngineerV2.compute_csv_extra_averages(home_past, home),
+                    away_extra=FeatureEngineerV2.compute_csv_extra_averages(away_past, away),
+                    home_days_rest=FeatureEngineerV2.compute_days_since_last(home_past, home, match_date),
+                    away_days_rest=FeatureEngineerV2.compute_days_since_last(away_past, away, match_date),
+                    home_recent_goals_avg=FeatureEngineerV2.compute_recent_goals_avg(home_past, home),
+                    away_recent_goals_avg=FeatureEngineerV2.compute_recent_goals_avg(away_past, away),
+                    is_training=True,
+                    league_code=league,
+                    matchday=match.get("matchday", 0) or 0,
+                    total_matchdays=38,
+                    match_datetime=match_date,
+                    home_sos=FeatureEngineerV2.compute_sos(home_past, home, elo_tracker),
+                    away_sos=FeatureEngineerV2.compute_sos(away_past, away, elo_tracker),
+                )
+                hs = int(match["home_score"])
+                aws = int(match["away_score"])
+                label = LABEL_HOME if hs > aws else (LABEL_DRAW if hs == aws else LABEL_AWAY)
+                X_list.append(np.nan_to_num(features, nan=0.0, posinf=0.0, neginf=0.0))
+                y_list.append(label)
+                date_list.append(match_date)
+            except Exception as e:
+                logger.error(f"Fast v2 feature error for {home} vs {away}: {e}")
+
+        _record_finished_match(team_idx, h2h_idx, match)
+        elo_tracker.update(home, away, int(match["home_score"]), int(match["away_score"]))
+
+    if not X_list:
+        return np.empty((0, len(FeatureEngineerV2.FEATURE_NAMES))), np.empty(0), []
+    return np.array(X_list), np.array(y_list), date_list
 
 
 # ═════════════════════════════════════════════════════════════
@@ -526,6 +749,155 @@ def predict_single_v2(match: Dict, models: Dict, ensemble: EnsembleModel,
     }
 
 
+def _normalize_prob_matrix(probs: np.ndarray, n_rows: int) -> np.ndarray:
+    """Return an n x 3 probability matrix with sane defaults."""
+    arr = np.asarray(probs, dtype=float)
+    if arr.ndim == 1:
+        arr = arr.reshape(1, -1)
+    if arr.shape[0] == 1 and n_rows > 1:
+        arr = np.repeat(arr, n_rows, axis=0)
+    if arr.shape[1] != 3:
+        raise ValueError(f"Expected 3 probability columns, got {arr.shape}")
+    arr = np.nan_to_num(arr[:, :3], nan=0.0, posinf=0.0, neginf=0.0)
+    row_sums = arr.sum(axis=1, keepdims=True)
+    empty_rows = row_sums[:, 0] <= 0
+    np.divide(arr, row_sums, out=arr, where=row_sums > 0)
+    if np.any(empty_rows):
+        arr[empty_rows] = [0.33, 0.33, 0.34]
+    return arr
+
+
+def _model_probs_batch(model, X: np.ndarray) -> np.ndarray:
+    """Batch predict one model, falling back to neutral probabilities."""
+    n_rows = len(X)
+    if not getattr(model, "is_trained", False):
+        return np.repeat([[0.33, 0.33, 0.34]], n_rows, axis=0)
+    try:
+        return _normalize_prob_matrix(model.predict_proba(X), n_rows)
+    except Exception as e:
+        logger.warning(f"Batch prediction failed for {getattr(model, 'name', '?')}: {e}")
+        return np.repeat([[0.33, 0.33, 0.34]], n_rows, axis=0)
+
+
+def _ensemble_probs_batch(
+    models: Dict[str, object],
+    weights: Dict[str, float],
+    stacking: Optional[StackingEnsemble],
+    X: np.ndarray,
+) -> np.ndarray:
+    """Batch equivalent of StackingEnsemble/EnsembleModel predict_proba."""
+    n_rows = len(X)
+    if n_rows == 0:
+        return np.empty((0, 3))
+
+    if stacking and stacking.is_trained and getattr(stacking, "meta_model", None) is not None:
+        meta_X = np.zeros((n_rows, 3 * len(models)))
+        for m_idx, (_, model) in enumerate(models.items()):
+            meta_X[:, m_idx * 3:(m_idx + 1) * 3] = _model_probs_batch(model, X)
+        return _normalize_prob_matrix(stacking.meta_model.predict_proba(meta_X), n_rows)
+
+    weighted = np.zeros((n_rows, 3))
+    total_weight = 0.0
+    for model_name, model in models.items():
+        if not getattr(model, "is_trained", False):
+            continue
+        weight = weights.get(model_name, 0.33)
+        weighted += _model_probs_batch(model, X) * weight
+        total_weight += weight
+
+    if total_weight <= 0:
+        return np.repeat([[0.33, 0.33, 0.34]], n_rows, axis=0)
+    return _normalize_prob_matrix(weighted / total_weight, n_rows)
+
+
+def _prediction_from_probs(row: Dict, probs: np.ndarray, version: str) -> Dict:
+    """Create the stored backtest prediction dict from probabilities."""
+    predicted_label = int(np.argmax(probs))
+    confidence = float(probs[predicted_label])
+    home_odds = row.get("home_odds")
+    draw_odds = row.get("draw_odds")
+    away_odds = row.get("away_odds")
+
+    edge = 0.0
+    if home_odds and draw_odds and away_odds and home_odds > 1 and draw_odds > 1 and away_odds > 1:
+        inv_sum = (1.0 / home_odds + 1.0 / draw_odds + 1.0 / away_odds)
+        fair_odds = [1.0 / home_odds / inv_sum, 1.0 / draw_odds / inv_sum, 1.0 / away_odds / inv_sum]
+        edge = float(probs[predicted_label] - fair_odds[predicted_label])
+
+    actual_odds_map = {LABEL_HOME: home_odds, LABEL_DRAW: draw_odds, LABEL_AWAY: away_odds}
+    sel_odds = actual_odds_map.get(predicted_label)
+    kelly = 0.0
+    if sel_odds and sel_odds > 1.0:
+        b = sel_odds - 1.0
+        kelly = max(0.0, (b * confidence - (1.0 - confidence)) / b)
+        kelly = min(kelly, 0.25)
+
+    result = {
+        "match_date": row["match_date"],
+        "league": row["league"],
+        "season": row["season"],
+        "home": row["home"],
+        "away": row["away"],
+        "home_score": row["home_score"],
+        "away_score": row["away_score"],
+        "actual": row["actual"],
+        "predicted": predicted_label,
+        "confidence": confidence,
+        "home_prob": float(probs[0]),
+        "draw_prob": float(probs[1]),
+        "away_prob": float(probs[2]),
+        "home_odds": home_odds,
+        "draw_odds": draw_odds,
+        "away_odds": away_odds,
+        "edge": edge,
+        "kelly": kelly,
+        "version": version,
+    }
+    for key in ("poisson_score", "btts_prob", "over25_prob", "fold_season"):
+        if key in row:
+            result[key] = row[key]
+    return result
+
+
+def _predict_rows_batch(
+    rows: List[Dict],
+    models: Dict[str, object],
+    config: Dict,
+    stacking: Optional[StackingEnsemble],
+    version: str,
+) -> List[Dict]:
+    """Batch predict prepared feature rows."""
+    if not rows:
+        return []
+    X = np.vstack([r["features"] for r in rows])
+    probs_matrix = _ensemble_probs_batch(models, config.get("ensemble", {}).get("weights", {}), stacking, X)
+    return [_prediction_from_probs(row, probs, version) for row, probs in zip(rows, probs_matrix)]
+
+
+def _predict_v2_rows_batch(
+    rows: List[Dict],
+    models: Dict[str, object],
+    config: Dict,
+    stacking: Optional[StackingEnsemble],
+) -> List[Dict]:
+    """Batch predict v2 rows and apply the same Poisson blend as single-match mode."""
+    if not rows:
+        return []
+    X = np.vstack([r["features"] for r in rows])
+    base_probs = _ensemble_probs_batch(models, config.get("ensemble", {}).get("weights", {}), stacking, X)
+    blended_rows = []
+    for row, probs in zip(rows, base_probs):
+        poisson_probs = row["poisson_probs"]
+        blended = np.array([
+            probs[0] * 0.95 + poisson_probs["home_win"] * 0.05,
+            probs[1] * 0.95 + poisson_probs["draw"] * 0.05,
+            probs[2] * 0.95 + poisson_probs["away_win"] * 0.05,
+        ])
+        blended_rows.append(blended)
+    probs_matrix = _normalize_prob_matrix(np.vstack(blended_rows), len(rows))
+    return [_prediction_from_probs(row, probs, "v2") for row, probs in zip(rows, probs_matrix)]
+
+
 # ═════════════════════════════════════════════════════════════
 #  METRICS CALCULATION
 # ═════════════════════════════════════════════════════════════
@@ -612,6 +984,342 @@ def _calc_roi_kelly(predictions: List[Dict]) -> Dict:
             "returned": round(total_return, 2), "profit": round(profit, 2), "roi_pct": roi_pct}
 
 
+def _prediction_odds(prediction: Dict, label: Optional[int] = None) -> Optional[float]:
+    """Return decimal odds for a selected 1X2 label."""
+    selected = prediction.get("predicted") if label is None else label
+    odds_map = {
+        LABEL_HOME: prediction.get("home_odds"),
+        LABEL_DRAW: prediction.get("draw_odds"),
+        LABEL_AWAY: prediction.get("away_odds"),
+    }
+    try:
+        odds = float(odds_map.get(selected) or 0)
+    except (TypeError, ValueError):
+        return None
+    return odds if odds > 1.0 else None
+
+
+def _prediction_strength(prediction: Dict) -> float:
+    """Ranking score for choosing the strongest bets inside a day/coupon."""
+    confidence = float(prediction.get("confidence") or 0.0)
+    edge = float(prediction.get("edge") or 0.0)
+    return max(edge, 0.0) * confidence
+
+
+def _coupon_sort_key(prediction: Dict, sort_by: str) -> Tuple:
+    """Sort key for selecting the strongest coupon legs."""
+    confidence = float(prediction.get("confidence") or 0.0)
+    edge = float(prediction.get("edge") or 0.0)
+    odds = _prediction_odds(prediction) or 0.0
+    if sort_by == "confidence":
+        return (confidence, edge, odds)
+    if sort_by == "edge":
+        return (edge, confidence, odds)
+    return (_prediction_strength(prediction), confidence, edge, odds)
+
+
+def _sorted_predictions(predictions: List[Dict]) -> List[Dict]:
+    """Stable chronological ordering for bankroll simulations."""
+    return sorted(
+        predictions,
+        key=lambda p: (
+            p.get("match_date", ""),
+            p.get("league", ""),
+            p.get("home", ""),
+            p.get("away", ""),
+        ),
+    )
+
+
+def _season_key(prediction: Dict) -> str:
+    season = prediction.get("season")
+    if season is not None:
+        return str(season)
+    match_date = prediction.get("match_date") or ""
+    return match_date[:4] if match_date else "unknown"
+
+
+def _empty_period_stats() -> Dict:
+    return {
+        "bets": 0,
+        "wins": 0,
+        "staked": 0.0,
+        "returned": 0.0,
+        "profit": 0.0,
+        "roi_pct": 0.0,
+        "accuracy": 0.0,
+    }
+
+
+def _finalize_period_stats(periods: Dict[str, Dict]) -> Dict[str, Dict]:
+    finalized = {}
+    for key in sorted(periods):
+        stats = dict(periods[key])
+        stats["profit"] = round(stats["returned"] - stats["staked"], 2)
+        stats["roi_pct"] = (stats["profit"] / stats["staked"] * 100) if stats["staked"] else 0.0
+        stats["accuracy"] = (stats["wins"] / stats["bets"] * 100) if stats["bets"] else 0.0
+        stats["staked"] = round(stats["staked"], 2)
+        stats["returned"] = round(stats["returned"], 2)
+        stats["roi_pct"] = round(stats["roi_pct"], 2)
+        stats["accuracy"] = round(stats["accuracy"], 2)
+        finalized[key] = stats
+    return finalized
+
+
+def _build_coupon_batches(
+    predictions: List[Dict],
+    min_legs: int = DEFAULT_COUPON_MIN_LEGS,
+    max_legs: int = DEFAULT_COUPON_MAX_LEGS,
+    sort_by: str = "edge_x_confidence",
+    max_per_league: Optional[int] = None,
+) -> Tuple[List[List[Dict]], int]:
+    """Group selected predictions into deterministic day-based coupon batches."""
+    by_day: Dict[str, List[Dict]] = defaultdict(list)
+    skipped_no_odds = 0
+
+    for prediction in _sorted_predictions(predictions):
+        if _prediction_odds(prediction) is None:
+            skipped_no_odds += 1
+            continue
+        day = (prediction.get("match_date") or "")[:10] or "unknown"
+        by_day[day].append(prediction)
+
+    batches: List[List[Dict]] = []
+    for day in sorted(by_day):
+        remaining = sorted(
+            by_day[day],
+            key=lambda p: _coupon_sort_key(p, sort_by),
+            reverse=True,
+        )
+
+        if max_per_league is None:
+            for start in range(0, len(remaining), max_legs):
+                legs = remaining[start:start + max_legs]
+                if len(legs) >= min_legs:
+                    batches.append(legs)
+            continue
+
+        while remaining:
+            legs = []
+            used_ids = set()
+            league_counts: Dict[str, int] = defaultdict(int)
+            for idx, prediction in enumerate(remaining):
+                league = prediction.get("league", "UNK")
+                if league_counts[league] >= max_per_league:
+                    continue
+                legs.append(prediction)
+                used_ids.add(idx)
+                league_counts[league] += 1
+                if len(legs) >= max_legs:
+                    break
+
+            if len(legs) < min_legs:
+                break
+            batches.append(legs)
+            remaining = [p for idx, p in enumerate(remaining) if idx not in used_ids]
+
+    return batches, skipped_no_odds
+
+
+def simulate_flat_bankroll(
+    predictions: List[Dict],
+    starting_bankroll: float = DEFAULT_STARTING_BANKROLL,
+    stake: float = DEFAULT_SINGLE_STAKE,
+    bet_label_fn=None,
+) -> Dict:
+    """
+    Simulate a real bankroll: start with 10,000 and stake the same amount
+    on every selected match. Stops if the bankroll cannot fund the next bet.
+    """
+    bankroll = float(starting_bankroll)
+    peak = bankroll
+    min_bankroll = bankroll
+    max_drawdown = 0.0
+    staked = 0.0
+    returned = 0.0
+    bets = 0
+    wins = 0
+    skipped_no_odds = 0
+    stopped = False
+    season_stats: Dict[str, Dict] = defaultdict(_empty_period_stats)
+
+    for prediction in _sorted_predictions(predictions):
+        label = bet_label_fn(prediction) if bet_label_fn else prediction.get("predicted")
+        odds = _prediction_odds(prediction, label)
+        if odds is None:
+            skipped_no_odds += 1
+            continue
+        if bankroll < stake:
+            stopped = True
+            break
+
+        bankroll -= stake
+        staked += stake
+        bets += 1
+
+        payout = 0.0
+        if label == prediction.get("actual"):
+            payout = stake * odds
+            wins += 1
+        bankroll += payout
+        returned += payout
+
+        season = _season_key(prediction)
+        season_stats[season]["bets"] += 1
+        season_stats[season]["wins"] += 1 if payout else 0
+        season_stats[season]["staked"] += stake
+        season_stats[season]["returned"] += payout
+
+        peak = max(peak, bankroll)
+        min_bankroll = min(min_bankroll, bankroll)
+        max_drawdown = max(max_drawdown, peak - bankroll)
+
+    profit = bankroll - starting_bankroll
+    roi_pct = (profit / staked * 100) if staked else 0.0
+    growth_pct = (profit / starting_bankroll * 100) if starting_bankroll else 0.0
+    max_drawdown_pct = (max_drawdown / peak * 100) if peak else 0.0
+
+    return {
+        "starting_bankroll": round(starting_bankroll, 2),
+        "stake": round(stake, 2),
+        "bets": bets,
+        "wins": wins,
+        "accuracy": round((wins / bets * 100) if bets else 0.0, 2),
+        "staked": round(staked, 2),
+        "returned": round(returned, 2),
+        "final_bankroll": round(bankroll, 2),
+        "profit": round(profit, 2),
+        "growth_pct": round(growth_pct, 2),
+        "roi_pct": round(roi_pct, 2),
+        "max_drawdown": round(max_drawdown, 2),
+        "max_drawdown_pct": round(max_drawdown_pct, 2),
+        "min_bankroll": round(min_bankroll, 2),
+        "stopped_bankroll_depleted": stopped,
+        "skipped_no_odds": skipped_no_odds,
+        "by_season": _finalize_period_stats(season_stats),
+    }
+
+
+def simulate_coupon_batches(
+    batches: List[List[Dict]],
+    starting_bankroll: float = DEFAULT_STARTING_BANKROLL,
+    stake: float = DEFAULT_COUPON_STAKE,
+    min_legs: int = DEFAULT_COUPON_MIN_LEGS,
+    max_legs: int = DEFAULT_COUPON_MAX_LEGS,
+    sort_by: str = "edge_x_confidence",
+    max_per_league: Optional[int] = None,
+    skipped_no_odds: int = 0,
+) -> Dict:
+    """Simulate already-built coupon batches in chronological order."""
+    bankroll = float(starting_bankroll)
+    peak = bankroll
+    min_bankroll = bankroll
+    max_drawdown = 0.0
+    staked = 0.0
+    returned = 0.0
+    coupons = 0
+    winning_coupons = 0
+    legs_played = 0
+    stopped = False
+    season_stats: Dict[str, Dict] = defaultdict(_empty_period_stats)
+
+    for legs in batches:
+        if bankroll < stake:
+            stopped = True
+            break
+
+        combined_odds = 1.0
+        all_correct = True
+        for leg in legs:
+            combined_odds *= _prediction_odds(leg) or 1.0
+            all_correct = all_correct and leg.get("predicted") == leg.get("actual")
+
+        bankroll -= stake
+        staked += stake
+        coupons += 1
+        legs_played += len(legs)
+
+        payout = 0.0
+        if all_correct:
+            payout = stake * combined_odds
+            winning_coupons += 1
+        bankroll += payout
+        returned += payout
+
+        season = _season_key(legs[0])
+        season_stats[season]["bets"] += 1
+        season_stats[season]["wins"] += 1 if payout else 0
+        season_stats[season]["staked"] += stake
+        season_stats[season]["returned"] += payout
+
+        peak = max(peak, bankroll)
+        min_bankroll = min(min_bankroll, bankroll)
+        max_drawdown = max(max_drawdown, peak - bankroll)
+
+    profit = bankroll - starting_bankroll
+    roi_pct = (profit / staked * 100) if staked else 0.0
+    growth_pct = (profit / starting_bankroll * 100) if starting_bankroll else 0.0
+    max_drawdown_pct = (max_drawdown / peak * 100) if peak else 0.0
+
+    return {
+        "starting_bankroll": round(starting_bankroll, 2),
+        "stake": round(stake, 2),
+        "min_legs": min_legs,
+        "max_legs": max_legs,
+        "sort_by": sort_by,
+        "max_per_league": max_per_league,
+        "coupons": coupons,
+        "winning_coupons": winning_coupons,
+        "coupon_hit_rate": round((winning_coupons / coupons * 100) if coupons else 0.0, 2),
+        "legs_played": legs_played,
+        "avg_legs": round((legs_played / coupons) if coupons else 0.0, 2),
+        "staked": round(staked, 2),
+        "returned": round(returned, 2),
+        "final_bankroll": round(bankroll, 2),
+        "profit": round(profit, 2),
+        "growth_pct": round(growth_pct, 2),
+        "roi_pct": round(roi_pct, 2),
+        "max_drawdown": round(max_drawdown, 2),
+        "max_drawdown_pct": round(max_drawdown_pct, 2),
+        "min_bankroll": round(min_bankroll, 2),
+        "stopped_bankroll_depleted": stopped,
+        "skipped_no_odds": skipped_no_odds,
+        "by_season": _finalize_period_stats(season_stats),
+    }
+
+
+def simulate_coupon_bankroll(
+    predictions: List[Dict],
+    starting_bankroll: float = DEFAULT_STARTING_BANKROLL,
+    stake: float = DEFAULT_COUPON_STAKE,
+    min_legs: int = DEFAULT_COUPON_MIN_LEGS,
+    max_legs: int = DEFAULT_COUPON_MAX_LEGS,
+    sort_by: str = "edge_x_confidence",
+    max_per_league: Optional[int] = None,
+) -> Dict:
+    """
+    Simulate accumulator coupons. Selected matches are grouped by match day,
+    strongest selections first, with at most max_legs per coupon.
+    """
+    batches, skipped_no_odds = _build_coupon_batches(
+        predictions,
+        min_legs=min_legs,
+        max_legs=max_legs,
+        sort_by=sort_by,
+        max_per_league=max_per_league,
+    )
+    return simulate_coupon_batches(
+        batches,
+        starting_bankroll=starting_bankroll,
+        stake=stake,
+        min_legs=min_legs,
+        max_legs=max_legs,
+        sort_by=sort_by,
+        max_per_league=max_per_league,
+        skipped_no_odds=skipped_no_odds,
+    )
+
+
 def compute_per_league(predictions: List[Dict]) -> Dict[str, Dict]:
     """Compute metrics per league."""
     by_league = defaultdict(list)
@@ -684,6 +1392,7 @@ def compute_betting_experiments(predictions: List[Dict]) -> List[Dict]:
             dd = peak - pl
             if dd > max_dd:
                 max_dd = dd
+        bankroll = simulate_flat_bankroll(preds, bet_label_fn=bet_label_fn)
 
         experiments.append({
             "name": name,
@@ -696,6 +1405,11 @@ def compute_betting_experiments(predictions: List[Dict]) -> List[Dict]:
             "kelly_profit": k_profit,
             "kelly_roi": k_roi,
             "max_drawdown": max_dd,
+            "bankroll_final": bankroll["final_bankroll"],
+            "bankroll_profit": bankroll["profit"],
+            "bankroll_growth_pct": bankroll["growth_pct"],
+            "bankroll_max_drawdown": bankroll["max_drawdown"],
+            "bankroll": bankroll,
         })
 
     # ── 1. ALL predictions (model picks) ──
@@ -756,7 +1470,2960 @@ def compute_betting_experiments(predictions: List[Dict]) -> List[Dict]:
     hv2 = [p for p in predictions if p["edge"] >= 0.10 and p["confidence"] >= 0.50]
     _run("Edge>=10% + Conf>=50%", hv2)
 
+    hc_market = [p for p in predictions if p["edge"] >= 0.0 and p["confidence"] >= 0.65]
+    _run("Edge>=0% + Conf>=65%", hc_market)
+
     return experiments
+
+
+def compute_coupon_experiments(predictions: List[Dict]) -> List[Dict]:
+    """Backtest accumulator/coupon strategies with fixed bankroll and stake."""
+    strategies = [
+        ("Conf >= 45%", lambda p: p["confidence"] >= 0.45),
+        ("Conf >= 50%", lambda p: p["confidence"] >= 0.50),
+        ("Conf >= 55%", lambda p: p["confidence"] >= 0.55),
+        ("Conf >= 60%", lambda p: p["confidence"] >= 0.60),
+        ("Conf >= 65%", lambda p: p["confidence"] >= 0.65),
+        ("Edge >= 5%", lambda p: p["edge"] >= 0.05),
+        ("Edge >= 8%", lambda p: p["edge"] >= 0.08),
+        ("Edge >= 10%", lambda p: p["edge"] >= 0.10),
+        ("Edge>=5% + Conf>=45%", lambda p: p["edge"] >= 0.05 and p["confidence"] >= 0.45),
+        ("Edge>=5% + Conf>=50%", lambda p: p["edge"] >= 0.05 and p["confidence"] >= 0.50),
+        ("Edge>=0% + Conf>=65%", lambda p: p["edge"] >= 0.0 and p["confidence"] >= 0.65),
+        ("Edge>=10% + Conf>=50%", lambda p: p["edge"] >= 0.10 and p["confidence"] >= 0.50),
+        ("Edge>=10% + Conf>=55%", lambda p: p["edge"] >= 0.10 and p["confidence"] >= 0.55),
+    ]
+    experiments = []
+    for name, predicate in strategies:
+        selected = [p for p in predictions if predicate(p)]
+        for max_legs in [2, 3, 4, 5, 6]:
+            sim = simulate_coupon_bankroll(selected, max_legs=max_legs)
+            experiments.append({
+                "name": name,
+                "max_legs": max_legs,
+                "coupons": sim["coupons"],
+                "winning_coupons": sim["winning_coupons"],
+                "coupon_hit_rate": sim["coupon_hit_rate"],
+                "profit": sim["profit"],
+                "roi_pct": sim["roi_pct"],
+                "final_bankroll": sim["final_bankroll"],
+                "growth_pct": sim["growth_pct"],
+                "max_drawdown": sim["max_drawdown"],
+                "simulation": sim,
+            })
+    experiments.sort(
+        key=lambda e: (e["final_bankroll"], -e["max_drawdown"], e["coupons"]),
+        reverse=True,
+    )
+    return experiments
+
+
+# ═════════════════════════════════════════════════════════════
+#  STRATEGY OPTIMIZER
+# ═════════════════════════════════════════════════════════════
+def _threshold_label(value: Optional[float]) -> str:
+    if value is None:
+        return "none"
+    return f"{value * 100:.0f}%"
+
+
+def _outcome_label(label: Optional[int]) -> str:
+    if label is None:
+        return "all"
+    return {LABEL_HOME: "home", LABEL_DRAW: "draw", LABEL_AWAY: "away"}.get(label, str(label))
+
+
+def _bet_label_for_style(prediction: Dict, bet_style: str) -> int:
+    if bet_style == "least_likely":
+        probs = [
+            (prediction.get("home_prob", 0.0), LABEL_HOME),
+            (prediction.get("draw_prob", 0.0), LABEL_DRAW),
+            (prediction.get("away_prob", 0.0), LABEL_AWAY),
+        ]
+        return min(probs, key=lambda item: item[0])[1]
+
+    if bet_style == "market_underdog":
+        odds = [
+            (prediction.get("home_odds") or 0.0, LABEL_HOME),
+            (prediction.get("draw_odds") or 0.0, LABEL_DRAW),
+            (prediction.get("away_odds") or 0.0, LABEL_AWAY),
+        ]
+        return max(odds, key=lambda item: item[0])[1]
+
+    return prediction.get("predicted")
+
+
+def _league_groups(predictions: List[Dict]) -> Dict[str, List[str]]:
+    leagues = sorted({p.get("league", "UNK") for p in predictions if p.get("league")})
+    groups = {"all": leagues}
+
+    top = [league for league in leagues if league in TOP_LEAGUE_CODES]
+    if top and set(top) != set(leagues):
+        groups["top_leagues"] = top
+
+    positive = []
+    for league in leagues:
+        league_preds = [p for p in predictions if p.get("league") == league]
+        if simulate_flat_bankroll(league_preds)["profit"] > 0:
+            positive.append(league)
+    if positive:
+        groups["positive_leagues"] = positive
+
+    for league in leagues:
+        groups[f"league:{league}"] = [league]
+    return groups
+
+
+def _filter_predictions(
+    predictions: List[Dict],
+    confidence_min: Optional[float],
+    edge_min: Optional[float],
+    outcome: Optional[int],
+    leagues: List[str],
+) -> List[Dict]:
+    league_set = set(leagues)
+    selected = []
+    for prediction in predictions:
+        if league_set and prediction.get("league") not in league_set:
+            continue
+        if confidence_min is not None and prediction.get("confidence", 0.0) < confidence_min:
+            continue
+        if edge_min is not None and prediction.get("edge", 0.0) < edge_min:
+            continue
+        if outcome is not None and prediction.get("predicted") != outcome:
+            continue
+        selected.append(prediction)
+    return selected
+
+
+def _robust_score(simulation: Dict, count_key: str, min_count: int) -> Tuple[float, bool, List[str]]:
+    reasons = []
+    count = int(simulation.get(count_key, 0))
+    profit = float(simulation.get("profit", 0.0))
+    max_drawdown = float(simulation.get("max_drawdown", 0.0))
+    seasons = simulation.get("by_season", {})
+    positive_seasons = sum(1 for stats in seasons.values() if stats.get("profit", 0.0) > 0)
+    negative_seasons = sum(1 for stats in seasons.values() if stats.get("profit", 0.0) < 0)
+    required_positive = math.ceil(len(seasons) * 0.70) if seasons else 0
+    worst_season_loss = abs(min((stats.get("profit", 0.0) for stats in seasons.values()), default=0.0))
+
+    if count < min_count:
+        reasons.append(f"too_few_{count_key}")
+    if profit <= 0:
+        reasons.append("not_profitable")
+    if seasons and positive_seasons < required_positive:
+        reasons.append("not_profitable_enough_seasons")
+    if any(0 < stats.get("bets", min_count) < max(5, min_count // 10) for stats in seasons.values()):
+        reasons.append("thin_season_sample")
+    if max_drawdown > MAX_ROBUST_DRAWDOWN:
+        reasons.append("drawdown_too_high")
+
+    score = (
+        profit
+        - (0.5 * max_drawdown)
+        - (NEGATIVE_SEASON_PENALTY * negative_seasons)
+        - (0.25 * worst_season_loss)
+    )
+    return round(score, 2), not reasons, reasons
+
+
+def _trim_candidate(candidate: Dict) -> Dict:
+    """Keep optimization JSON readable while preserving the key decision data."""
+    keep = {
+        "type", "mode", "version", "name", "bet_style", "confidence_min_pct", "edge_min_pct",
+        "outcome", "league_filter", "leagues", "max_legs", "sort_by",
+        "max_per_league", "score", "eligible", "rejection_reasons",
+    }
+    trimmed = {k: v for k, v in candidate.items() if k in keep}
+    sim = candidate.get("simulation", {})
+    trimmed["simulation"] = {
+        k: sim.get(k)
+        for k in [
+            "bets", "wins", "accuracy", "coupons", "winning_coupons",
+            "coupon_hit_rate", "final_bankroll", "profit", "roi_pct",
+            "max_drawdown", "max_drawdown_pct", "by_season",
+        ]
+        if k in sim
+    }
+    return trimmed
+
+
+def _rank_candidates(candidates: List[Dict]) -> List[Dict]:
+    return sorted(
+        candidates,
+        key=lambda c: (
+            1 if c.get("eligible") else 0,
+            c.get("score", -10**9),
+            c.get("simulation", {}).get("final_bankroll", 0),
+            -c.get("simulation", {}).get("max_drawdown", 0),
+        ),
+        reverse=True,
+    )
+
+
+def _optimize_single(mode: str, version: str, predictions: List[Dict]) -> List[Dict]:
+    candidates = []
+    confidence_options = [None] + OPT_CONF_THRESHOLDS
+    outcome_options = [None, LABEL_HOME, LABEL_DRAW, LABEL_AWAY]
+    for league_filter, leagues in _league_groups(predictions).items():
+        for bet_style in OPT_SINGLE_BET_STYLES:
+            bet_label_fn = None if bet_style == "model_pick" else lambda p, style=bet_style: _bet_label_for_style(p, style)
+            for confidence_min in confidence_options:
+                for edge_min in OPT_EDGE_THRESHOLDS:
+                    base_selected = _filter_predictions(predictions, confidence_min, edge_min, None, leagues)
+                    for outcome in outcome_options:
+                        if outcome is None:
+                            selected = base_selected
+                        else:
+                            selected = [
+                                p for p in base_selected
+                                if _bet_label_for_style(p, bet_style) == outcome
+                            ]
+                        simulation = simulate_flat_bankroll(selected, bet_label_fn=bet_label_fn)
+                        score, eligible, reasons = _robust_score(simulation, "bets", 100)
+                        name = (
+                            f"{version} single style={bet_style} "
+                            f"conf>={_threshold_label(confidence_min)} "
+                            f"edge>={_threshold_label(edge_min)} outcome={_outcome_label(outcome)} "
+                            f"leagues={league_filter}"
+                        )
+                        candidates.append({
+                            "type": "single",
+                            "mode": mode,
+                            "version": version,
+                            "name": name,
+                            "bet_style": bet_style,
+                            "confidence_min_pct": None if confidence_min is None else round(confidence_min * 100, 1),
+                            "edge_min_pct": None if edge_min is None else round(edge_min * 100, 1),
+                            "outcome": _outcome_label(outcome),
+                            "league_filter": league_filter,
+                            "leagues": leagues,
+                            "simulation": simulation,
+                            "score": score,
+                            "eligible": eligible,
+                            "rejection_reasons": reasons,
+                        })
+    return candidates
+
+
+def _optimize_coupons(mode: str, version: str, predictions: List[Dict]) -> List[Dict]:
+    candidates = []
+    for league_filter, leagues in _league_groups(predictions).items():
+        sort_options = ["confidence"] if league_filter.startswith("league:") else OPT_COUPON_SORTS
+        max_per_options = [1] if league_filter.startswith("league:") else OPT_COUPON_MAX_PER_LEAGUE
+        for confidence_min in OPT_CONF_THRESHOLDS:
+            for edge_min in OPT_EDGE_THRESHOLDS:
+                selected = _filter_predictions(predictions, confidence_min, edge_min, None, leagues)
+                if len(selected) < DEFAULT_COUPON_MIN_LEGS:
+                    continue
+                for max_legs in OPT_COUPON_MAX_LEGS:
+                    for sort_by in sort_options:
+                        for max_per_league in max_per_options:
+                            simulation = simulate_coupon_bankroll(
+                                selected,
+                                max_legs=max_legs,
+                                sort_by=sort_by,
+                                max_per_league=max_per_league,
+                            )
+                            score, eligible, reasons = _robust_score(simulation, "coupons", 50)
+                            name = (
+                                f"{version} coupon conf>={_threshold_label(confidence_min)} "
+                                f"edge>={_threshold_label(edge_min)} max={max_legs} "
+                                f"sort={sort_by} max_per_league={max_per_league} leagues={league_filter}"
+                            )
+                            candidates.append({
+                                "type": "coupon",
+                                "mode": mode,
+                                "version": version,
+                                "name": name,
+                                "confidence_min_pct": round(confidence_min * 100, 1),
+                                "edge_min_pct": None if edge_min is None else round(edge_min * 100, 1),
+                                "league_filter": league_filter,
+                                "leagues": leagues,
+                                "max_legs": max_legs,
+                                "sort_by": sort_by,
+                                "max_per_league": max_per_league,
+                                "simulation": simulation,
+                                "score": score,
+                                "eligible": eligible,
+                                "rejection_reasons": reasons,
+                            })
+    return candidates
+
+
+def _outcome_diagnostics(predictions: List[Dict]) -> Dict[str, Dict]:
+    diagnostics = {}
+    for label, name in [(LABEL_HOME, "home"), (LABEL_DRAW, "draw"), (LABEL_AWAY, "away")]:
+        selected = [p for p in predictions if p.get("predicted") == label]
+        diagnostics[name] = simulate_flat_bankroll(selected)
+    return diagnostics
+
+
+def _edge_diagnostics(predictions: List[Dict]) -> List[Dict]:
+    rows = []
+    for edge_min in OPT_EDGE_THRESHOLDS:
+        selected = _filter_predictions(predictions, None, edge_min, None, sorted({p.get("league") for p in predictions}))
+        sim = simulate_flat_bankroll(selected)
+        rows.append({
+            "edge_min_pct": None if edge_min is None else round(edge_min * 100, 1),
+            "bets": sim["bets"],
+            "profit": sim["profit"],
+            "roi_pct": sim["roi_pct"],
+            "final_bankroll": sim["final_bankroll"],
+            "max_drawdown": sim["max_drawdown"],
+        })
+    return rows
+
+
+def _coupon_leg_diagnostics(candidate: Optional[Dict], predictions: List[Dict]) -> Dict:
+    if not candidate:
+        return {}
+    selected = _filter_predictions(
+        predictions,
+        (candidate.get("confidence_min_pct") or 0) / 100 if candidate.get("confidence_min_pct") is not None else None,
+        (candidate.get("edge_min_pct") or 0) / 100 if candidate.get("edge_min_pct") is not None else None,
+        None,
+        candidate.get("leagues", []),
+    )
+    batches, _ = _build_coupon_batches(
+        selected,
+        max_legs=candidate.get("max_legs", DEFAULT_COUPON_MAX_LEGS),
+        sort_by=candidate.get("sort_by", "edge_x_confidence"),
+        max_per_league=candidate.get("max_per_league"),
+    )
+    by_leg: Dict[str, Dict] = defaultdict(lambda: {"legs": 0, "correct": 0})
+    for legs in batches:
+        for idx, leg in enumerate(legs, start=1):
+            key = str(idx)
+            by_leg[key]["legs"] += 1
+            if leg.get("predicted") == leg.get("actual"):
+                by_leg[key]["correct"] += 1
+    return {
+        leg: {
+            "legs": stats["legs"],
+            "correct": stats["correct"],
+            "hit_rate": round(stats["correct"] / stats["legs"] * 100, 2) if stats["legs"] else 0.0,
+        }
+        for leg, stats in sorted(by_leg.items(), key=lambda item: int(item[0]))
+    }
+
+
+def _build_failure_report(predictions: List[Dict], best_coupon: Optional[Dict]) -> Dict:
+    per_league = compute_per_league(predictions)
+    losing_leagues = [
+        {
+            "league": league,
+            "accuracy": round(metrics.get("accuracy", 0.0) * 100, 2),
+            "roi_pct": round(metrics.get("roi_flat", {}).get("roi_pct", 0.0), 2),
+            "bets": metrics.get("total", 0),
+        }
+        for league, metrics in per_league.items()
+        if metrics.get("roi_flat", {}).get("profit", 0.0) < 0
+    ]
+    losing_leagues.sort(key=lambda row: row["roi_pct"])
+    calibration = compute_calibration(predictions)
+
+    return {
+        "losing_leagues": losing_leagues,
+        "outcomes": _outcome_diagnostics(predictions),
+        "calibration": calibration,
+        "edge_signal": _edge_diagnostics(predictions),
+        "coupon_leg_failure": _coupon_leg_diagnostics(best_coupon, predictions),
+        "missing_data_next": [
+            "confirmed starting lineups",
+            "injuries and suspensions",
+            "player strength or player ratings",
+            "opening-to-closing odds movement",
+            "xG, shot, event, and tracking data",
+        ],
+    }
+
+
+def _version_model_comparison(mode: str, v1_predictions: List[Dict], v2_predictions: List[Dict]) -> Dict:
+    v1_metrics = compute_metrics(v1_predictions)
+    v2_metrics = compute_metrics(v2_predictions)
+    seasons = sorted({
+        str(p.get("season") or _safe_year(p.get("match_date")))
+        for p in [*v1_predictions, *v2_predictions]
+        if (p.get("season") or _safe_year(p.get("match_date"))) is not None
+    })
+    by_season = {}
+    v2_accuracy_wins = 0
+    v2_brier_wins = 0
+    v2_log_loss_wins = 0
+    v2_roi_wins = 0
+
+    for season in seasons:
+        v1_season = [
+            p for p in v1_predictions
+            if str(p.get("season") or _safe_year(p.get("match_date"))) == season
+        ]
+        v2_season = [
+            p for p in v2_predictions
+            if str(p.get("season") or _safe_year(p.get("match_date"))) == season
+        ]
+        if not v1_season or not v2_season:
+            continue
+        v1s = compute_metrics(v1_season)
+        v2s = compute_metrics(v2_season)
+        v1_roi = v1s.get("roi_flat", {}).get("roi_pct", 0.0)
+        v2_roi = v2s.get("roi_flat", {}).get("roi_pct", 0.0)
+        if v2s.get("accuracy", 0.0) > v1s.get("accuracy", 0.0):
+            v2_accuracy_wins += 1
+        if v2s.get("brier", float("inf")) < v1s.get("brier", float("inf")):
+            v2_brier_wins += 1
+        if v2s.get("log_loss", float("inf")) < v1s.get("log_loss", float("inf")):
+            v2_log_loss_wins += 1
+        if v2_roi > v1_roi:
+            v2_roi_wins += 1
+        by_season[season] = {
+            "v1_accuracy_pct": round(v1s.get("accuracy", 0.0) * 100, 2),
+            "v2_accuracy_pct": round(v2s.get("accuracy", 0.0) * 100, 2),
+            "v1_brier": round(v1s.get("brier", 0.0), 4),
+            "v2_brier": round(v2s.get("brier", 0.0), 4),
+            "v1_log_loss": round(v1s.get("log_loss", 0.0), 4),
+            "v2_log_loss": round(v2s.get("log_loss", 0.0), 4),
+            "v1_roi_pct": round(v1_roi, 2),
+            "v2_roi_pct": round(v2_roi, 2),
+        }
+
+    compared_years = len(by_season)
+    required_year_wins = math.ceil(compared_years * 0.60) if compared_years else 0
+    v1_roi_total = v1_metrics.get("roi_flat", {}).get("roi_pct", 0.0)
+    v2_roi_total = v2_metrics.get("roi_flat", {}).get("roi_pct", 0.0)
+    v2_overall_better = (
+        v2_metrics.get("accuracy", 0.0) >= v1_metrics.get("accuracy", 0.0)
+        and v2_metrics.get("brier", float("inf")) <= v1_metrics.get("brier", float("inf"))
+        and v2_metrics.get("log_loss", float("inf")) <= v1_metrics.get("log_loss", float("inf"))
+    )
+    promote_v2 = bool(
+        compared_years
+        and v2_overall_better
+        and v2_accuracy_wins >= required_year_wins
+        and v2_brier_wins >= required_year_wins
+        and v2_log_loss_wins >= required_year_wins
+    )
+
+    return {
+        "mode": mode,
+        "promote_v2": promote_v2,
+        "required_year_wins": required_year_wins,
+        "compared_years": compared_years,
+        "v2_accuracy_wins": v2_accuracy_wins,
+        "v2_brier_wins": v2_brier_wins,
+        "v2_log_loss_wins": v2_log_loss_wins,
+        "v2_roi_wins": v2_roi_wins,
+        "overall": {
+            "v1_accuracy_pct": round(v1_metrics.get("accuracy", 0.0) * 100, 2),
+            "v2_accuracy_pct": round(v2_metrics.get("accuracy", 0.0) * 100, 2),
+            "v1_brier": round(v1_metrics.get("brier", 0.0), 4),
+            "v2_brier": round(v2_metrics.get("brier", 0.0), 4),
+            "v1_log_loss": round(v1_metrics.get("log_loss", 0.0), 4),
+            "v2_log_loss": round(v2_metrics.get("log_loss", 0.0), 4),
+            "v1_roi_pct": round(v1_roi_total, 2),
+            "v2_roi_pct": round(v2_roi_total, 2),
+        },
+        "by_season": by_season,
+    }
+
+
+def _build_model_decision(raw_preds: Dict) -> Dict:
+    comparisons = {}
+    for mode, mode_data in raw_preds.items():
+        v1_predictions = mode_data.get("v1", [])
+        v2_predictions = mode_data.get("v2", [])
+        if v1_predictions and v2_predictions:
+            comparisons[mode] = _version_model_comparison(mode, v1_predictions, v2_predictions)
+
+    gate_mode = "walk_forward" if "walk_forward" in comparisons else next(iter(comparisons), None)
+    gate = comparisons.get(gate_mode, {})
+    promote_v2 = bool(gate.get("promote_v2"))
+    overall = gate.get("overall", {})
+    reason = (
+        "v2 beats v1 on overall walk-forward calibration and in enough seasons"
+        if promote_v2
+        else (
+            "v2 kept off: it does not beat v1 stably on walk-forward accuracy, Brier, and log loss"
+            if gate_mode
+            else "v2 kept off: no comparable v1/v2 prediction set"
+        )
+    )
+
+    return {
+        "promote_v2": promote_v2,
+        "gate_mode": gate_mode,
+        "reason": reason,
+        "gate_overall": overall,
+        "comparisons": comparisons,
+    }
+
+
+def _first_candidate_for_versions(candidates: List[Dict], allowed_versions: set) -> Optional[Dict]:
+    for candidate in candidates:
+        if candidate.get("eligible") and candidate.get("version") in allowed_versions:
+            return candidate
+    for candidate in candidates:
+        if candidate.get("version") in allowed_versions:
+            return candidate
+    return None
+
+
+def _recommend_config(
+    best_single: Optional[Dict],
+    best_coupon: Optional[Dict],
+    model_decision: Optional[Dict] = None,
+) -> Dict:
+    """Translate optimizer winners into config-shaped recommendations."""
+    model_decision = model_decision or {"promote_v2": False, "reason": "v2 decision unavailable"}
+    return {
+        "promote_v2": bool(model_decision.get("promote_v2")),
+        "model_reason": model_decision.get("reason"),
+        "paper_trading": {
+            "bet_style": best_single.get("bet_style", "model_pick") if best_single else "model_pick",
+            "min_edge_pct": best_single.get("edge_min_pct") if best_single else 5.0,
+            "min_confidence_pct": best_single.get("confidence_min_pct") if best_single else 45.0,
+            "leagues": best_single.get("leagues") if best_single else [],
+            "outcome": best_single.get("outcome") if best_single else "all",
+        },
+        "coupon": {
+            "min_edge_pct": best_coupon.get("edge_min_pct") if best_coupon else None,
+            "min_confidence_pct": best_coupon.get("confidence_min_pct") if best_coupon else 65.0,
+            "max_picks": best_coupon.get("max_legs") if best_coupon else 4,
+            "max_per_league": best_coupon.get("max_per_league") if best_coupon else 2,
+            "sort_by": best_coupon.get("sort_by") if best_coupon else "confidence",
+        },
+    }
+
+
+# ═════════════════════════════════════════════════════════════
+#  HISTORICAL PATTERN BACKTEST
+# ═════════════════════════════════════════════════════════════
+def _match_identity(prediction: Dict) -> Tuple[str, str, str]:
+    return (
+        str(prediction.get("league", "")),
+        str(prediction.get("home", "")).strip().lower(),
+        str(prediction.get("away", "")).strip().lower(),
+    )
+
+
+def _pair_key(prediction: Dict) -> Tuple[str, str, str]:
+    league = str(prediction.get("league", ""))
+    teams = sorted([
+        str(prediction.get("home", "")).strip().lower(),
+        str(prediction.get("away", "")).strip().lower(),
+    ])
+    return (league, teams[0], teams[1])
+
+
+def _team_key(prediction: Dict, side: str) -> Tuple[str, str]:
+    team = prediction.get("home") if side == "home" else prediction.get("away")
+    return (str(prediction.get("league", "")), str(team).strip().lower())
+
+
+def _winner_name(prediction: Dict) -> str:
+    if prediction.get("actual") == LABEL_HOME:
+        return str(prediction.get("home", "")).strip().lower()
+    if prediction.get("actual") == LABEL_AWAY:
+        return str(prediction.get("away", "")).strip().lower()
+    return "DRAW"
+
+
+def _team_result(prediction: Dict, team_name: str) -> str:
+    winner = _winner_name(prediction)
+    team = team_name.strip().lower()
+    if winner == "DRAW":
+        return "DRAW"
+    return "WIN" if winner == team else "LOSS"
+
+
+def _current_label_for_team_result(prediction: Dict, side: str, result: str) -> Optional[int]:
+    if result == "DRAW":
+        return LABEL_DRAW
+    if side == "home":
+        return LABEL_HOME if result == "WIN" else LABEL_AWAY
+    return LABEL_AWAY if result == "WIN" else LABEL_HOME
+
+
+def _dominant_key(counts: Dict, min_matches: int, min_rate: float) -> Tuple[Optional[object], int, float]:
+    total = sum(counts.values())
+    if total < min_matches:
+        return None, total, 0.0
+    ranked = sorted(counts.items(), key=lambda item: item[1], reverse=True)
+    if len(ranked) > 1 and ranked[0][1] == ranked[1][1]:
+        return None, total, 0.0
+    key, hits = ranked[0]
+    rate = hits / total if total else 0.0
+    if rate < min_rate:
+        return None, total, rate
+    return key, total, rate
+
+
+def _pattern_label(
+    prediction: Dict,
+    pattern: str,
+    histories: Dict,
+    min_matches: int,
+    min_rate: float,
+) -> Tuple[Optional[int], int, float]:
+    if pattern == "directed_h2h_outcome":
+        counts = histories["directed"].get(_match_identity(prediction), {})
+        label, total, rate = _dominant_key(counts, min_matches, min_rate)
+        return label, total, rate
+
+    if pattern == "pair_dominant_result":
+        counts = histories["pair_winner"].get(_pair_key(prediction), {})
+        winner, total, rate = _dominant_key(counts, min_matches, min_rate)
+        if winner is None:
+            return None, total, rate
+        if winner == "DRAW":
+            return LABEL_DRAW, total, rate
+        current_home = str(prediction.get("home", "")).strip().lower()
+        current_away = str(prediction.get("away", "")).strip().lower()
+        if winner == current_home:
+            return LABEL_HOME, total, rate
+        if winner == current_away:
+            return LABEL_AWAY, total, rate
+        return None, total, rate
+
+    if pattern == "home_team_home_outcome":
+        counts = histories["home_side"].get(_team_key(prediction, "home"), {})
+        label, total, rate = _dominant_key(counts, min_matches, min_rate)
+        return label, total, rate
+
+    if pattern == "away_team_away_outcome":
+        counts = histories["away_side"].get(_team_key(prediction, "away"), {})
+        label, total, rate = _dominant_key(counts, min_matches, min_rate)
+        return label, total, rate
+
+    if pattern == "home_team_any_result":
+        key = _team_key(prediction, "home")
+        counts = histories["team_any"].get(key, {})
+        result, total, rate = _dominant_key(counts, min_matches, min_rate)
+        return _current_label_for_team_result(prediction, "home", result) if result else None, total, rate
+
+    if pattern == "away_team_any_result":
+        key = _team_key(prediction, "away")
+        counts = histories["team_any"].get(key, {})
+        result, total, rate = _dominant_key(counts, min_matches, min_rate)
+        return _current_label_for_team_result(prediction, "away", result) if result else None, total, rate
+
+    if pattern == "pair_no_draw_favourite":
+        counts = histories["pair_label"].get(_pair_key(prediction), {})
+        total = sum(counts.values())
+        draw_count = counts.get(LABEL_DRAW, 0)
+        if total < min_matches:
+            return None, total, 0.0
+        no_draw_rate = 1.0 - (draw_count / total)
+        if no_draw_rate < min_rate:
+            return None, total, no_draw_rate
+        odds = [
+            (prediction.get("home_odds") or 99.0, LABEL_HOME),
+            (prediction.get("draw_odds") or 99.0, LABEL_DRAW),
+            (prediction.get("away_odds") or 99.0, LABEL_AWAY),
+        ]
+        label = min(odds, key=lambda item: item[0])[1]
+        if label == LABEL_DRAW:
+            return None, total, no_draw_rate
+        return label, total, no_draw_rate
+
+    return None, 0, 0.0
+
+
+def _update_pattern_histories(histories: Dict, prediction: Dict):
+    actual = prediction.get("actual")
+    if actual not in (LABEL_HOME, LABEL_DRAW, LABEL_AWAY):
+        return
+
+    directed = histories["directed"][_match_identity(prediction)]
+    directed[actual] += 1
+
+    pair = _pair_key(prediction)
+    histories["pair_label"][pair][actual] += 1
+    histories["pair_winner"][pair][_winner_name(prediction)] += 1
+
+    home_key = _team_key(prediction, "home")
+    away_key = _team_key(prediction, "away")
+    histories["home_side"][home_key][actual] += 1
+    histories["away_side"][away_key][actual] += 1
+    histories["team_any"][home_key][_team_result(prediction, str(prediction.get("home", "")))] += 1
+    histories["team_any"][away_key][_team_result(prediction, str(prediction.get("away", "")))] += 1
+
+
+def _build_pattern_predictions(
+    matches: List[Dict],
+    pattern: str,
+    min_matches: int,
+    min_rate: float,
+    max_odds: Optional[float],
+) -> List[Dict]:
+    histories = {
+        "directed": defaultdict(lambda: defaultdict(int)),
+        "pair_label": defaultdict(lambda: defaultdict(int)),
+        "pair_winner": defaultdict(lambda: defaultdict(int)),
+        "home_side": defaultdict(lambda: defaultdict(int)),
+        "away_side": defaultdict(lambda: defaultdict(int)),
+        "team_any": defaultdict(lambda: defaultdict(int)),
+    }
+    selected = []
+
+    for match in _sorted_predictions(matches):
+        label, history_count, hit_rate = _pattern_label(match, pattern, histories, min_matches, min_rate)
+        if label is not None:
+            odds = _prediction_odds(match, label)
+            if odds is not None and (max_odds is None or odds <= max_odds):
+                pick = dict(match)
+                pick["predicted"] = label
+                pick["confidence"] = hit_rate
+                pick["edge"] = hit_rate - (1 / odds)
+                pick["pattern"] = pattern
+                pick["pattern_history_count"] = history_count
+                pick["pattern_hit_rate"] = round(hit_rate * 100, 2)
+                selected.append(pick)
+        _update_pattern_histories(histories, match)
+
+    return selected
+
+
+def optimize_historical_patterns(matches: List[Dict]) -> Dict:
+    patterns = [
+        "directed_h2h_outcome",
+        "pair_dominant_result",
+        "home_team_home_outcome",
+        "away_team_away_outcome",
+        "home_team_any_result",
+        "away_team_any_result",
+        "pair_no_draw_favourite",
+    ]
+    candidates = []
+
+    for pattern in patterns:
+        logger.info(f"Pattern grid: {pattern}")
+        for min_matches in PATTERN_MIN_MATCHES:
+            for min_rate in PATTERN_MIN_HIT_RATES:
+                for max_odds in PATTERN_MAX_ODDS:
+                    selected = _build_pattern_predictions(matches, pattern, min_matches, min_rate, max_odds)
+                    simulation = simulate_flat_bankroll(selected)
+                    score, eligible, reasons = _robust_score(simulation, "bets", 100)
+                    candidates.append({
+                        "type": "historical_pattern",
+                        "name": (
+                            f"{pattern} min_matches={min_matches} "
+                            f"min_rate={min_rate:.0%} "
+                            f"max_odds={'none' if max_odds is None else f'{max_odds:.1f}'}"
+                        ),
+                        "pattern": pattern,
+                        "min_matches": min_matches,
+                        "min_rate_pct": round(min_rate * 100, 1),
+                        "max_odds": max_odds,
+                        "simulation": simulation,
+                        "score": score,
+                        "eligible": eligible,
+                        "rejection_reasons": reasons,
+                    })
+
+    ranked = _rank_candidates(candidates)
+    return {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "objective": "walk_forward_historical_patterns_no_future_leakage",
+        "source_matches": len(matches),
+        "patterns_tested": patterns,
+        "candidate_count": len(candidates),
+        "best": _trim_pattern_candidate(ranked[0]) if ranked else None,
+        "top": [_trim_pattern_candidate(c) for c in ranked[:50]],
+    }
+
+
+def _trim_pattern_candidate(candidate: Dict) -> Dict:
+    sim = candidate.get("simulation", {})
+    return {
+        "type": candidate.get("type"),
+        "name": candidate.get("name"),
+        "pattern": candidate.get("pattern"),
+        "min_matches": candidate.get("min_matches"),
+        "min_rate_pct": candidate.get("min_rate_pct"),
+        "max_odds": candidate.get("max_odds"),
+        "score": candidate.get("score"),
+        "eligible": candidate.get("eligible"),
+        "rejection_reasons": candidate.get("rejection_reasons", []),
+        "simulation": {
+            k: sim.get(k)
+            for k in [
+                "bets", "wins", "accuracy", "final_bankroll", "profit",
+                "roi_pct", "max_drawdown", "max_drawdown_pct", "by_season",
+            ]
+            if k in sim
+        },
+    }
+
+
+def _load_pattern_matches(raw_preds: Dict) -> List[Dict]:
+    if isinstance(raw_preds, list):
+        return raw_preds
+    if "walk_forward" in raw_preds and raw_preds["walk_forward"].get("v1"):
+        return raw_preds["walk_forward"]["v1"]
+    for mode_data in raw_preds.values():
+        if isinstance(mode_data, dict) and mode_data.get("v1"):
+            return mode_data["v1"]
+    return []
+
+
+def print_historical_pattern_summary(results: Dict):
+    print_header("HISTORICAL PATTERN OPTIMIZATION")
+    best = results.get("best") or {}
+    sim = best.get("simulation", {})
+    print()
+    print(f"  Best pattern: {best.get('name', 'N/A')}")
+    print(f"    Score: {best.get('score', 0):+.0f} | Eligible: {best.get('eligible')}")
+    print(
+        f"    Final: {sim.get('final_bankroll', 0):.0f} | "
+        f"Profit: {sim.get('profit', 0):+.0f} | ROI: {sim.get('roi_pct', 0):+.1f}% | "
+        f"MaxDD: {sim.get('max_drawdown', 0):.0f}"
+    )
+    print(f"    Bets: {sim.get('bets', 0)} | Hit: {sim.get('accuracy', 0):.1f}%")
+    print(f"    By season: {sim.get('by_season', {})}")
+    print()
+
+
+# ═════════════════════════════════════════════════════════════
+#  MONEY-FIRST HISTORICAL EDGE BACKTEST
+# ═════════════════════════════════════════════════════════════
+def _enrich_directed_h2h_history(matches: List[Dict]) -> List[Dict]:
+    """
+    Add exact home-vs-away historical counts before each match.
+
+    The current match is evaluated before it updates the history, so this is
+    safe for walk-forward backtests and cannot leak future results.
+    """
+    histories = defaultdict(lambda: defaultdict(int))
+    enriched = []
+
+    for match in _sorted_predictions(matches):
+        pick = dict(match)
+        key = _match_identity(match)
+        counts = histories[key]
+        total = sum(counts.values())
+        if total:
+            label, hits = max(counts.items(), key=lambda item: (item[1], -item[0]))
+            pick["_h2h_count"] = total
+            pick["_h2h_label"] = label
+            pick["_h2h_rate"] = hits / total
+        else:
+            pick["_h2h_count"] = 0
+            pick["_h2h_label"] = None
+            pick["_h2h_rate"] = 0.0
+
+        enriched.append(pick)
+
+        actual = match.get("actual")
+        if actual in (LABEL_HOME, LABEL_DRAW, LABEL_AWAY):
+            histories[key][actual] += 1
+
+    return enriched
+
+
+def _raw_prediction_sets(raw_preds: Dict) -> List[Tuple[str, str, List[Dict]]]:
+    if isinstance(raw_preds, list):
+        return [("list", "v1", raw_preds)]
+
+    modes = ["walk_forward"] if raw_preds.get("walk_forward") else list(raw_preds.keys())
+    sets = []
+    for mode in modes:
+        mode_data = raw_preds.get(mode, {})
+        if not isinstance(mode_data, dict):
+            continue
+        for version in ("v1", "v2"):
+            predictions = mode_data.get(version, [])
+            if predictions:
+                sets.append((mode, version, predictions))
+    return sets
+
+
+def _history_edge_league_groups(predictions: List[Dict]) -> Dict[str, List[str]]:
+    leagues = sorted({p.get("league") for p in predictions if p.get("league")})
+    groups = {"all": leagues}
+    top = [league for league in leagues if league in TOP_LEAGUE_CODES]
+    if top:
+        groups["top_leagues"] = top
+    for league in top:
+        groups[f"league:{league}"] = [league]
+    return groups
+
+
+def _history_edge_arrays(predictions: List[Dict]) -> Dict[str, object]:
+    def _float_col(name: str) -> np.ndarray:
+        return np.array([float(p.get(name) or 0.0) for p in predictions], dtype=float)
+
+    return {
+        "predictions": predictions,
+        "actual": np.array([int(p.get("actual", -1)) for p in predictions], dtype=int),
+        "model_pred": np.array([int(p.get("predicted", -1)) for p in predictions], dtype=int),
+        "league": np.array([str(p.get("league", "")) for p in predictions], dtype=object),
+        "season": np.array([_season_key(p) for p in predictions], dtype=object),
+        "h2h_count": np.array([int(p.get("_h2h_count") or 0) for p in predictions], dtype=int),
+        "h2h_label": np.array([
+            int(p.get("_h2h_label")) if p.get("_h2h_label") is not None else -1
+            for p in predictions
+        ], dtype=int),
+        "h2h_rate": np.array([float(p.get("_h2h_rate") or 0.0) for p in predictions], dtype=float),
+        "prob": np.stack([
+            _float_col("home_prob"),
+            _float_col("draw_prob"),
+            _float_col("away_prob"),
+        ], axis=1),
+        "odds": np.stack([
+            _float_col("home_odds"),
+            _float_col("draw_odds"),
+            _float_col("away_odds"),
+        ], axis=1),
+    }
+
+
+def _labels_for_history_edge_style(arrays: Dict[str, object], style: str) -> np.ndarray:
+    prob = arrays["prob"]
+    odds = arrays["odds"]
+    valid = odds > 1.0
+    model_pred = arrays["model_pred"]
+
+    if style == "model_pick":
+        return model_pred.copy()
+    if style == "historical_outcome":
+        return arrays["h2h_label"].copy()
+    if style == "max_model_edge":
+        model_edge = np.where(valid, prob * odds - 1.0, -99.0)
+        return np.argmax(model_edge, axis=1).astype(int)
+    if style == "market_favorite":
+        return np.argmin(np.where(valid, odds, 999.0), axis=1).astype(int)
+    if style == "market_underdog":
+        return np.argmax(np.where(valid, odds, -1.0), axis=1).astype(int)
+    return model_pred.copy()
+
+
+def _selected_label_values(
+    arrays: Dict[str, object],
+    labels: np.ndarray,
+    style: str,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    prob = arrays["prob"]
+    odds = arrays["odds"]
+    h2h_rate = arrays["h2h_rate"]
+    valid_label = np.isin(labels, [LABEL_HOME, LABEL_DRAW, LABEL_AWAY])
+    safe_labels = np.where(valid_label, labels, LABEL_HOME)
+    row_idx = np.arange(len(labels))
+    selected_odds = odds[row_idx, safe_labels]
+    selected_prob = prob[row_idx, safe_labels]
+
+    if style == "historical_outcome":
+        selected_confidence = h2h_rate.copy()
+        selected_edge = np.where(selected_odds > 1.0, h2h_rate - (1.0 / selected_odds), -99.0)
+    else:
+        selected_confidence = selected_prob
+        selected_edge = np.where(selected_odds > 1.0, selected_prob * selected_odds - 1.0, -99.0)
+
+    valid = valid_label & (selected_odds > 1.0)
+    return selected_confidence, selected_edge, selected_odds, valid
+
+
+def _simulate_flat_arrays(
+    mask: np.ndarray,
+    labels: np.ndarray,
+    arrays: Dict[str, object],
+    odds_matrix: Optional[np.ndarray] = None,
+) -> Dict:
+    idx = np.flatnonzero(mask)
+    odds = odds_matrix if odds_matrix is not None else arrays["odds"]
+    actual = arrays["actual"]
+    season = arrays["season"]
+    selected_odds = odds[idx, labels[idx]]
+    wins = labels[idx] == actual[idx]
+    deltas = np.where(wins, (DEFAULT_SINGLE_STAKE * selected_odds) - DEFAULT_SINGLE_STAKE, -DEFAULT_SINGLE_STAKE)
+    cumulative = np.cumsum(deltas) if len(deltas) else np.array([])
+    final_bankroll = DEFAULT_STARTING_BANKROLL + (float(cumulative[-1]) if len(cumulative) else 0.0)
+    bankroll_curve = DEFAULT_STARTING_BANKROLL + cumulative if len(cumulative) else np.array([])
+    if len(bankroll_curve):
+        peaks = np.maximum.accumulate(np.concatenate(([DEFAULT_STARTING_BANKROLL], bankroll_curve)))[1:]
+        max_drawdown = float(np.max(peaks - bankroll_curve))
+        peak_bankroll = float(max(DEFAULT_STARTING_BANKROLL, np.max(bankroll_curve)))
+        min_bankroll = float(min(DEFAULT_STARTING_BANKROLL, np.min(bankroll_curve)))
+    else:
+        max_drawdown = 0.0
+        peak_bankroll = DEFAULT_STARTING_BANKROLL
+        min_bankroll = DEFAULT_STARTING_BANKROLL
+
+    season_stats: Dict[str, Dict] = defaultdict(_empty_period_stats)
+    for selected_idx, odd, won in zip(idx, selected_odds, wins):
+        season_key = str(season[selected_idx])
+        season_stats[season_key]["bets"] += 1
+        season_stats[season_key]["wins"] += 1 if won else 0
+        season_stats[season_key]["staked"] += DEFAULT_SINGLE_STAKE
+        season_stats[season_key]["returned"] += DEFAULT_SINGLE_STAKE * float(odd) if won else 0.0
+
+    bets = int(len(idx))
+    staked = bets * DEFAULT_SINGLE_STAKE
+    profit = final_bankroll - DEFAULT_STARTING_BANKROLL
+    return {
+        "starting_bankroll": round(DEFAULT_STARTING_BANKROLL, 2),
+        "stake": round(DEFAULT_SINGLE_STAKE, 2),
+        "bets": bets,
+        "wins": int(np.sum(wins)) if bets else 0,
+        "accuracy": round((float(np.mean(wins)) * 100) if bets else 0.0, 2),
+        "staked": round(staked, 2),
+        "returned": round(staked + profit, 2),
+        "final_bankroll": round(final_bankroll, 2),
+        "profit": round(profit, 2),
+        "growth_pct": round((profit / DEFAULT_STARTING_BANKROLL * 100) if DEFAULT_STARTING_BANKROLL else 0.0, 2),
+        "roi_pct": round((profit / staked * 100) if staked else 0.0, 2),
+        "max_drawdown": round(max_drawdown, 2),
+        "max_drawdown_pct": round((max_drawdown / peak_bankroll * 100) if peak_bankroll else 0.0, 2),
+        "min_bankroll": round(min_bankroll, 2),
+        "stopped_bankroll_depleted": False,
+        "skipped_no_odds": 0,
+        "by_season": _finalize_period_stats(season_stats),
+    }
+
+
+def _candidate_rank_tuple(candidate: Dict) -> Tuple:
+    sim = candidate.get("simulation", {})
+    return (
+        1 if candidate.get("eligible") else 0,
+        candidate.get("score", -10**9),
+        sim.get("profit", 0),
+        -sim.get("max_drawdown", 0),
+    )
+
+
+def _remember_top_candidate(candidates: List[Dict], candidate: Dict, limit: int):
+    candidates.append(candidate)
+    if len(candidates) > limit * 4:
+        candidates[:] = sorted(candidates, key=_candidate_rank_tuple, reverse=True)[:limit]
+
+
+def _history_edge_pick_predictions(
+    candidate: Dict,
+    arrays: Dict[str, object],
+) -> List[Dict]:
+    predictions = arrays["predictions"]
+    idx = np.flatnonzero(candidate["mask"])
+    labels = candidate["labels"]
+    confidence = candidate["selected_confidence"]
+    edge = candidate["selected_edge"]
+    selected = []
+
+    for row_idx in idx:
+        pick = dict(predictions[row_idx])
+        pick["predicted"] = int(labels[row_idx])
+        pick["confidence"] = float(confidence[row_idx])
+        pick["edge"] = float(edge[row_idx])
+        pick["historical_edge_count"] = int(pick.get("_h2h_count") or 0)
+        pick["historical_edge_rate"] = round(float(pick.get("_h2h_rate") or 0.0) * 100, 2)
+        selected.append(pick)
+    return selected
+
+
+def _trim_history_edge_candidate(candidate: Dict) -> Dict:
+    sim = candidate.get("simulation", {})
+    trimmed = {
+        "type": candidate.get("type"),
+        "mode": candidate.get("mode"),
+        "version": candidate.get("version"),
+        "name": candidate.get("name"),
+        "label_style": candidate.get("label_style"),
+        "league_filter": candidate.get("league_filter"),
+        "leagues": candidate.get("leagues"),
+        "min_h2h_matches": candidate.get("min_h2h_matches"),
+        "min_h2h_rate_pct": candidate.get("min_h2h_rate_pct"),
+        "confidence_min_pct": candidate.get("confidence_min_pct"),
+        "model_edge_min_pct": candidate.get("model_edge_min_pct"),
+        "odds_band": candidate.get("odds_band"),
+        "max_legs": candidate.get("max_legs"),
+        "sort_by": candidate.get("sort_by"),
+        "max_per_league": candidate.get("max_per_league"),
+        "score": candidate.get("score"),
+        "eligible": candidate.get("eligible"),
+        "rejection_reasons": candidate.get("rejection_reasons", []),
+    }
+    trimmed["simulation"] = {
+        k: sim.get(k)
+        for k in [
+            "bets", "wins", "accuracy", "coupons", "winning_coupons",
+            "coupon_hit_rate", "final_bankroll", "profit", "roi_pct",
+            "max_drawdown", "max_drawdown_pct", "by_season",
+        ]
+        if k in sim
+    }
+    return trimmed
+
+
+def optimize_historical_edge(raw_preds: Dict) -> Dict:
+    """Money-first historical edge search: bankroll growth from no-leak H2H signals."""
+    all_singles = []
+    all_coupons = []
+    coupon_filters = []
+    evaluated_singles = 0
+    evaluated_coupons = 0
+    source_sets = _raw_prediction_sets(raw_preds)
+
+    for mode, version, predictions in source_sets:
+        logger.info(f"Historical edge grid: {mode}/{version}")
+        enriched = _enrich_directed_h2h_history(predictions)
+        arrays = _history_edge_arrays(enriched)
+        league_groups = _history_edge_league_groups(enriched)
+
+        for label_style in HISTORY_EDGE_LABEL_STYLES:
+            labels = _labels_for_history_edge_style(arrays, label_style)
+            selected_confidence, selected_edge, selected_odds, valid = _selected_label_values(arrays, labels, label_style)
+
+            for league_filter, leagues in league_groups.items():
+                league_mask = np.isin(arrays["league"], leagues)
+                for min_h2h_matches, min_h2h_rate in HISTORY_EDGE_FILTERS:
+                    h2h_mask = (
+                        (arrays["h2h_count"] >= min_h2h_matches)
+                        & (arrays["h2h_rate"] >= min_h2h_rate)
+                        & (arrays["h2h_label"] == labels)
+                    )
+                    for confidence_min in HISTORY_EDGE_CONF_THRESHOLDS:
+                        confidence_mask = (
+                            np.ones(len(enriched), dtype=bool)
+                            if confidence_min is None
+                            else selected_confidence >= confidence_min
+                        )
+                        for model_edge_min in HISTORY_EDGE_MODEL_EDGE_THRESHOLDS:
+                            edge_mask = (
+                                np.ones(len(enriched), dtype=bool)
+                                if model_edge_min is None
+                                else selected_edge >= model_edge_min
+                            )
+                            for odds_band in HISTORY_EDGE_ODDS_BANDS:
+                                if odds_band is None:
+                                    odds_mask = np.ones(len(enriched), dtype=bool)
+                                else:
+                                    odds_mask = (selected_odds >= odds_band[0]) & (selected_odds <= odds_band[1])
+
+                                mask = valid & league_mask & h2h_mask & confidence_mask & edge_mask & odds_mask
+                                if int(np.sum(mask)) < 100:
+                                    continue
+
+                                simulation = _simulate_flat_arrays(mask, labels, arrays)
+                                score, eligible, reasons = _robust_score(simulation, "bets", 100)
+                                evaluated_singles += 1
+                                candidate = {
+                                    "type": "historical_edge_single",
+                                    "mode": mode,
+                                    "version": version,
+                                    "name": (
+                                        f"{version} historical-edge single style={label_style} "
+                                        f"leagues={league_filter} h2h>={min_h2h_matches}/"
+                                        f"{min_h2h_rate:.0%} conf>={_threshold_label(confidence_min)} "
+                                        f"edge>={_threshold_label(model_edge_min)} odds={odds_band or 'any'}"
+                                    ),
+                                    "label_style": label_style,
+                                    "league_filter": league_filter,
+                                    "leagues": leagues,
+                                    "min_h2h_matches": min_h2h_matches,
+                                    "min_h2h_rate_pct": round(min_h2h_rate * 100, 1),
+                                    "confidence_min_pct": None if confidence_min is None else round(confidence_min * 100, 1),
+                                    "model_edge_min_pct": None if model_edge_min is None else round(model_edge_min * 100, 1),
+                                    "odds_band": odds_band,
+                                    "simulation": simulation,
+                                    "score": score,
+                                    "eligible": eligible,
+                                    "rejection_reasons": reasons,
+                                }
+                                _remember_top_candidate(all_singles, _trim_history_edge_candidate(candidate), 80)
+
+                                filter_candidate = dict(candidate)
+                                filter_candidate["mask"] = mask.copy()
+                                filter_candidate["labels"] = labels.copy()
+                                filter_candidate["selected_confidence"] = selected_confidence.copy()
+                                filter_candidate["selected_edge"] = selected_edge.copy()
+                                filter_candidate["arrays"] = arrays
+                                _remember_top_candidate(coupon_filters, filter_candidate, HISTORY_EDGE_COUPON_TOP_FILTERS)
+
+    coupon_filters = sorted(coupon_filters, key=_candidate_rank_tuple, reverse=True)[:HISTORY_EDGE_COUPON_TOP_FILTERS]
+    for filter_candidate in coupon_filters:
+        selected = _history_edge_pick_predictions(filter_candidate, filter_candidate["arrays"])
+        if len(selected) < 100:
+            continue
+        for max_legs in OPT_COUPON_MAX_LEGS:
+            for sort_by in OPT_COUPON_SORTS:
+                for max_per_league in OPT_COUPON_MAX_PER_LEAGUE:
+                    simulation = simulate_coupon_bankroll(
+                        selected,
+                        max_legs=max_legs,
+                        sort_by=sort_by,
+                        max_per_league=max_per_league,
+                    )
+                    if simulation.get("coupons", 0) < 50:
+                        continue
+                    score, eligible, reasons = _robust_score(simulation, "coupons", 50)
+                    evaluated_coupons += 1
+                    candidate = {
+                        **{
+                            key: filter_candidate.get(key)
+                            for key in [
+                                "mode", "version", "label_style", "league_filter", "leagues",
+                                "min_h2h_matches", "min_h2h_rate_pct", "confidence_min_pct",
+                                "model_edge_min_pct", "odds_band",
+                            ]
+                        },
+                        "type": "historical_edge_coupon",
+                        "name": (
+                            f"{filter_candidate['name']} coupon max={max_legs} "
+                            f"sort={sort_by} max_per_league={max_per_league}"
+                        ),
+                        "max_legs": max_legs,
+                        "sort_by": sort_by,
+                        "max_per_league": max_per_league,
+                        "simulation": simulation,
+                        "score": score,
+                        "eligible": eligible,
+                        "rejection_reasons": reasons,
+                    }
+                    _remember_top_candidate(all_coupons, _trim_history_edge_candidate(candidate), 80)
+
+    ranked_singles = sorted(all_singles, key=_candidate_rank_tuple, reverse=True)
+    ranked_coupons = sorted(all_coupons, key=_candidate_rank_tuple, reverse=True)
+    return {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "objective": "money_first_historical_edge_no_future_leakage",
+        "source_sets": [
+            {"mode": mode, "version": version, "predictions": len(predictions)}
+            for mode, version, predictions in source_sets
+        ],
+        "rules": {
+            "starting_bankroll": DEFAULT_STARTING_BANKROLL,
+            "single_stake": DEFAULT_SINGLE_STAKE,
+            "coupon_stake": DEFAULT_COUPON_STAKE,
+            "single_min_bets": 100,
+            "coupon_min_count": 50,
+            "h2h_signal": "exact same home team vs exact same away team before current match",
+            "no_future_leakage": True,
+        },
+        "evaluated_single_candidates": evaluated_singles,
+        "evaluated_coupon_candidates": evaluated_coupons,
+        "best_single": ranked_singles[0] if ranked_singles else None,
+        "best_coupon": ranked_coupons[0] if ranked_coupons else None,
+        "top_singles": ranked_singles[:50],
+        "top_coupons": ranked_coupons[:50],
+    }
+
+
+def print_historical_edge_summary(results: Dict):
+    print_header("MONEY-FIRST HISTORICAL EDGE BACKTEST")
+
+    def _print_best(title: str, candidate: Optional[Dict]):
+        if not candidate:
+            print(f"  {title}: N/A")
+            return
+        sim = candidate.get("simulation", {})
+        count = sim.get("bets", sim.get("coupons", 0))
+        hit = sim.get("accuracy", sim.get("coupon_hit_rate", 0.0))
+        print()
+        print(f"  {title}: {candidate.get('name')}")
+        print(
+            f"    Final: {sim.get('final_bankroll', 0):.0f} | "
+            f"Profit: {sim.get('profit', 0):+.0f} | ROI: {sim.get('roi_pct', 0):+.1f}% | "
+            f"MaxDD: {sim.get('max_drawdown', 0):.0f}"
+        )
+        print(f"    Count: {count} | Hit: {hit:.1f}% | Eligible: {candidate.get('eligible')}")
+        print(f"    By season: {sim.get('by_season', {})}")
+
+    print(f"  Single candidates evaluated: {results.get('evaluated_single_candidates', 0)}")
+    print(f"  Coupon candidates evaluated: {results.get('evaluated_coupon_candidates', 0)}")
+    _print_best("Best historical-edge single", results.get("best_single"))
+    _print_best("Best historical-edge coupon", results.get("best_coupon"))
+    print()
+
+
+# ═════════════════════════════════════════════════════════════
+#  CSV-ONLY HISTORICAL EDGE BACKTEST
+# ═════════════════════════════════════════════════════════════
+def _csv_match_to_history_prediction(match: Dict) -> Optional[Dict]:
+    home_score = match.get("home_score")
+    away_score = match.get("away_score")
+    if home_score is None or away_score is None:
+        return None
+
+    home_odds = match.get("home_odds")
+    draw_odds = match.get("draw_odds")
+    away_odds = match.get("away_odds")
+    if not home_odds or not draw_odds or not away_odds:
+        return None
+
+    extra = match.get("extra_data") or {}
+    actual = LABEL_HOME if home_score > away_score else LABEL_DRAW if home_score == away_score else LABEL_AWAY
+    return {
+        "match_date": match.get("match_date", ""),
+        "league": match.get("league_code", ""),
+        "season": match.get("season"),
+        "home": match.get("home_team_name", ""),
+        "away": match.get("away_team_name", ""),
+        "home_score": home_score,
+        "away_score": away_score,
+        "actual": actual,
+        "predicted": -1,
+        "confidence": 0.0,
+        "home_prob": 0.0,
+        "draw_prob": 0.0,
+        "away_prob": 0.0,
+        "home_odds": home_odds,
+        "draw_odds": draw_odds,
+        "away_odds": away_odds,
+        "avg_home_odds": extra.get("avg_home_odds"),
+        "avg_draw_odds": extra.get("avg_draw_odds"),
+        "avg_away_odds": extra.get("avg_away_odds"),
+        "max_home_odds": extra.get("max_home_odds"),
+        "max_draw_odds": extra.get("max_draw_odds"),
+        "max_away_odds": extra.get("max_away_odds"),
+        "b365_close_home": extra.get("b365_close_home"),
+        "b365_close_draw": extra.get("b365_close_draw"),
+        "b365_close_away": extra.get("b365_close_away"),
+        "avg_close_home_odds": extra.get("avg_close_home_odds"),
+        "avg_close_draw_odds": extra.get("avg_close_draw_odds"),
+        "avg_close_away_odds": extra.get("avg_close_away_odds"),
+        "max_close_home_odds": extra.get("max_close_home_odds"),
+        "max_close_draw_odds": extra.get("max_close_draw_odds"),
+        "max_close_away_odds": extra.get("max_close_away_odds"),
+        "edge": 0.0,
+        "kelly": 0.0,
+    }
+
+
+def _csv_matches_to_history_predictions(matches: List[Dict]) -> List[Dict]:
+    predictions = []
+    for match in matches:
+        prediction = _csv_match_to_history_prediction(match)
+        if prediction:
+            predictions.append(prediction)
+    return _sorted_predictions(predictions)
+
+
+def _history_label_for_csv_style(prediction: Dict, style: str) -> Optional[int]:
+    history_label = prediction.get("_h2h_label")
+    if history_label not in (LABEL_HOME, LABEL_DRAW, LABEL_AWAY):
+        return None
+
+    odds = {
+        LABEL_HOME: prediction.get("home_odds"),
+        LABEL_DRAW: prediction.get("draw_odds"),
+        LABEL_AWAY: prediction.get("away_odds"),
+    }
+    valid = {label: odd for label, odd in odds.items() if odd and odd > 1.0}
+    if not valid:
+        return None
+
+    if style == "historical_outcome":
+        return history_label
+
+    if style == "market_favorite":
+        favorite = min(valid.items(), key=lambda item: item[1])[0]
+        return favorite if favorite == history_label else None
+
+    if style == "market_underdog":
+        underdog = max(valid.items(), key=lambda item: item[1])[0]
+        return underdog if underdog == history_label else None
+
+    return None
+
+
+def _build_csv_history_edge_predictions(
+    matches: List[Dict],
+    label_style: str,
+    min_matches: int,
+    min_rate: float,
+    edge_min: Optional[float],
+    odds_band: Optional[Tuple[float, float]],
+    leagues: List[str],
+) -> List[Dict]:
+    league_set = set(leagues)
+    selected = []
+
+    for match in matches:
+        if league_set and match.get("league") not in league_set:
+            continue
+        if match.get("_h2h_count", 0) < min_matches:
+            continue
+        if match.get("_h2h_rate", 0.0) < min_rate:
+            continue
+
+        label = _history_label_for_csv_style(match, label_style)
+        if label is None:
+            continue
+
+        odds = _prediction_odds(match, label)
+        if odds is None:
+            continue
+        if odds_band and not (odds_band[0] <= odds <= odds_band[1]):
+            continue
+
+        historical_rate = float(match.get("_h2h_rate") or 0.0)
+        historical_edge = historical_rate - (1.0 / odds)
+        if edge_min is not None and historical_edge < edge_min:
+            continue
+
+        pick = dict(match)
+        pick["predicted"] = label
+        pick["confidence"] = historical_rate
+        pick["edge"] = historical_edge
+        pick["historical_edge_count"] = int(match.get("_h2h_count") or 0)
+        pick["historical_edge_rate"] = round(historical_rate * 100, 2)
+        pick["label_style"] = label_style
+        selected.append(pick)
+
+    return selected
+
+
+def _csv_history_league_groups(matches: List[Dict]) -> Dict[str, List[str]]:
+    leagues = sorted({p.get("league") for p in matches if p.get("league")})
+    groups = {"all": leagues}
+    top = [league for league in leagues if league in TOP_LEAGUE_CODES]
+    if top:
+        groups["top_leagues"] = top
+    for league in top:
+        groups[f"league:{league}"] = [league]
+    return groups
+
+
+def optimize_csv_historical_edge(matches: List[Dict], start_season: int, end_season: int) -> Dict:
+    """Backtest pure historical H2H/odds edge directly from CSV matches."""
+    history_predictions = _csv_matches_to_history_predictions(matches)
+    enriched = _enrich_directed_h2h_history(history_predictions)
+    league_groups = _csv_history_league_groups(enriched)
+    arrays = _history_edge_arrays(enriched)
+    odds = arrays["odds"]
+    odds_valid = odds > 1.0
+    favorite_labels = np.argmin(np.where(odds_valid, odds, 999.0), axis=1).astype(int)
+    underdog_labels = np.argmax(np.where(odds_valid, odds, -1.0), axis=1).astype(int)
+    h2h_labels = arrays["h2h_label"]
+    h2h_rate = arrays["h2h_rate"]
+    h2h_count = arrays["h2h_count"]
+    all_singles = []
+    all_coupons = []
+    coupon_filters = []
+    evaluated_singles = 0
+    evaluated_coupons = 0
+
+    for label_style in CSV_HISTORY_LABEL_STYLES:
+        if label_style == "historical_outcome":
+            labels = h2h_labels.copy()
+        elif label_style == "market_favorite":
+            labels = np.where(favorite_labels == h2h_labels, favorite_labels, -1)
+        elif label_style == "market_underdog":
+            labels = np.where(underdog_labels == h2h_labels, underdog_labels, -1)
+        else:
+            continue
+
+        selected_confidence, selected_edge, selected_odds, valid = _selected_label_values(
+            arrays,
+            labels,
+            "historical_outcome",
+        )
+
+        for league_filter, leagues in league_groups.items():
+            league_mask = np.isin(arrays["league"], leagues)
+            for min_matches in CSV_HISTORY_MIN_MATCHES:
+                for min_rate in CSV_HISTORY_MIN_RATES:
+                    h2h_mask = (h2h_count >= min_matches) & (h2h_rate >= min_rate)
+                    for edge_min in CSV_HISTORY_EDGE_THRESHOLDS:
+                        edge_mask = (
+                            np.ones(len(enriched), dtype=bool)
+                            if edge_min is None
+                            else selected_edge >= edge_min
+                        )
+                        for odds_band in HISTORY_EDGE_ODDS_BANDS:
+                            if odds_band is None:
+                                odds_mask = np.ones(len(enriched), dtype=bool)
+                            else:
+                                odds_mask = (selected_odds >= odds_band[0]) & (selected_odds <= odds_band[1])
+
+                            mask = valid & league_mask & h2h_mask & edge_mask & odds_mask
+                            if int(np.sum(mask)) < 100:
+                                continue
+
+                            simulation = _simulate_flat_arrays(mask, labels, arrays)
+                            score, eligible, reasons = _robust_score(simulation, "bets", 100)
+                            evaluated_singles += 1
+                            candidate = {
+                                "type": "csv_historical_edge_single",
+                                "mode": "csv_history",
+                                "version": "market",
+                                "name": (
+                                    f"csv historical-edge single style={label_style} "
+                                    f"leagues={league_filter} h2h>={min_matches}/"
+                                    f"{min_rate:.0%} edge>={_threshold_label(edge_min)} "
+                                    f"odds={odds_band or 'any'}"
+                                ),
+                                "label_style": label_style,
+                                "league_filter": league_filter,
+                                "leagues": leagues,
+                                "min_h2h_matches": min_matches,
+                                "min_h2h_rate_pct": round(min_rate * 100, 1),
+                                "model_edge_min_pct": None if edge_min is None else round(edge_min * 100, 1),
+                                "odds_band": odds_band,
+                                "simulation": simulation,
+                                "score": score,
+                                "eligible": eligible,
+                                "rejection_reasons": reasons,
+                            }
+                            _remember_top_candidate(all_singles, _trim_history_edge_candidate(candidate), 100)
+
+                            filter_candidate = dict(candidate)
+                            filter_candidate["mask"] = mask.copy()
+                            filter_candidate["labels"] = labels.copy()
+                            filter_candidate["selected_confidence"] = selected_confidence.copy()
+                            filter_candidate["selected_edge"] = selected_edge.copy()
+                            filter_candidate["arrays"] = arrays
+                            _remember_top_candidate(coupon_filters, filter_candidate, HISTORY_EDGE_COUPON_TOP_FILTERS)
+
+    coupon_filters = sorted(coupon_filters, key=_candidate_rank_tuple, reverse=True)[:HISTORY_EDGE_COUPON_TOP_FILTERS]
+    for filter_candidate in coupon_filters:
+        selected = _history_edge_pick_predictions(filter_candidate, filter_candidate["arrays"])
+        if len(selected) < 100:
+            continue
+        for max_legs in OPT_COUPON_MAX_LEGS:
+            for sort_by in OPT_COUPON_SORTS:
+                for max_per_league in OPT_COUPON_MAX_PER_LEAGUE:
+                    simulation = simulate_coupon_bankroll(
+                        selected,
+                        max_legs=max_legs,
+                        sort_by=sort_by,
+                        max_per_league=max_per_league,
+                    )
+                    if simulation.get("coupons", 0) < 50:
+                        continue
+                    score, eligible, reasons = _robust_score(simulation, "coupons", 50)
+                    evaluated_coupons += 1
+                    candidate = {
+                        **{
+                            key: filter_candidate.get(key)
+                            for key in [
+                                "mode", "version", "label_style", "league_filter", "leagues",
+                                "min_h2h_matches", "min_h2h_rate_pct", "model_edge_min_pct",
+                                "odds_band",
+                            ]
+                        },
+                        "type": "csv_historical_edge_coupon",
+                        "name": (
+                            f"{filter_candidate['name']} coupon max={max_legs} "
+                            f"sort={sort_by} max_per_league={max_per_league}"
+                        ),
+                        "max_legs": max_legs,
+                        "sort_by": sort_by,
+                        "max_per_league": max_per_league,
+                        "simulation": simulation,
+                        "score": score,
+                        "eligible": eligible,
+                        "rejection_reasons": reasons,
+                    }
+                    _remember_top_candidate(all_coupons, _trim_history_edge_candidate(candidate), 100)
+
+    ranked_singles = sorted(all_singles, key=_candidate_rank_tuple, reverse=True)
+    ranked_coupons = sorted(all_coupons, key=_candidate_rank_tuple, reverse=True)
+    return {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "objective": "csv_money_first_historical_h2h_odds_edge_no_future_leakage",
+        "source": "football-data.co.uk CSV",
+        "start_season": start_season,
+        "end_season": end_season,
+        "source_matches": len(matches),
+        "usable_matches": len(history_predictions),
+        "rules": {
+            "starting_bankroll": DEFAULT_STARTING_BANKROLL,
+            "single_stake": DEFAULT_SINGLE_STAKE,
+            "coupon_stake": DEFAULT_COUPON_STAKE,
+            "h2h_signal": "exact same home team vs exact same away team before current match",
+            "edge": "historical hit rate minus break-even odds probability",
+            "no_future_leakage": True,
+            "note": "This is pure history/market odds. It does not include v1/v2 model confidence.",
+        },
+        "evaluated_single_candidates": evaluated_singles,
+        "evaluated_coupon_candidates": evaluated_coupons,
+        "best_single": ranked_singles[0] if ranked_singles else None,
+        "best_coupon": ranked_coupons[0] if ranked_coupons else None,
+        "top_singles": ranked_singles[:50],
+        "top_coupons": ranked_coupons[:50],
+    }
+
+
+def print_csv_historical_edge_summary(results: Dict):
+    print_header("CSV MONEY-FIRST HISTORICAL EDGE BACKTEST")
+    print(f"  Seasons: {results.get('start_season')}-{results.get('end_season')}")
+    print(f"  Source matches: {results.get('source_matches', 0)}")
+    print(f"  Usable matches with 1X2 odds: {results.get('usable_matches', 0)}")
+    print(f"  Single candidates evaluated: {results.get('evaluated_single_candidates', 0)}")
+    print(f"  Coupon candidates evaluated: {results.get('evaluated_coupon_candidates', 0)}")
+
+    for title, candidate in [
+        ("Best CSV-history single", results.get("best_single")),
+        ("Best CSV-history coupon", results.get("best_coupon")),
+    ]:
+        if not candidate:
+            print(f"  {title}: N/A")
+            continue
+        sim = candidate.get("simulation", {})
+        count = sim.get("bets", sim.get("coupons", 0))
+        hit = sim.get("accuracy", sim.get("coupon_hit_rate", 0.0))
+        print()
+        print(f"  {title}: {candidate.get('name')}")
+        print(
+            f"    Final: {sim.get('final_bankroll', 0):.0f} | "
+            f"Profit: {sim.get('profit', 0):+.0f} | ROI: {sim.get('roi_pct', 0):+.1f}% | "
+            f"MaxDD: {sim.get('max_drawdown', 0):.0f}"
+        )
+        print(f"    Count: {count} | Hit: {hit:.1f}% | Eligible: {candidate.get('eligible')}")
+        print(f"    By season: {sim.get('by_season', {})}")
+    print()
+
+
+# ═════════════════════════════════════════════════════════════
+#  CSV STRATEGY ZOO BACKTEST
+# ═════════════════════════════════════════════════════════════
+def _set_dominant_history_fields(record: Dict, prefix: str, counts: Dict, label_mapper=None):
+    total = sum(counts.values())
+    if not total:
+        record[f"_{prefix}_count"] = 0
+        record[f"_{prefix}_label"] = None
+        record[f"_{prefix}_rate"] = 0.0
+        return
+
+    ranked = sorted(counts.items(), key=lambda item: item[1], reverse=True)
+    if len(ranked) > 1 and ranked[0][1] == ranked[1][1]:
+        record[f"_{prefix}_count"] = total
+        record[f"_{prefix}_label"] = None
+        record[f"_{prefix}_rate"] = 0.0
+        return
+
+    key, hits = ranked[0]
+    label = label_mapper(key) if label_mapper else key
+    record[f"_{prefix}_count"] = total
+    record[f"_{prefix}_label"] = label
+    record[f"_{prefix}_rate"] = hits / total if total else 0.0
+
+
+def _enrich_strategy_zoo_history(matches: List[Dict]) -> List[Dict]:
+    """Add no-leak history fields for many simple strategy families."""
+    directed = _enrich_directed_h2h_history(matches)
+    pair_winner = defaultdict(lambda: defaultdict(int))
+    home_side = defaultdict(lambda: defaultdict(int))
+    away_side = defaultdict(lambda: defaultdict(int))
+    team_any = defaultdict(lambda: defaultdict(int))
+    recent_team_results = defaultdict(list)
+    league_season_counts = defaultdict(int)
+    enriched = []
+
+    for match in _sorted_predictions(directed):
+        pick = dict(match)
+        home = str(match.get("home", "")).strip().lower()
+        away = str(match.get("away", "")).strip().lower()
+        league = str(match.get("league", ""))
+        season = match.get("season")
+        pair = _pair_key(match)
+        home_key = (league, home)
+        away_key = (league, away)
+        league_season_key = (league, season)
+        pick["_league_season_match_number"] = league_season_counts[league_season_key] + 1
+
+        def winner_to_current_label(winner: str) -> Optional[int]:
+            if winner == "DRAW":
+                return LABEL_DRAW
+            if winner == home:
+                return LABEL_HOME
+            if winner == away:
+                return LABEL_AWAY
+            return None
+
+        _set_dominant_history_fields(pick, "pair", pair_winner[pair], winner_to_current_label)
+        _set_dominant_history_fields(pick, "home_home", home_side[home_key])
+        _set_dominant_history_fields(pick, "away_away", away_side[away_key])
+        _set_dominant_history_fields(
+            pick,
+            "home_any",
+            team_any[home_key],
+            lambda result: _current_label_for_team_result(match, "home", result),
+        )
+        _set_dominant_history_fields(
+            pick,
+            "away_any",
+            team_any[away_key],
+            lambda result: _current_label_for_team_result(match, "away", result),
+        )
+
+        for side, key in [("home", home_key), ("away", away_key)]:
+            recent = recent_team_results[key][-5:]
+            total = len(recent)
+            pick[f"_{side}_form_count"] = total
+            for result in ("WIN", "DRAW", "LOSS"):
+                pick[f"_{side}_form_{result.lower()}_rate"] = (
+                    recent.count(result) / total if total else 0.0
+                )
+
+        enriched.append(pick)
+
+        actual = match.get("actual")
+        if actual in (LABEL_HOME, LABEL_DRAW, LABEL_AWAY):
+            pair_winner[pair][_winner_name(match)] += 1
+            home_side[home_key][actual] += 1
+            away_side[away_key][actual] += 1
+            home_result = _team_result(match, str(match.get("home", "")))
+            away_result = _team_result(match, str(match.get("away", "")))
+            team_any[home_key][home_result] += 1
+            team_any[away_key][away_result] += 1
+            recent_team_results[home_key].append(home_result)
+            recent_team_results[away_key].append(away_result)
+            league_season_counts[league_season_key] += 1
+
+    return enriched
+
+
+def _strategy_zoo_arrays(enriched: List[Dict]) -> Dict[str, object]:
+    arrays = _history_edge_arrays(enriched)
+    n = len(enriched)
+
+    def _int_field(name: str, default: int = 0) -> np.ndarray:
+        return np.array([int(p.get(name) or default) for p in enriched], dtype=int)
+
+    def _label_field(name: str) -> np.ndarray:
+        return np.array([
+            int(p.get(name)) if p.get(name) in (LABEL_HOME, LABEL_DRAW, LABEL_AWAY) else -1
+            for p in enriched
+        ], dtype=int)
+
+    def _float_field(name: str) -> np.ndarray:
+        return np.array([float(p.get(name) or 0.0) for p in enriched], dtype=float)
+
+    for prefix in ["pair", "home_home", "away_away", "home_any", "away_any"]:
+        arrays[f"{prefix}_count"] = _int_field(f"_{prefix}_count")
+        arrays[f"{prefix}_label"] = _label_field(f"_{prefix}_label")
+        arrays[f"{prefix}_rate"] = _float_field(f"_{prefix}_rate")
+    arrays["league_season_match_number"] = _int_field("_league_season_match_number", 1)
+
+    for side in ["home", "away"]:
+        arrays[f"{side}_form_count"] = _int_field(f"_{side}_form_count")
+        for result in ["win", "draw", "loss"]:
+            arrays[f"{side}_form_{result}_rate"] = _float_field(f"_{side}_form_{result}_rate")
+
+    odds = arrays["odds"]
+    avg_odds = np.array([
+        [
+            float(p.get("avg_home_odds") or p.get("home_odds") or 0.0),
+            float(p.get("avg_draw_odds") or p.get("draw_odds") or 0.0),
+            float(p.get("avg_away_odds") or p.get("away_odds") or 0.0),
+        ]
+        for p in enriched
+    ], dtype=float)
+    max_odds = np.array([
+        [
+            float(p.get("max_home_odds") or p.get("home_odds") or 0.0),
+            float(p.get("max_draw_odds") or p.get("draw_odds") or 0.0),
+            float(p.get("max_away_odds") or p.get("away_odds") or 0.0),
+        ]
+        for p in enriched
+    ], dtype=float)
+    b365_close_odds = np.array([
+        [
+            float(p.get("b365_close_home") or p.get("home_odds") or 0.0),
+            float(p.get("b365_close_draw") or p.get("draw_odds") or 0.0),
+            float(p.get("b365_close_away") or p.get("away_odds") or 0.0),
+        ]
+        for p in enriched
+    ], dtype=float)
+    avg_close_odds = np.array([
+        [
+            float(p.get("avg_close_home_odds") or p.get("avg_home_odds") or p.get("home_odds") or 0.0),
+            float(p.get("avg_close_draw_odds") or p.get("avg_draw_odds") or p.get("draw_odds") or 0.0),
+            float(p.get("avg_close_away_odds") or p.get("avg_away_odds") or p.get("away_odds") or 0.0),
+        ]
+        for p in enriched
+    ], dtype=float)
+    arrays["avg_odds"] = avg_odds
+    arrays["max_odds"] = max_odds
+    arrays["b365_close_odds"] = b365_close_odds
+    arrays["avg_close_odds"] = avg_close_odds
+    valid = odds > 1.0
+    arrays["favorite_label"] = np.argmin(np.where(valid, odds, 999.0), axis=1).astype(int)
+    arrays["underdog_label"] = np.argmax(np.where(valid, odds, -1.0), axis=1).astype(int)
+    order = np.argsort(np.where(valid, odds, 999.0), axis=1)
+    arrays["second_favorite_label"] = order[:, 1].astype(int) if n else np.array([], dtype=int)
+    return arrays
+
+
+def _strategy_zoo_sources(arrays: Dict[str, object]) -> List[Dict]:
+    n = len(arrays["predictions"])
+    zeros = np.zeros(n, dtype=float)
+    ones = np.ones(n, dtype=float)
+
+    def source(name: str, labels, count=None, rate=None, pre_mask=None, needs_history=False):
+        return {
+            "name": name,
+            "labels": labels.astype(int),
+            "count": count if count is not None else np.zeros(n, dtype=int),
+            "rate": rate if rate is not None else ones,
+            "pre_mask": pre_mask if pre_mask is not None else np.ones(n, dtype=bool),
+            "needs_history": needs_history,
+        }
+
+    favorite = arrays["favorite_label"]
+    underdog = arrays["underdog_label"]
+    second_favorite = arrays["second_favorite_label"]
+    h2h_label = arrays["h2h_label"]
+    pair_label = arrays["pair_label"]
+    home_form_count = arrays["home_form_count"]
+    away_form_count = arrays["away_form_count"]
+    home_win = arrays["home_form_win_rate"]
+    home_loss = arrays["home_form_loss_rate"]
+    home_draw = arrays["home_form_draw_rate"]
+    away_win = arrays["away_form_win_rate"]
+    away_loss = arrays["away_form_loss_rate"]
+    away_draw = arrays["away_form_draw_rate"]
+
+    form_count = np.minimum(home_form_count, away_form_count)
+    home_form_rate = (home_win + away_loss) / 2
+    away_form_rate = (away_win + home_loss) / 2
+    draw_form_rate = (home_draw + away_draw) / 2
+
+    sources = [
+        source("always_home", np.full(n, LABEL_HOME), rate=zeros),
+        source("always_draw", np.full(n, LABEL_DRAW), rate=zeros),
+        source("always_away", np.full(n, LABEL_AWAY), rate=zeros),
+        source("market_favorite", favorite, rate=zeros),
+        source("market_second_favorite", second_favorite, rate=zeros),
+        source("market_underdog", underdog, rate=zeros),
+        source("direct_h2h", h2h_label, arrays["h2h_count"], arrays["h2h_rate"], needs_history=True),
+        source("pair_history", pair_label, arrays["pair_count"], arrays["pair_rate"], needs_history=True),
+        source("home_home_history", arrays["home_home_label"], arrays["home_home_count"], arrays["home_home_rate"], needs_history=True),
+        source("away_away_history", arrays["away_away_label"], arrays["away_away_count"], arrays["away_away_rate"], needs_history=True),
+        source("home_any_history", arrays["home_any_label"], arrays["home_any_count"], arrays["home_any_rate"], needs_history=True),
+        source("away_any_history", arrays["away_any_label"], arrays["away_any_count"], arrays["away_any_rate"], needs_history=True),
+        source(
+            "favorite_direct_h2h_agree",
+            np.where(favorite == h2h_label, favorite, -1),
+            arrays["h2h_count"],
+            arrays["h2h_rate"],
+            needs_history=True,
+        ),
+        source(
+            "favorite_pair_agree",
+            np.where(favorite == pair_label, favorite, -1),
+            arrays["pair_count"],
+            arrays["pair_rate"],
+            needs_history=True,
+        ),
+        source(
+            "fade_direct_to_favorite",
+            np.where((h2h_label >= 0) & (favorite != h2h_label), favorite, -1),
+            arrays["h2h_count"],
+            1 - arrays["h2h_rate"],
+            needs_history=True,
+        ),
+        source(
+            "home_form_vs_away_poor",
+            np.full(n, LABEL_HOME),
+            form_count,
+            home_form_rate,
+            pre_mask=(form_count >= 3),
+            needs_history=True,
+        ),
+        source(
+            "away_form_vs_home_poor",
+            np.full(n, LABEL_AWAY),
+            form_count,
+            away_form_rate,
+            pre_mask=(form_count >= 3),
+            needs_history=True,
+        ),
+        source(
+            "draw_form",
+            np.full(n, LABEL_DRAW),
+            form_count,
+            draw_form_rate,
+            pre_mask=(form_count >= 3),
+            needs_history=True,
+        ),
+    ]
+    return sources
+
+
+def _strategy_zoo_trim(candidate: Dict) -> Dict:
+    trimmed = _trim_history_edge_candidate(candidate)
+    trimmed["strategy"] = candidate.get("strategy")
+    trimmed["rate_min_pct"] = candidate.get("rate_min_pct")
+    trimmed["history_count_min"] = candidate.get("history_count_min")
+    return trimmed
+
+
+def optimize_csv_strategy_zoo(matches: List[Dict], start_season: int, end_season: int) -> Dict:
+    history_predictions = _csv_matches_to_history_predictions(matches)
+    enriched = _enrich_strategy_zoo_history(history_predictions)
+    arrays = _strategy_zoo_arrays(enriched)
+    league_groups = _csv_history_league_groups(enriched)
+    sources = _strategy_zoo_sources(arrays)
+    odds = arrays["odds"]
+    all_singles = []
+    all_coupons = []
+    coupon_filters = []
+    evaluated_singles = 0
+    evaluated_coupons = 0
+
+    for src in sources:
+        logger.info(f"Strategy zoo source: {src['name']}")
+        labels = src["labels"]
+        selected_confidence, selected_edge, selected_odds, valid = _selected_label_values(
+            arrays,
+            labels,
+            "historical_outcome" if src["needs_history"] else "market",
+        )
+        if src["needs_history"]:
+            selected_confidence = src["rate"]
+            selected_edge = np.where(selected_odds > 1.0, src["rate"] - (1.0 / selected_odds), -99.0)
+            count_options = STRATEGY_ZOO_HISTORY_COUNTS
+            rate_options = STRATEGY_ZOO_HISTORY_RATES
+            edge_options = STRATEGY_ZOO_EDGE_THRESHOLDS
+        else:
+            selected_confidence = np.where(selected_odds > 1.0, 1.0 / selected_odds, 0.0)
+            selected_edge = np.zeros(len(enriched), dtype=float)
+            count_options = [None]
+            rate_options = [None]
+            edge_options = [None]
+
+        for league_filter, leagues in league_groups.items():
+            league_mask = np.isin(arrays["league"], leagues)
+            for count_min in count_options:
+                count_mask = (
+                    np.ones(len(enriched), dtype=bool)
+                    if count_min is None
+                    else src["count"] >= count_min
+                )
+                for rate_min in rate_options:
+                    rate_mask = (
+                        np.ones(len(enriched), dtype=bool)
+                        if rate_min is None
+                        else src["rate"] >= rate_min
+                    )
+                    for edge_min in edge_options:
+                        edge_mask = (
+                            np.ones(len(enriched), dtype=bool)
+                            if edge_min is None
+                            else selected_edge >= edge_min
+                        )
+                        for odds_band in STRATEGY_ZOO_ODDS_BANDS:
+                            if odds_band is None:
+                                odds_mask = np.ones(len(enriched), dtype=bool)
+                            else:
+                                odds_mask = (selected_odds >= odds_band[0]) & (selected_odds <= odds_band[1])
+
+                            mask = (
+                                valid
+                                & src["pre_mask"]
+                                & league_mask
+                                & count_mask
+                                & rate_mask
+                                & edge_mask
+                                & odds_mask
+                            )
+                            if int(np.sum(mask)) < 100:
+                                continue
+
+                            simulation = _simulate_flat_arrays(mask, labels, arrays)
+                            score, eligible, reasons = _robust_score(simulation, "bets", 100)
+                            evaluated_singles += 1
+                            name = (
+                                f"csv zoo single strategy={src['name']} leagues={league_filter} "
+                                f"count>={count_min if count_min is not None else 'none'} "
+                                f"rate>={_threshold_label(rate_min)} "
+                                f"edge>={_threshold_label(edge_min)} odds={odds_band or 'any'}"
+                            )
+                            candidate = {
+                                "type": "csv_strategy_zoo_single",
+                                "mode": "csv_strategy_zoo",
+                                "version": "market",
+                                "name": name,
+                                "strategy": src["name"],
+                                "label_style": src["name"],
+                                "league_filter": league_filter,
+                                "leagues": leagues,
+                                "history_count_min": count_min,
+                                "rate_min_pct": None if rate_min is None else round(rate_min * 100, 1),
+                                "model_edge_min_pct": None if edge_min is None else round(edge_min * 100, 1),
+                                "odds_band": odds_band,
+                                "simulation": simulation,
+                                "score": score,
+                                "eligible": eligible,
+                                "rejection_reasons": reasons,
+                            }
+                            _remember_top_candidate(all_singles, _strategy_zoo_trim(candidate), 150)
+
+                            filter_candidate = dict(candidate)
+                            filter_candidate["mask"] = mask
+                            filter_candidate["labels"] = labels
+                            filter_candidate["selected_confidence"] = selected_confidence
+                            filter_candidate["selected_edge"] = selected_edge
+                            filter_candidate["arrays"] = arrays
+                            _remember_top_candidate(coupon_filters, filter_candidate, STRATEGY_ZOO_COUPON_TOP_FILTERS)
+
+    coupon_filters = sorted(coupon_filters, key=_candidate_rank_tuple, reverse=True)[:STRATEGY_ZOO_COUPON_TOP_FILTERS]
+    seen_coupon_names = set()
+    for filter_candidate in coupon_filters:
+        selected = _history_edge_pick_predictions(filter_candidate, filter_candidate["arrays"])
+        if len(selected) < 100:
+            continue
+        for max_legs in OPT_COUPON_MAX_LEGS:
+            for sort_by in OPT_COUPON_SORTS:
+                for max_per_league in OPT_COUPON_MAX_PER_LEAGUE:
+                    simulation = simulate_coupon_bankroll(
+                        selected,
+                        max_legs=max_legs,
+                        sort_by=sort_by,
+                        max_per_league=max_per_league,
+                    )
+                    if simulation.get("coupons", 0) < 50:
+                        continue
+                    score, eligible, reasons = _robust_score(simulation, "coupons", 50)
+                    evaluated_coupons += 1
+                    name = (
+                        f"{filter_candidate['name']} coupon max={max_legs} "
+                        f"sort={sort_by} max_per_league={max_per_league}"
+                    )
+                    if name in seen_coupon_names:
+                        continue
+                    seen_coupon_names.add(name)
+                    candidate = {
+                        **{
+                            key: filter_candidate.get(key)
+                            for key in [
+                                "mode", "version", "label_style", "league_filter", "leagues",
+                                "history_count_min", "rate_min_pct", "model_edge_min_pct",
+                                "odds_band", "strategy",
+                            ]
+                        },
+                        "type": "csv_strategy_zoo_coupon",
+                        "name": name,
+                        "max_legs": max_legs,
+                        "sort_by": sort_by,
+                        "max_per_league": max_per_league,
+                        "simulation": simulation,
+                        "score": score,
+                        "eligible": eligible,
+                        "rejection_reasons": reasons,
+                    }
+                    _remember_top_candidate(all_coupons, _strategy_zoo_trim(candidate), 150)
+
+    ranked_singles = sorted(all_singles, key=_candidate_rank_tuple, reverse=True)
+    ranked_coupons = sorted(all_coupons, key=_candidate_rank_tuple, reverse=True)
+    eligible_singles = [c for c in all_singles if c.get("eligible")]
+    eligible_coupons = [c for c in all_coupons if c.get("eligible")]
+    singles_by_profit = sorted(
+        eligible_singles or all_singles,
+        key=lambda c: (c.get("simulation", {}).get("profit", 0), -c.get("simulation", {}).get("max_drawdown", 0)),
+        reverse=True,
+    )
+    coupons_by_profit = sorted(
+        eligible_coupons or all_coupons,
+        key=lambda c: (c.get("simulation", {}).get("profit", 0), -c.get("simulation", {}).get("max_drawdown", 0)),
+        reverse=True,
+    )
+
+    return {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "objective": "csv_strategy_zoo_money_first_backtest_no_future_leakage",
+        "source": "football-data.co.uk CSV",
+        "start_season": start_season,
+        "end_season": end_season,
+        "source_matches": len(matches),
+        "usable_matches": len(history_predictions),
+        "strategies_tested": [src["name"] for src in sources],
+        "rules": {
+            "starting_bankroll": DEFAULT_STARTING_BANKROLL,
+            "single_stake": DEFAULT_SINGLE_STAKE,
+            "coupon_stake": DEFAULT_COUPON_STAKE,
+            "no_future_leakage": True,
+        },
+        "evaluated_single_candidates": evaluated_singles,
+        "evaluated_coupon_candidates": evaluated_coupons,
+        "best_single_by_score": ranked_singles[0] if ranked_singles else None,
+        "best_single_by_profit": singles_by_profit[0] if singles_by_profit else None,
+        "best_coupon_by_score": ranked_coupons[0] if ranked_coupons else None,
+        "best_coupon_by_profit": coupons_by_profit[0] if coupons_by_profit else None,
+        "top_singles": ranked_singles[:75],
+        "top_singles_by_profit": singles_by_profit[:75],
+        "top_coupons": ranked_coupons[:75],
+        "top_coupons_by_profit": coupons_by_profit[:75],
+    }
+
+
+def print_strategy_zoo_summary(results: Dict):
+    print_header("CSV STRATEGY ZOO BACKTEST")
+    print(f"  Seasons: {results.get('start_season')}-{results.get('end_season')}")
+    print(f"  Source matches: {results.get('source_matches', 0)}")
+    print(f"  Usable matches with 1X2 odds: {results.get('usable_matches', 0)}")
+    print(f"  Strategy families: {len(results.get('strategies_tested', []))}")
+    print(f"  Single candidates evaluated: {results.get('evaluated_single_candidates', 0)}")
+    print(f"  Coupon candidates evaluated: {results.get('evaluated_coupon_candidates', 0)}")
+
+    for title, key in [
+        ("Best single by robust score", "best_single_by_score"),
+        ("Best single by profit", "best_single_by_profit"),
+        ("Best coupon by robust score", "best_coupon_by_score"),
+        ("Best coupon by profit", "best_coupon_by_profit"),
+    ]:
+        candidate = results.get(key)
+        if not candidate:
+            print(f"  {title}: N/A")
+            continue
+        sim = candidate.get("simulation", {})
+        count = sim.get("bets", sim.get("coupons", 0))
+        hit = sim.get("accuracy", sim.get("coupon_hit_rate", 0.0))
+        print()
+        print(f"  {title}: {candidate.get('name')}")
+        print(
+            f"    Final: {sim.get('final_bankroll', 0):.0f} | "
+            f"Profit: {sim.get('profit', 0):+.0f} | ROI: {sim.get('roi_pct', 0):+.1f}% | "
+            f"MaxDD: {sim.get('max_drawdown', 0):.0f}"
+        )
+        print(f"    Count: {count} | Hit: {hit:.1f}% | Eligible: {candidate.get('eligible')}")
+        print(f"    Reasons: {candidate.get('rejection_reasons', [])}")
+        print(f"    By season: {sim.get('by_season', {})}")
+    print()
+
+
+def _odds_matrix_for_basis(arrays: Dict[str, object], basis: str) -> np.ndarray:
+    if basis == "b365_close":
+        return arrays.get("b365_close_odds", arrays["odds"])
+    if basis == "avg":
+        return arrays.get("avg_odds", arrays["odds"])
+    if basis == "avg_close":
+        return arrays.get("avg_close_odds", arrays.get("avg_odds", arrays["odds"]))
+    if basis == "max":
+        return arrays.get("max_odds", arrays["odds"])
+    return arrays["odds"]
+
+
+def _recent_form_signal(labels: np.ndarray, arrays: Dict[str, object]) -> np.ndarray:
+    home_win = arrays["home_form_win_rate"]
+    home_draw = arrays["home_form_draw_rate"]
+    home_loss = arrays["home_form_loss_rate"]
+    away_win = arrays["away_form_win_rate"]
+    away_draw = arrays["away_form_draw_rate"]
+    away_loss = arrays["away_form_loss_rate"]
+    return np.where(
+        labels == LABEL_HOME,
+        (home_win + away_loss) / 2.0,
+        np.where(
+            labels == LABEL_DRAW,
+            (home_draw + away_draw) / 2.0,
+            (away_win + home_loss) / 2.0,
+        ),
+    )
+
+
+def _history_edge_pick_predictions_with_odds(
+    candidate: Dict,
+    arrays: Dict[str, object],
+    odds_matrix: np.ndarray,
+) -> List[Dict]:
+    selected = _history_edge_pick_predictions(candidate, arrays)
+    idx = np.flatnonzero(candidate["mask"])
+    labels = candidate["labels"]
+    for pick, row_idx in zip(selected, idx):
+        pick["home_odds"] = float(odds_matrix[row_idx, LABEL_HOME])
+        pick["draw_odds"] = float(odds_matrix[row_idx, LABEL_DRAW])
+        pick["away_odds"] = float(odds_matrix[row_idx, LABEL_AWAY])
+        pick["odds_basis"] = candidate.get("odds_basis", "b365")
+        pick["selected_odds"] = float(odds_matrix[row_idx, labels[row_idx]])
+    return selected
+
+
+def _combined_coupon_odds(legs: List[Dict]) -> float:
+    combined = 1.0
+    for leg in legs:
+        combined *= _prediction_odds(leg) or 1.0
+    return combined
+
+
+def _simulate_coupon_candidate(
+    candidate: Dict,
+    arrays: Dict[str, object],
+    mask: np.ndarray,
+    max_legs: int,
+    sort_by: str,
+    max_per_league: Optional[int],
+    combined_odds_max: Optional[float],
+) -> Dict:
+    odds_matrix = candidate["odds_matrix"]
+    selected = _history_edge_pick_predictions_with_odds({**candidate, "mask": mask}, arrays, odds_matrix)
+    batches, skipped_no_odds = _build_coupon_batches(
+        selected,
+        max_legs=max_legs,
+        sort_by=sort_by,
+        max_per_league=max_per_league,
+    )
+    if combined_odds_max is not None:
+        batches = [
+            legs for legs in batches
+            if _combined_coupon_odds(legs) <= combined_odds_max
+        ]
+    return simulate_coupon_batches(
+        batches,
+        max_legs=max_legs,
+        sort_by=sort_by,
+        max_per_league=max_per_league,
+        skipped_no_odds=skipped_no_odds,
+    )
+
+
+def _strategy_zoo_filter_candidate(
+    src: Dict,
+    league_filter: str,
+    leagues: List[str],
+    count_min: Optional[int],
+    rate_min: Optional[float],
+    edge_min: Optional[float],
+    odds_band: Optional[Tuple[float, float]],
+    mask: np.ndarray,
+    labels: np.ndarray,
+    selected_confidence: np.ndarray,
+    selected_edge: np.ndarray,
+    arrays: Dict[str, object],
+) -> Dict:
+    name = (
+        f"csv zoo single strategy={src['name']} leagues={league_filter} "
+        f"count>={count_min if count_min is not None else 'none'} "
+        f"rate>={_threshold_label(rate_min)} "
+        f"edge>={_threshold_label(edge_min)} odds={odds_band or 'any'}"
+    )
+    return {
+        "type": "csv_strategy_zoo_single",
+        "mode": "csv_strategy_zoo_walk_forward",
+        "version": "market",
+        "name": name,
+        "strategy": src["name"],
+        "label_style": src["name"],
+        "league_filter": league_filter,
+        "leagues": leagues,
+        "history_count_min": count_min,
+        "rate_min_pct": None if rate_min is None else round(rate_min * 100, 1),
+        "model_edge_min_pct": None if edge_min is None else round(edge_min * 100, 1),
+        "odds_band": odds_band,
+        "mask": mask,
+        "labels": labels,
+        "selected_confidence": selected_confidence,
+        "selected_edge": selected_edge,
+        "arrays": arrays,
+    }
+
+
+def walk_forward_csv_strategy_zoo(
+    matches: List[Dict],
+    start_season: int,
+    end_season: int,
+    first_test_season: Optional[int] = None,
+    min_train_bets: int = STRATEGY_ZOO_WF_MIN_TRAIN_BETS,
+) -> Dict:
+    """
+    Choose strategies using only earlier seasons, then test the chosen strategy
+    on the next season. This estimates how much of the strategy-zoo edge survives
+    without hindsight selection.
+    """
+    history_predictions = _csv_matches_to_history_predictions(matches)
+    enriched = _enrich_strategy_zoo_history(history_predictions)
+    arrays = _strategy_zoo_arrays(enriched)
+    league_groups = _csv_history_league_groups(enriched)
+    sources = [
+        src for src in _strategy_zoo_sources(arrays)
+        if src["name"] in STRATEGY_ZOO_WF_SOURCE_ALLOWLIST
+    ]
+    season_array = np.array([int(season) for season in arrays["season"]], dtype=int)
+    seasons = [
+        int(season)
+        for season in sorted(set(season_array.tolist()))
+        if start_season <= int(season) <= end_season
+    ]
+    if first_test_season is None:
+        first_test_season = max(start_season + 5, seasons[0] if seasons else start_season)
+
+    all_single_test_picks: List[Dict] = []
+    all_coupon_test_batches: List[List[Dict]] = []
+    total_coupon_skipped_no_odds = 0
+    folds = []
+    total_evaluated_single_candidates = 0
+    total_evaluated_coupon_candidates = 0
+
+    for test_season in seasons:
+        if test_season < first_test_season:
+            continue
+        train_mask = season_array < test_season
+        test_mask = season_array == test_season
+        if not np.any(test_mask):
+            continue
+
+        best_single = None
+        top_train_filters = []
+        evaluated_single_candidates = 0
+
+        logger.info(f"Walk-forward strategy zoo fold: train < {test_season}, test {test_season}")
+        for src in sources:
+            labels = src["labels"]
+            selected_confidence, selected_edge, selected_odds, valid = _selected_label_values(
+                arrays,
+                labels,
+                "historical_outcome" if src["needs_history"] else "market",
+            )
+            if src["needs_history"]:
+                selected_confidence = src["rate"]
+                selected_edge = np.where(selected_odds > 1.0, src["rate"] - (1.0 / selected_odds), -99.0)
+                count_options = STRATEGY_ZOO_WF_HISTORY_COUNTS
+                rate_options = STRATEGY_ZOO_WF_HISTORY_RATES
+                edge_options = STRATEGY_ZOO_WF_EDGE_THRESHOLDS
+            else:
+                selected_confidence = np.where(selected_odds > 1.0, 1.0 / selected_odds, 0.0)
+                selected_edge = np.zeros(len(enriched), dtype=float)
+                count_options = [None]
+                rate_options = [None]
+                edge_options = [None]
+
+            for league_filter, leagues in league_groups.items():
+                league_mask = np.isin(arrays["league"], leagues)
+                for count_min in count_options:
+                    count_mask = (
+                        np.ones(len(enriched), dtype=bool)
+                        if count_min is None
+                        else src["count"] >= count_min
+                    )
+                    for rate_min in rate_options:
+                        rate_mask = (
+                            np.ones(len(enriched), dtype=bool)
+                            if rate_min is None
+                            else src["rate"] >= rate_min
+                        )
+                        for edge_min in edge_options:
+                            edge_mask = (
+                                np.ones(len(enriched), dtype=bool)
+                                if edge_min is None
+                                else selected_edge >= edge_min
+                            )
+                            for odds_band in STRATEGY_ZOO_WF_ODDS_BANDS:
+                                if odds_band is None:
+                                    odds_mask = np.ones(len(enriched), dtype=bool)
+                                else:
+                                    odds_mask = (selected_odds >= odds_band[0]) & (selected_odds <= odds_band[1])
+
+                                base_mask = (
+                                    valid
+                                    & src["pre_mask"]
+                                    & league_mask
+                                    & count_mask
+                                    & rate_mask
+                                    & edge_mask
+                                    & odds_mask
+                                )
+                                candidate_train_mask = base_mask & train_mask
+                                if int(np.sum(candidate_train_mask)) < min_train_bets:
+                                    continue
+
+                                simulation = _simulate_flat_arrays(candidate_train_mask, labels, arrays)
+                                score, eligible, reasons = _robust_score(
+                                    simulation,
+                                    "bets",
+                                    min_train_bets,
+                                )
+                                candidate = _strategy_zoo_filter_candidate(
+                                    src,
+                                    league_filter,
+                                    leagues,
+                                    count_min,
+                                    rate_min,
+                                    edge_min,
+                                    odds_band,
+                                    base_mask,
+                                    labels,
+                                    selected_confidence,
+                                    selected_edge,
+                                    arrays,
+                                )
+                                candidate.update({
+                                    "simulation": simulation,
+                                    "score": score,
+                                    "eligible": eligible,
+                                    "rejection_reasons": reasons,
+                                })
+                                evaluated_single_candidates += 1
+
+                                if best_single is None or _candidate_rank_tuple(candidate) > _candidate_rank_tuple(best_single):
+                                    best_single = candidate
+                                _remember_top_candidate(
+                                    top_train_filters,
+                                    candidate,
+                                    STRATEGY_ZOO_WF_COUPON_TOP_FILTERS,
+                                )
+
+        total_evaluated_single_candidates += evaluated_single_candidates
+
+        fold = {
+            "test_season": test_season,
+            "evaluated_single_candidates": evaluated_single_candidates,
+        }
+        if best_single is None:
+            fold["status"] = "no_train_candidate"
+            folds.append(fold)
+            continue
+
+        single_test_mask = best_single["mask"] & test_mask
+        single_test_picks = _history_edge_pick_predictions(
+            {**best_single, "mask": single_test_mask},
+            arrays,
+        )
+        all_single_test_picks.extend(single_test_picks)
+        single_test_sim = simulate_flat_bankroll(single_test_picks)
+        chosen_single = _strategy_zoo_trim(best_single)
+        chosen_single["train_simulation"] = chosen_single.pop("simulation")
+        chosen_single["test_simulation"] = single_test_sim
+        fold["chosen_single"] = chosen_single
+
+        best_coupon = None
+        evaluated_coupon_candidates = 0
+        for filter_candidate in sorted(top_train_filters, key=_candidate_rank_tuple, reverse=True):
+            coupon_train_picks = _history_edge_pick_predictions(
+                {**filter_candidate, "mask": filter_candidate["mask"] & train_mask},
+                arrays,
+            )
+            if len(coupon_train_picks) < min_train_bets:
+                continue
+            for max_legs in [2, 3, 4]:
+                for sort_by in ["confidence", "edge_x_confidence"]:
+                    for max_per_league in [1, 2]:
+                        train_coupon_sim = simulate_coupon_bankroll(
+                            coupon_train_picks,
+                            max_legs=max_legs,
+                            sort_by=sort_by,
+                            max_per_league=max_per_league,
+                        )
+                        if train_coupon_sim.get("coupons", 0) < max(20, min_train_bets // 4):
+                            continue
+                        score, eligible, reasons = _robust_score(
+                            train_coupon_sim,
+                            "coupons",
+                            max(20, min_train_bets // 4),
+                        )
+                        coupon_candidate = {
+                            **{
+                                key: filter_candidate.get(key)
+                                for key in [
+                                    "mode", "version", "label_style", "league_filter", "leagues",
+                                    "history_count_min", "rate_min_pct", "model_edge_min_pct",
+                                    "odds_band", "strategy", "mask", "labels",
+                                    "selected_confidence", "selected_edge", "arrays",
+                                ]
+                            },
+                            "type": "csv_strategy_zoo_walk_forward_coupon",
+                            "name": (
+                                f"{filter_candidate['name']} coupon max={max_legs} "
+                                f"sort={sort_by} max_per_league={max_per_league}"
+                            ),
+                            "max_legs": max_legs,
+                            "sort_by": sort_by,
+                            "max_per_league": max_per_league,
+                            "simulation": train_coupon_sim,
+                            "score": score,
+                            "eligible": eligible,
+                            "rejection_reasons": reasons,
+                        }
+                        evaluated_coupon_candidates += 1
+                        if best_coupon is None or _candidate_rank_tuple(coupon_candidate) > _candidate_rank_tuple(best_coupon):
+                            best_coupon = coupon_candidate
+
+        total_evaluated_coupon_candidates += evaluated_coupon_candidates
+        fold["evaluated_coupon_candidates"] = evaluated_coupon_candidates
+
+        if best_coupon is not None:
+            coupon_test_picks = _history_edge_pick_predictions(
+                {**best_coupon, "mask": best_coupon["mask"] & test_mask},
+                arrays,
+            )
+            coupon_batches, skipped_no_odds = _build_coupon_batches(
+                coupon_test_picks,
+                max_legs=best_coupon["max_legs"],
+                sort_by=best_coupon["sort_by"],
+                max_per_league=best_coupon["max_per_league"],
+            )
+            all_coupon_test_batches.extend(coupon_batches)
+            total_coupon_skipped_no_odds += skipped_no_odds
+            coupon_test_sim = simulate_coupon_batches(
+                coupon_batches,
+                max_legs=best_coupon["max_legs"],
+                sort_by=best_coupon["sort_by"],
+                max_per_league=best_coupon["max_per_league"],
+                skipped_no_odds=skipped_no_odds,
+            )
+            chosen_coupon = _strategy_zoo_trim(best_coupon)
+            chosen_coupon["train_simulation"] = chosen_coupon.pop("simulation")
+            chosen_coupon["test_simulation"] = coupon_test_sim
+            fold["chosen_coupon"] = chosen_coupon
+
+        folds.append(fold)
+
+    combined_single = simulate_flat_bankroll(all_single_test_picks)
+    max_batch_legs = max((len(batch) for batch in all_coupon_test_batches), default=DEFAULT_COUPON_MAX_LEGS)
+    combined_coupon = simulate_coupon_batches(
+        all_coupon_test_batches,
+        max_legs=max_batch_legs,
+        sort_by="walk_forward_selected",
+        max_per_league=None,
+        skipped_no_odds=total_coupon_skipped_no_odds,
+    )
+
+    return {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "objective": "csv_strategy_zoo_walk_forward_no_hindsight_selection",
+        "source": "football-data.co.uk CSV",
+        "start_season": start_season,
+        "end_season": end_season,
+        "first_test_season": first_test_season,
+        "source_matches": len(matches),
+        "usable_matches": len(history_predictions),
+        "strategies_tested": sorted(STRATEGY_ZOO_WF_SOURCE_ALLOWLIST),
+        "rules": {
+            "starting_bankroll": DEFAULT_STARTING_BANKROLL,
+            "single_stake": DEFAULT_SINGLE_STAKE,
+            "coupon_stake": DEFAULT_COUPON_STAKE,
+            "min_train_bets": min_train_bets,
+            "no_future_leakage": True,
+            "no_hindsight_strategy_selection": True,
+        },
+        "evaluated_single_candidates": total_evaluated_single_candidates,
+        "evaluated_coupon_candidates": total_evaluated_coupon_candidates,
+        "combined_single": combined_single,
+        "combined_coupon": combined_coupon,
+        "folds": folds,
+    }
+
+
+def print_strategy_zoo_walk_forward_summary(results: Dict):
+    print_header("CSV STRATEGY ZOO WALK-FORWARD")
+    print(f"  Seasons: {results.get('start_season')}-{results.get('end_season')}")
+    print(f"  First test season: {results.get('first_test_season')}")
+    print(f"  Source matches: {results.get('source_matches', 0)}")
+    print(f"  Usable matches with 1X2 odds: {results.get('usable_matches', 0)}")
+    print(f"  Single candidates evaluated: {results.get('evaluated_single_candidates', 0)}")
+    print(f"  Coupon candidates evaluated: {results.get('evaluated_coupon_candidates', 0)}")
+
+    for title, key in [
+        ("Out-of-sample singles", "combined_single"),
+        ("Out-of-sample coupons", "combined_coupon"),
+    ]:
+        sim = results.get(key, {})
+        count = sim.get("bets", sim.get("coupons", 0))
+        hit = sim.get("accuracy", sim.get("coupon_hit_rate", 0.0))
+        print()
+        print(f"  {title}")
+        print(
+            f"    Final: {sim.get('final_bankroll', 0):.0f} | "
+            f"Profit: {sim.get('profit', 0):+.0f} | ROI: {sim.get('roi_pct', 0):+.1f}% | "
+            f"MaxDD: {sim.get('max_drawdown', 0):.0f}"
+        )
+        print(f"    Count: {count} | Hit: {hit:.1f}%")
+        print(f"    By season: {sim.get('by_season', {})}")
+
+    print()
+    print("  Fold choices:")
+    for fold in results.get("folds", []):
+        single = fold.get("chosen_single")
+        coupon = fold.get("chosen_coupon")
+        single_profit = single.get("test_simulation", {}).get("profit", 0.0) if single else 0.0
+        coupon_profit = coupon.get("test_simulation", {}).get("profit", 0.0) if coupon else 0.0
+        print(
+            f"    {fold.get('test_season')}: "
+            f"single {single_profit:+.0f} {single.get('strategy') if single else 'N/A'} | "
+            f"coupon {coupon_profit:+.0f} {coupon.get('strategy') if coupon else 'N/A'}"
+        )
+    print()
+
+
+def optimize_h2h_coupon_criteria(
+    matches: List[Dict],
+    start_season: int,
+    end_season: int,
+    first_test_season: int = 2012,
+    validation_start_season: int = 2022,
+) -> Dict:
+    """Train/validation sweep for mature H2H coupon tuning."""
+    history_predictions = _csv_matches_to_history_predictions(matches)
+    enriched = _enrich_strategy_zoo_history(history_predictions)
+    arrays = _strategy_zoo_arrays(enriched)
+    season_array = np.array([int(season) for season in arrays["season"]], dtype=int)
+    train_mask = (season_array >= first_test_season) & (season_array < validation_start_season)
+    validation_mask = (season_array >= validation_start_season) & (season_array <= end_season)
+    league_groups_all = _csv_history_league_groups(enriched)
+    league_groups = {
+        key: value
+        for key, value in league_groups_all.items()
+        if key == "top_leagues" or key.startswith("league:")
+    }
+    sources = [
+        src for src in _strategy_zoo_sources(arrays)
+        if src["name"] in H2H_COUPON_SWEEP_SOURCES
+    ]
+
+    top_filters = []
+    evaluated_filters = 0
+    evaluated_coupons = 0
+
+    for src in sources:
+        logger.info(f"H2H coupon criteria source: {src['name']}")
+        labels = src["labels"]
+        valid_label = np.isin(labels, [LABEL_HOME, LABEL_DRAW, LABEL_AWAY])
+        row_idx = np.arange(len(labels))
+
+        for odds_basis in H2H_COUPON_SWEEP_ODDS_BASES:
+            odds_matrix = _odds_matrix_for_basis(arrays, odds_basis)
+            safe_labels = np.where(valid_label, labels, LABEL_HOME)
+            selected_odds = odds_matrix[row_idx, safe_labels]
+            selected_confidence = src["rate"]
+            selected_edge = np.where(selected_odds > 1.0, selected_confidence - (1.0 / selected_odds), -99.0)
+            form_signal = _recent_form_signal(safe_labels, arrays)
+            full_form_mask = (arrays["home_form_count"] >= 5) & (arrays["away_form_count"] >= 5)
+            valid = valid_label & (selected_odds > 1.0)
+
+            for league_filter, leagues in league_groups.items():
+                league_mask = np.isin(arrays["league"], leagues)
+                for count_min in H2H_COUPON_SWEEP_COUNTS:
+                    count_mask = src["count"] >= count_min
+                    for rate_min in H2H_COUPON_SWEEP_RATES:
+                        rate_mask = src["rate"] >= rate_min
+                        for edge_min in H2H_COUPON_SWEEP_EDGES:
+                            edge_mask = (
+                                np.ones(len(enriched), dtype=bool)
+                                if edge_min is None
+                                else selected_edge >= edge_min
+                            )
+                            for odds_band in H2H_COUPON_SWEEP_ODDS_BANDS:
+                                odds_mask = (selected_odds >= odds_band[0]) & (selected_odds <= odds_band[1])
+                                for min_league_match in H2H_COUPON_SWEEP_MIN_LEAGUE_MATCHES:
+                                    match_number_mask = arrays["league_season_match_number"] >= min_league_match
+                                    for form_min in H2H_COUPON_SWEEP_FORM_THRESHOLDS:
+                                        form_mask = (
+                                            np.ones(len(enriched), dtype=bool)
+                                            if form_min is None
+                                            else full_form_mask & (form_signal >= form_min)
+                                        )
+                                        base_mask = (
+                                            valid
+                                            & src["pre_mask"]
+                                            & league_mask
+                                            & count_mask
+                                            & rate_mask
+                                            & edge_mask
+                                            & odds_mask
+                                            & match_number_mask
+                                            & form_mask
+                                        )
+                                        filter_train_mask = base_mask & train_mask
+                                        if int(np.sum(filter_train_mask)) < 80:
+                                            continue
+
+                                        simulation = _simulate_flat_arrays(
+                                            filter_train_mask,
+                                            labels,
+                                            arrays,
+                                            odds_matrix=odds_matrix,
+                                        )
+                                        score, eligible, reasons = _robust_score(simulation, "bets", 80)
+                                        evaluated_filters += 1
+                                        name = (
+                                            f"h2h coupon filter strategy={src['name']} leagues={league_filter} "
+                                            f"basis={odds_basis} count>={count_min} rate>={rate_min:.0%} "
+                                            f"edge>={_threshold_label(edge_min)} odds={odds_band} "
+                                            f"league_match>={min_league_match} "
+                                            f"form>={_threshold_label(form_min)}"
+                                        )
+                                        candidate = {
+                                            "type": "h2h_coupon_filter",
+                                            "mode": "h2h_coupon_criteria",
+                                            "version": "market",
+                                            "name": name,
+                                            "strategy": src["name"],
+                                            "league_filter": league_filter,
+                                            "leagues": leagues,
+                                            "history_count_min": count_min,
+                                            "rate_min_pct": round(rate_min * 100, 1),
+                                            "model_edge_min_pct": None if edge_min is None else round(edge_min * 100, 1),
+                                            "odds_band": odds_band,
+                                            "odds_basis": odds_basis,
+                                            "min_league_match_number": min_league_match,
+                                            "recent_form_min_pct": None if form_min is None else round(form_min * 100, 1),
+                                            "mask": base_mask,
+                                            "labels": labels,
+                                            "selected_confidence": selected_confidence,
+                                            "selected_edge": selected_edge,
+                                            "odds_matrix": odds_matrix,
+                                            "arrays": arrays,
+                                            "simulation": simulation,
+                                            "score": score,
+                                            "eligible": eligible,
+                                            "rejection_reasons": reasons,
+                                        }
+                                        _remember_top_candidate(top_filters, candidate, H2H_COUPON_SWEEP_TOP_FILTERS)
+
+    top_filters = sorted(top_filters, key=_candidate_rank_tuple, reverse=True)[:H2H_COUPON_SWEEP_TOP_FILTERS]
+    coupon_candidates = []
+
+    for filter_candidate in top_filters:
+        for max_legs in [2, 3]:
+            for sort_by in ["confidence", "edge", "edge_x_confidence"]:
+                for max_per_league in [1, 2]:
+                    for combined_odds_max in H2H_COUPON_SWEEP_COMBINED_ODDS_MAX:
+                        train_sim = _simulate_coupon_candidate(
+                            filter_candidate,
+                            arrays,
+                            filter_candidate["mask"] & train_mask,
+                            max_legs=max_legs,
+                            sort_by=sort_by,
+                            max_per_league=max_per_league,
+                            combined_odds_max=combined_odds_max,
+                        )
+                        if train_sim.get("coupons", 0) < 30:
+                            continue
+                        train_score, train_eligible, train_reasons = _robust_score(train_sim, "coupons", 30)
+                        validation_sim = _simulate_coupon_candidate(
+                            filter_candidate,
+                            arrays,
+                            filter_candidate["mask"] & validation_mask,
+                            max_legs=max_legs,
+                            sort_by=sort_by,
+                            max_per_league=max_per_league,
+                            combined_odds_max=combined_odds_max,
+                        )
+                        evaluated_coupons += 1
+                        candidate = _strategy_zoo_trim(filter_candidate)
+                        candidate.update({
+                            "type": "h2h_coupon_criteria",
+                            "name": (
+                                f"{filter_candidate['name']} coupon max={max_legs} "
+                                f"sort={sort_by} max_per_league={max_per_league} "
+                                f"combined_odds_max={combined_odds_max or 'none'}"
+                            ),
+                            "odds_basis": filter_candidate["odds_basis"],
+                            "min_league_match_number": filter_candidate["min_league_match_number"],
+                            "max_legs": max_legs,
+                            "sort_by": sort_by,
+                            "max_per_league": max_per_league,
+                            "combined_odds_max": combined_odds_max,
+                            "train_simulation": train_sim,
+                            "validation_simulation": validation_sim,
+                            "score": train_score,
+                            "eligible": train_eligible,
+                            "rejection_reasons": train_reasons,
+                        })
+                        candidate.pop("simulation", None)
+                        coupon_candidates.append(candidate)
+
+    ranked_by_train = sorted(
+        coupon_candidates,
+        key=lambda c: (
+            1 if c.get("eligible") else 0,
+            c.get("score", -10**9),
+            c.get("train_simulation", {}).get("profit", 0),
+            c.get("validation_simulation", {}).get("profit", 0),
+            -c.get("validation_simulation", {}).get("max_drawdown", 0),
+        ),
+        reverse=True,
+    )
+    ranked_by_validation = sorted(
+        coupon_candidates,
+        key=lambda c: (
+            c.get("validation_simulation", {}).get("profit", 0),
+            -c.get("validation_simulation", {}).get("max_drawdown", 0),
+            c.get("train_simulation", {}).get("profit", 0),
+        ),
+        reverse=True,
+    )
+    robust_validation = [
+        c for c in coupon_candidates
+        if c.get("validation_simulation", {}).get("profit", 0) > 0
+        and c.get("validation_simulation", {}).get("coupons", 0) >= 20
+        and c.get("train_simulation", {}).get("profit", 0) > 0
+    ]
+    ranked_robust_validation = sorted(
+        robust_validation,
+        key=lambda c: (
+            c.get("validation_simulation", {}).get("profit", 0),
+            -c.get("validation_simulation", {}).get("max_drawdown", 0),
+        ),
+        reverse=True,
+    )
+
+    return {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "objective": "h2h_coupon_criteria_train_validation_sweep",
+        "source": "football-data.co.uk CSV",
+        "start_season": start_season,
+        "end_season": end_season,
+        "first_test_season": first_test_season,
+        "validation_start_season": validation_start_season,
+        "source_matches": len(matches),
+        "usable_matches": len(history_predictions),
+        "rules": {
+            "train_period": f"{first_test_season}-{validation_start_season - 1}",
+            "validation_period": f"{validation_start_season}-{end_season}",
+            "starting_bankroll": DEFAULT_STARTING_BANKROLL,
+            "coupon_stake": DEFAULT_COUPON_STAKE,
+            "criteria_tested": [
+                "strategy_family", "league_filter", "odds_basis", "history_count",
+                "history_rate", "historical_edge", "single_odds_band",
+                "minimum_league_season_match_number", "coupon_legs",
+                "recent_form_signal", "coupon_sort", "max_per_league",
+                "combined_coupon_odds_cap",
+            ],
+        },
+        "evaluated_filters": evaluated_filters,
+        "evaluated_coupon_candidates": evaluated_coupons,
+        "best_train_selected": ranked_by_train[0] if ranked_by_train else None,
+        "best_validation": ranked_by_validation[0] if ranked_by_validation else None,
+        "best_robust_validation": ranked_robust_validation[0] if ranked_robust_validation else None,
+        "top_train_selected": ranked_by_train[:50],
+        "top_validation": ranked_by_validation[:50],
+        "top_robust_validation": ranked_robust_validation[:50],
+    }
+
+
+def print_h2h_coupon_criteria_summary(results: Dict):
+    print_header("H2H COUPON CRITERIA SWEEP")
+    print(f"  Seasons: {results.get('start_season')}-{results.get('end_season')}")
+    print(f"  Train: {results.get('rules', {}).get('train_period')}")
+    print(f"  Validation: {results.get('rules', {}).get('validation_period')}")
+    print(f"  Source matches: {results.get('source_matches', 0)}")
+    print(f"  Usable matches with 1X2 odds: {results.get('usable_matches', 0)}")
+    print(f"  Filters evaluated: {results.get('evaluated_filters', 0)}")
+    print(f"  Coupon candidates evaluated: {results.get('evaluated_coupon_candidates', 0)}")
+
+    for title, key in [
+        ("Best train-selected candidate", "best_train_selected"),
+        ("Best validation candidate", "best_validation"),
+        ("Best robust validation candidate", "best_robust_validation"),
+    ]:
+        candidate = results.get(key)
+        if not candidate:
+            print(f"  {title}: N/A")
+            continue
+        train = candidate.get("train_simulation", {})
+        validation = candidate.get("validation_simulation", {})
+        print()
+        print(f"  {title}: {candidate.get('name')}")
+        print(
+            f"    Train: final {train.get('final_bankroll', 0):.0f} | "
+            f"profit {train.get('profit', 0):+.0f} | coupons {train.get('coupons', 0)} | "
+            f"hit {train.get('coupon_hit_rate', 0):.1f}% | DD {train.get('max_drawdown', 0):.0f}"
+        )
+        print(
+            f"    Validation: final {validation.get('final_bankroll', 0):.0f} | "
+            f"profit {validation.get('profit', 0):+.0f} | coupons {validation.get('coupons', 0)} | "
+            f"hit {validation.get('coupon_hit_rate', 0):.1f}% | DD {validation.get('max_drawdown', 0):.0f}"
+        )
+    print()
+
+
+def optimize_predictions(raw_preds: Dict) -> Dict:
+    """Grid-search saved prediction JSON and rank robust single/coupon strategies."""
+    by_mode = {}
+    all_single = []
+    all_coupons = []
+
+    for mode, mode_data in raw_preds.items():
+        mode_result = {"versions": {}}
+        for version in ["v1", "v2"]:
+            predictions = mode_data.get(version, [])
+            if not predictions:
+                continue
+            logger.info(f"Optimizing {mode} {version}: {len(predictions)} predictions")
+            logger.info("  Single-bet grid...")
+            single = _rank_candidates(_optimize_single(mode, version, predictions))
+            logger.info("  Coupon grid...")
+            coupons = _rank_candidates(_optimize_coupons(mode, version, predictions))
+            logger.info(f"  Done: {len(single)} single candidates, {len(coupons)} coupon candidates")
+            mode_result["versions"][version] = {
+                "top_single": [_trim_candidate(c) for c in single[:25]],
+                "top_coupons": [_trim_candidate(c) for c in coupons[:25]],
+                "single_candidates": len(single),
+                "coupon_candidates": len(coupons),
+                "failure_report": _build_failure_report(
+                    predictions,
+                    coupons[0] if coupons else None,
+                ),
+            }
+            all_single.extend(single)
+            all_coupons.extend(coupons)
+        by_mode[mode] = mode_result
+
+    ranked_single = _rank_candidates(all_single)
+    ranked_coupons = _rank_candidates(all_coupons)
+    best_single = ranked_single[0] if ranked_single else None
+    best_coupon = ranked_coupons[0] if ranked_coupons else None
+    model_decision = _build_model_decision(raw_preds)
+    allowed_versions = {"v1", "v2"} if model_decision.get("promote_v2") else {"v1"}
+    recommended_single = _first_candidate_for_versions(ranked_single, allowed_versions)
+    recommended_coupon = _first_candidate_for_versions(ranked_coupons, allowed_versions)
+
+    return {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "objective": "robust_bankroll_from_10000_with_100_flat_stake",
+        "rules": {
+            "min_single_bets": 100,
+            "min_coupon_count": 50,
+            "max_drawdown": MAX_ROBUST_DRAWDOWN,
+            "required_profitable_seasons": "ceil(70% of evaluated seasons)",
+            "min_season_sample": "at least 10 single bets or 5 coupons in active seasons",
+            "score": "profit - 0.5 * max_drawdown - 1500 * negative_seasons - 0.25 * worst_season_loss",
+        },
+        "best_single": _trim_candidate(best_single) if best_single else None,
+        "best_coupon": _trim_candidate(best_coupon) if best_coupon else None,
+        "recommended_single": _trim_candidate(recommended_single) if recommended_single else None,
+        "recommended_coupon": _trim_candidate(recommended_coupon) if recommended_coupon else None,
+        "top_single": [_trim_candidate(c) for c in ranked_single[:50]],
+        "top_coupons": [_trim_candidate(c) for c in ranked_coupons[:50]],
+        "model_decision": model_decision,
+        "recommendation": _recommend_config(recommended_single, recommended_coupon, model_decision),
+        "by_mode": by_mode,
+    }
+
+
+def print_optimization_summary(optimization: Dict):
+    """Print a compact terminal summary of optimizer winners."""
+    print_header("STRATEGY OPTIMIZATION")
+    best_single = optimization.get("best_single") or {}
+    best_coupon = optimization.get("best_coupon") or {}
+    recommended_single = optimization.get("recommended_single") or {}
+    recommended_coupon = optimization.get("recommended_coupon") or {}
+
+    def _print_winner(label: str, winner: Dict):
+        sim = winner.get("simulation", {})
+        print()
+        print(f"  {label}: {winner.get('name', 'N/A')}")
+        print(f"    Score: {winner.get('score', 0):+.0f} | Eligible: {winner.get('eligible')}")
+        print(
+            f"    Final: {sim.get('final_bankroll', 0):.0f} | "
+            f"Profit: {sim.get('profit', 0):+.0f} | ROI: {sim.get('roi_pct', 0):+.1f}% | "
+            f"MaxDD: {sim.get('max_drawdown', 0):.0f}"
+        )
+        if "bets" in sim:
+            print(f"    Bets: {sim.get('bets', 0)} | Hit: {sim.get('accuracy', 0):.1f}%")
+        if "coupons" in sim:
+            print(f"    Coupons: {sim.get('coupons', 0)} | Coupon hit: {sim.get('coupon_hit_rate', 0):.1f}%")
+        print(f"    By season: {sim.get('by_season', {})}")
+
+    _print_winner("Best single", best_single)
+    _print_winner("Best coupon", best_coupon)
+    if recommended_single and recommended_single != best_single:
+        _print_winner("Recommended live single", recommended_single)
+    if recommended_coupon and recommended_coupon != best_coupon:
+        _print_winner("Recommended live coupon", recommended_coupon)
+
+    model_decision = optimization.get("model_decision", {})
+    if model_decision:
+        print()
+        print(f"  v2 gate: promote={model_decision.get('promote_v2')} | {model_decision.get('reason')}")
+        if model_decision.get("gate_overall"):
+            print(f"    Overall: {model_decision.get('gate_overall')}")
+    print()
+    print("  Recommendation:")
+    print(json.dumps(optimization.get("recommendation", {}), indent=2))
+    print()
 
 
 def print_betting_experiments(v1_exps: List[Dict], v2_exps: List[Dict]):
@@ -810,6 +4477,71 @@ def print_betting_experiments(v1_exps: List[Dict], v2_exps: List[Dict]):
         v2_kr = f"{v2e['kelly_roi']:+.1f}%" if v2e["kelly_bets"] else "—"
         v2_dd = f"{v2e['max_drawdown']:.1f}u"
         print(f"  {name:<26} │ {v1_kb:>7} {v1_kp:>10} {v1_kr:>8} {v1_dd:>8} │ {v2_kb:>7} {v2_kp:>10} {v2_kr:>8} {v2_dd:>8}")
+    print()
+
+
+def print_bankroll_experiments(v1_exps: List[Dict], v2_exps: List[Dict]):
+    """Print top single-bet strategies by fixed-bankroll growth."""
+    print_header("BANKROLL SIMULATION (10,000 start, 100 flat stake)")
+
+    def _top(exps: List[Dict]) -> List[Dict]:
+        eligible = [e for e in exps if e.get("bankroll", {}).get("bets", 0) >= 20]
+        if not eligible:
+            eligible = exps
+        return sorted(
+            eligible,
+            key=lambda e: (e.get("bankroll_final", 0), -e.get("bankroll_max_drawdown", 0), e.get("bets", 0)),
+            reverse=True,
+        )[:8]
+
+    def _print_block(label: str, exps: List[Dict]):
+        print()
+        print(f"  {label}")
+        print(f"  {'Strategy':<26} {'Bets':>6} {'Win%':>7} {'Final':>10} {'Profit':>10} {'ROI%':>8} {'MaxDD':>10}")
+        print(f"  {'-'*26} {'-'*6} {'-'*7} {'-'*10} {'-'*10} {'-'*8} {'-'*10}")
+        for exp in _top(exps):
+            bank = exp.get("bankroll", {})
+            print(
+                f"  {exp['name']:<26} {bank.get('bets', 0):>6} "
+                f"{bank.get('accuracy', 0):>6.1f}% {bank.get('final_bankroll', 0):>10.0f} "
+                f"{bank.get('profit', 0):>+10.0f} {bank.get('roi_pct', 0):>+7.1f}% "
+                f"{bank.get('max_drawdown', 0):>10.0f}"
+            )
+
+    _print_block("v1 top single-bet strategies", v1_exps)
+    _print_block("v2 top single-bet strategies", v2_exps)
+    print()
+
+
+def print_coupon_experiments(v1_coupons: List[Dict], v2_coupons: List[Dict]):
+    """Print top accumulator/coupon strategies by fixed-bankroll growth."""
+    print_header("COUPON SIMULATION (10,000 start, 100 per coupon)")
+
+    def _top(exps: List[Dict]) -> List[Dict]:
+        eligible = [e for e in exps if e.get("coupons", 0) >= 10]
+        if not eligible:
+            eligible = exps
+        return sorted(
+            eligible,
+            key=lambda e: (e.get("final_bankroll", 0), -e.get("max_drawdown", 0), e.get("coupons", 0)),
+            reverse=True,
+        )[:8]
+
+    def _print_block(label: str, exps: List[Dict]):
+        print()
+        print(f"  {label}")
+        print(f"  {'Strategy':<26} {'Max':>3} {'Coupons':>7} {'Hit%':>7} {'Final':>10} {'Profit':>10} {'ROI%':>8} {'MaxDD':>10}")
+        print(f"  {'-'*26} {'-'*3} {'-'*7} {'-'*7} {'-'*10} {'-'*10} {'-'*8} {'-'*10}")
+        for exp in _top(exps):
+            print(
+                f"  {exp['name']:<26} {exp.get('max_legs', 0):>3} "
+                f"{exp.get('coupons', 0):>7} {exp.get('coupon_hit_rate', 0):>6.1f}% "
+                f"{exp.get('final_bankroll', 0):>10.0f} {exp.get('profit', 0):>+10.0f} "
+                f"{exp.get('roi_pct', 0):>+7.1f}% {exp.get('max_drawdown', 0):>10.0f}"
+            )
+
+    _print_block("v1 top coupon strategies", v1_coupons)
+    _print_block("v2 top coupon strategies", v2_coupons)
     print()
 
 
@@ -993,15 +4725,14 @@ class BacktestEngine:
 
         # ── Train v1 ──
         logger.info("\n--- Training v1 (42 features) ---")
-        X_v1, y_v1, _ = FeatureEngineer.build_training_data(train_matches, self.db)
+        X_v1, y_v1, _ = _build_training_data_v1_fast(train_matches)
         logger.info(f"v1 training data: X={X_v1.shape}, y={y_v1.shape}")
         v1_models = create_models(ML_SETTINGS, "_bt_v1", is_v2=False)
         v1_models, v1_ensemble, v1_stacking, v1_acc = train_models(v1_models, X_v1, y_v1, ML_SETTINGS)
 
         # ── Train v2 ──
         logger.info("\n--- Training v2 (83 features) ---")
-        elo_train = EloTracker()
-        X_v2, y_v2, _ = FeatureEngineerV2.build_training_data_v2(train_matches, self.db, elo_train)
+        X_v2, y_v2, _ = _build_training_data_v2_fast(train_matches)
         logger.info(f"v2 training data: X={X_v2.shape}, y={y_v2.shape}")
         v2_models = create_models(ML_SETTINGS_V2, "_bt_v2", is_v2=True)
         v2_models, v2_ensemble, v2_stacking, v2_acc = train_models(v2_models, X_v2, y_v2, ML_SETTINGS_V2)
@@ -1015,15 +4746,13 @@ class BacktestEngine:
         elo_test.process_matches(sorted(train_matches, key=lambda m: m.get("match_date", "")))
 
         # ── Predict test matches ──
-        # Use db.get_team_stats() to match training feature distribution
-        # (training also uses full-season stats, not incremental)
         logger.info(f"\n--- Predicting {len(test_matches)} test matches ---")
-        team_idx = _build_team_index(train_matches)  # for v2 form/extras
-        h2h_idx = _build_h2h_index(train_matches + test_matches)  # pre-build h2h
+        team_idx = _build_team_index(train_matches)
+        h2h_idx = _build_h2h_index(train_matches)
         test_sorted = sorted(test_matches, key=lambda m: m.get("match_date", ""))
 
-        v1_preds = []
-        v2_preds = []
+        v1_rows = []
+        v2_rows = []
         t_pred = time.time()
         for i, match in enumerate(test_sorted):
             if i > 0 and i % 200 == 0:
@@ -1035,41 +4764,97 @@ class BacktestEngine:
             away = match["away_team_name"]
             league = match.get("league_code", "")
             season = match.get("season", 2025)
-
-            # Use DB stats (full-season) to match training features
-            home_stats = self.db.get_team_stats(home, league, season)
-            away_stats = self.db.get_team_stats(away, league, season)
-            if not home_stats or home_stats.get("matches_played", 0) < 3:
-                continue
-            if not away_stats or away_stats.get("matches_played", 0) < 3:
-                continue
-
-            home_stats["team_name"] = home
-            away_stats["team_name"] = away
-            h2h = h2h_idx.get((home, away), [])[-10:]
-
-            # v1
-            p1 = predict_single_v1(match, v1_models, v1_ensemble, v1_stacking,
-                                   home_stats, away_stats, h2h, ML_SETTINGS)
-            if p1:
-                v1_preds.append(p1)
-
-            # v2 — pass team-specific past matches for form/extras
             home_past = team_idx.get(home, [])
             away_past = team_idx.get(away, [])
-            p2 = predict_single_v2(match, v2_models, v2_ensemble, v2_stacking,
-                                   home_stats, away_stats, h2h, ML_SETTINGS_V2,
-                                   elo_test, poisson, home_past, away_past)
-            if p2:
-                v2_preds.append(p2)
 
-            # Update team_idx for v2 form computation
-            if match.get("status") == "FINISHED" and match.get("home_score") is not None:
-                team_idx[home].append(match)
-                team_idx[away].append(match)
+            home_stats = _compute_team_stats_snapshot(home_past, home, league, season)
+            away_stats = _compute_team_stats_snapshot(away_past, away, league, season)
+            if home_stats and away_stats:
+                home_stats["team_name"] = home
+                away_stats["team_name"] = away
+                h2h = h2h_idx.get((home, away), [])[-10:]
+
+                hs = int(match["home_score"])
+                aws = int(match["away_score"])
+                actual_label = LABEL_HOME if hs > aws else (LABEL_DRAW if hs == aws else LABEL_AWAY)
+                base_row = {
+                    "match_date": match.get("match_date", ""),
+                    "league": league,
+                    "season": season,
+                    "home": home,
+                    "away": away,
+                    "home_score": hs,
+                    "away_score": aws,
+                    "actual": actual_label,
+                    "home_odds": match.get("home_odds"),
+                    "draw_odds": match.get("draw_odds"),
+                    "away_odds": match.get("away_odds"),
+                }
+
+                v1_features = FeatureEngineer.build_match_features(
+                    home_stats, away_stats, h2h,
+                    match.get("home_odds"), match.get("draw_odds"), match.get("away_odds"),
+                    ai_predictions=None,
+                )
+                v1_row = dict(base_row)
+                v1_row["features"] = np.nan_to_num(v1_features, nan=0.0, posinf=0.0, neginf=0.0)
+                v1_rows.append(v1_row)
+
+                home_form = FeatureEngineerV2.compute_form_list(home_past, home)
+                away_form = FeatureEngineerV2.compute_form_list(away_past, away)
+                home_extra = FeatureEngineerV2.compute_csv_extra_averages(home_past, home)
+                away_extra = FeatureEngineerV2.compute_csv_extra_averages(away_past, away)
+                match_date = match.get("match_date", "")
+                h_exp, a_exp = poisson.predict_score(
+                    home_stats.get("avg_goals_scored", 1.3),
+                    home_stats.get("avg_goals_conceded", 1.1),
+                    away_stats.get("avg_goals_scored", 1.2),
+                    away_stats.get("avg_goals_conceded", 1.2),
+                )
+                poisson_probs = poisson.match_outcome_probs(h_exp, a_exp)
+                total_exp = h_exp + a_exp
+                v2_features = FeatureEngineerV2.build_match_features_v2(
+                    home_stats, away_stats, h2h,
+                    match.get("home_odds"), match.get("draw_odds"), match.get("away_odds"),
+                    ai_predictions=None,
+                    elo_tracker=elo_test,
+                    home_form_list=home_form,
+                    away_form_list=away_form,
+                    home_extra=home_extra,
+                    away_extra=away_extra,
+                    home_days_rest=FeatureEngineerV2.compute_days_since_last(home_past, home, match_date),
+                    away_days_rest=FeatureEngineerV2.compute_days_since_last(away_past, away, match_date),
+                    home_recent_goals_avg=FeatureEngineerV2.compute_recent_goals_avg(home_past, home),
+                    away_recent_goals_avg=FeatureEngineerV2.compute_recent_goals_avg(away_past, away),
+                    is_training=True,
+                    league_code=league,
+                    matchday=match.get("matchday", 0) or 0,
+                    total_matchdays=38,
+                    match_datetime=match_date,
+                    home_sos=FeatureEngineerV2.compute_sos(home_past, home, elo_test),
+                    away_sos=FeatureEngineerV2.compute_sos(away_past, away, elo_test),
+                )
+                v2_row = dict(base_row)
+                v2_row.update({
+                    "features": np.nan_to_num(v2_features, nan=0.0, posinf=0.0, neginf=0.0),
+                    "poisson_probs": poisson_probs,
+                    "poisson_score": f"{h_exp}-{a_exp}",
+                    "btts_prob": (1 - math.exp(-h_exp)) * (1 - math.exp(-a_exp)),
+                    "over25_prob": 1.0 - sum(
+                        (total_exp ** k) * math.exp(-total_exp) / math.factorial(k)
+                        for k in range(3)
+                    ),
+                })
+                v2_rows.append(v2_row)
+
+            _record_finished_match(team_idx, h2h_idx, match)
 
             # Update ELO
             elo_test.update(home, away, int(match["home_score"]), int(match["away_score"]))
+
+        logger.info(f"  Built feature rows: v1={len(v1_rows)}, v2={len(v2_rows)}")
+        v1_preds = _predict_rows_batch(v1_rows, v1_models, ML_SETTINGS, v1_stacking, "v1")
+        v2_preds = _predict_v2_rows_batch(v2_rows, v2_models, ML_SETTINGS_V2, v2_stacking)
 
         elapsed_pred = time.time() - t_pred
         logger.info(f"Holdout complete: v1={len(v1_preds)}, v2={len(v2_preds)} predictions ({elapsed_pred:.1f}s)")
@@ -1115,17 +4900,16 @@ class BacktestEngine:
             if not test_matches:
                 continue
 
-            # Train v1
-            X_v1, y_v1, _ = FeatureEngineer.build_training_data(v1_train_matches, self.db)
+            # Train v1 from rolling in-memory history to avoid DB feature-builder bottlenecks.
+            X_v1, y_v1, _ = _build_training_data_v1_fast(v1_train_matches)
             if len(X_v1) < 100:
                 logger.warning(f"  v1: only {len(X_v1)} samples, skipping")
                 continue
             v1_models = create_models(ML_SETTINGS, f"_wf_v1_{test_season}", is_v2=False)
             v1_models, v1_ens, v1_stack, _ = train_models(v1_models, X_v1, y_v1, ML_SETTINGS)
 
-            # Train v2
-            elo_train = EloTracker()
-            X_v2, y_v2, _ = FeatureEngineerV2.build_training_data_v2(v2_train_matches, self.db, elo_train)
+            # Train v2 from the same leakage-safe in-memory feature path as holdout.
+            X_v2, y_v2, _ = _build_training_data_v2_fast(v2_train_matches)
             if len(X_v2) < 100:
                 logger.warning(f"  v2: only {len(X_v2)} samples, skipping")
                 continue
@@ -1141,50 +4925,106 @@ class BacktestEngine:
             all_before = self._get_matches_in_seasons([s for s in available if s < test_season])
             elo_test.process_matches(sorted(all_before, key=lambda m: m.get("match_date", "")))
 
-            # Predict test season — use DB stats to match training
             all_train = v2_train_matches
             team_idx = _build_team_index(all_train)
+            h2h_idx = _build_h2h_index(all_train)
             test_sorted = sorted(test_matches, key=lambda m: m.get("match_date", ""))
 
+            v1_rows = []
+            v2_rows = []
             for match in test_sorted:
                 home = match["home_team_name"]
                 away = match["away_team_name"]
                 league = match.get("league_code", "")
                 season_m = match.get("season", 2025)
-
-                home_stats = self.db.get_team_stats(home, league, season_m)
-                away_stats = self.db.get_team_stats(away, league, season_m)
-                if not home_stats or home_stats.get("matches_played", 0) < 3:
-                    elo_test.update(home, away, int(match["home_score"]), int(match["away_score"]))
-                    continue
-                if not away_stats or away_stats.get("matches_played", 0) < 3:
-                    elo_test.update(home, away, int(match["home_score"]), int(match["away_score"]))
-                    continue
-
-                home_stats["team_name"] = home
-                away_stats["team_name"] = away
-                h2h = self.db.get_h2h(home, away) or []
-
-                p1 = predict_single_v1(match, v1_models, v1_ens, v1_stack,
-                                       home_stats, away_stats, h2h, ML_SETTINGS)
-                if p1:
-                    p1["fold_season"] = test_season
-                    v1_all_preds.append(p1)
-
                 home_past = team_idx.get(home, [])
                 away_past = team_idx.get(away, [])
-                p2 = predict_single_v2(match, v2_models, v2_ens, v2_stack,
-                                       home_stats, away_stats, h2h, ML_SETTINGS_V2,
-                                       elo_test, poisson, home_past, away_past)
-                if p2:
-                    p2["fold_season"] = test_season
-                    v2_all_preds.append(p2)
 
-                if match.get("status") == "FINISHED" and match.get("home_score") is not None:
-                    team_idx[home].append(match)
-                    team_idx[away].append(match)
+                home_stats = _compute_team_stats_snapshot(home_past, home, league, season_m)
+                away_stats = _compute_team_stats_snapshot(away_past, away, league, season_m)
+                if home_stats and away_stats:
+                    home_stats["team_name"] = home
+                    away_stats["team_name"] = away
+                    h2h = h2h_idx.get((home, away), [])[-10:]
+
+                    hs = int(match["home_score"])
+                    aws = int(match["away_score"])
+                    actual_label = LABEL_HOME if hs > aws else (LABEL_DRAW if hs == aws else LABEL_AWAY)
+                    base_row = {
+                        "match_date": match.get("match_date", ""),
+                        "league": league,
+                        "season": season_m,
+                        "home": home,
+                        "away": away,
+                        "home_score": hs,
+                        "away_score": aws,
+                        "actual": actual_label,
+                        "home_odds": match.get("home_odds"),
+                        "draw_odds": match.get("draw_odds"),
+                        "away_odds": match.get("away_odds"),
+                        "fold_season": test_season,
+                    }
+
+                    v1_features = FeatureEngineer.build_match_features(
+                        home_stats, away_stats, h2h,
+                        match.get("home_odds"), match.get("draw_odds"), match.get("away_odds"),
+                        ai_predictions=None,
+                    )
+                    v1_row = dict(base_row)
+                    v1_row["features"] = np.nan_to_num(v1_features, nan=0.0, posinf=0.0, neginf=0.0)
+                    v1_rows.append(v1_row)
+
+                    match_date = match.get("match_date", "")
+                    h_exp, a_exp = poisson.predict_score(
+                        home_stats.get("avg_goals_scored", 1.3),
+                        home_stats.get("avg_goals_conceded", 1.1),
+                        away_stats.get("avg_goals_scored", 1.2),
+                        away_stats.get("avg_goals_conceded", 1.2),
+                    )
+                    poisson_probs = poisson.match_outcome_probs(h_exp, a_exp)
+                    total_exp = h_exp + a_exp
+                    v2_features = FeatureEngineerV2.build_match_features_v2(
+                        home_stats, away_stats, h2h,
+                        match.get("home_odds"), match.get("draw_odds"), match.get("away_odds"),
+                        ai_predictions=None,
+                        elo_tracker=elo_test,
+                        home_form_list=FeatureEngineerV2.compute_form_list(home_past, home),
+                        away_form_list=FeatureEngineerV2.compute_form_list(away_past, away),
+                        home_extra=FeatureEngineerV2.compute_csv_extra_averages(home_past, home),
+                        away_extra=FeatureEngineerV2.compute_csv_extra_averages(away_past, away),
+                        home_days_rest=FeatureEngineerV2.compute_days_since_last(home_past, home, match_date),
+                        away_days_rest=FeatureEngineerV2.compute_days_since_last(away_past, away, match_date),
+                        home_recent_goals_avg=FeatureEngineerV2.compute_recent_goals_avg(home_past, home),
+                        away_recent_goals_avg=FeatureEngineerV2.compute_recent_goals_avg(away_past, away),
+                        is_training=True,
+                        league_code=league,
+                        matchday=match.get("matchday", 0) or 0,
+                        total_matchdays=38,
+                        match_datetime=match_date,
+                        home_sos=FeatureEngineerV2.compute_sos(home_past, home, elo_test),
+                        away_sos=FeatureEngineerV2.compute_sos(away_past, away, elo_test),
+                    )
+                    v2_row = dict(base_row)
+                    v2_row.update({
+                        "features": np.nan_to_num(v2_features, nan=0.0, posinf=0.0, neginf=0.0),
+                        "poisson_probs": poisson_probs,
+                        "poisson_score": f"{h_exp}-{a_exp}",
+                        "btts_prob": (1 - math.exp(-h_exp)) * (1 - math.exp(-a_exp)),
+                        "over25_prob": 1.0 - sum(
+                            (total_exp ** k) * math.exp(-total_exp) / math.factorial(k)
+                            for k in range(3)
+                        ),
+                    })
+                    v2_rows.append(v2_row)
+
+                _record_finished_match(team_idx, h2h_idx, match)
 
                 elo_test.update(home, away, int(match["home_score"]), int(match["away_score"]))
+
+            v1_fold_preds = _predict_rows_batch(v1_rows, v1_models, ML_SETTINGS, v1_stack, "v1")
+            v2_fold_preds = _predict_v2_rows_batch(v2_rows, v2_models, ML_SETTINGS_V2, v2_stack)
+            v1_all_preds.extend(v1_fold_preds)
+            v2_all_preds.extend(v2_fold_preds)
 
             logger.info(f"  Fold {test_season}: v1={len([p for p in v1_all_preds if p.get('fold_season')==test_season])}, "
                         f"v2={len([p for p in v2_all_preds if p.get('fold_season')==test_season])}")
@@ -1238,6 +5078,12 @@ def generate_report(v1_preds: List[Dict], v2_preds: List[Dict], label: str):
     v1_exps = compute_betting_experiments(v1_preds)
     v2_exps = compute_betting_experiments(v2_preds)
     print_betting_experiments(v1_exps, v2_exps)
+    print_bankroll_experiments(v1_exps, v2_exps)
+
+    # Coupon/accumulator experiments grouped by match day.
+    v1_coupons = compute_coupon_experiments(v1_preds)
+    v2_coupons = compute_coupon_experiments(v2_preds)
+    print_coupon_experiments(v1_coupons, v2_coupons)
 
     return {
         "label": label,
@@ -1251,6 +5097,8 @@ def generate_report(v1_preds: List[Dict], v2_preds: List[Dict], label: str):
         "v2_calibration": v2_cal,
         "v1_experiments": v1_exps,
         "v2_experiments": v2_exps,
+        "v1_coupon_experiments": v1_coupons,
+        "v2_coupon_experiments": v2_coupons,
     }
 
 
@@ -1266,7 +5114,297 @@ def main():
     parser.add_argument("--verbose", "-v", action="store_true", help="Debug logging")
     parser.add_argument("--analyze", type=str, default=None,
                         help="Re-run analysis on saved predictions JSON (skip training)")
+    parser.add_argument("--optimize", type=str, default=None,
+                        help="Optimize single-bet and coupon strategies from saved predictions JSON")
+    parser.add_argument("--history-patterns", type=str, default=None,
+                        help="Backtest historical H2H/team-pattern strategies from saved predictions JSON")
+    parser.add_argument("--history-edge", type=str, default=None,
+                        help="Money-first H2H historical edge backtest from saved predictions JSON")
+    parser.add_argument("--history-edge-csv", action="store_true",
+                        help="Pure CSV historical H2H/odds edge backtest, no ML predictions required")
+    parser.add_argument("--strategy-zoo-csv", action="store_true",
+                        help="Backtest many CSV-only money strategies against each other")
+    parser.add_argument("--strategy-zoo-walk-forward-csv", action="store_true",
+                        help="Walk-forward validate CSV strategy-zoo selection without hindsight")
+    parser.add_argument("--h2h-coupon-criteria-csv", action="store_true",
+                        help="Train/validation sweep for mature H2H coupon criteria")
+    parser.add_argument("--start-season", type=int, default=None,
+                        help="First season for CSV history modes, e.g. 2000 for 2000/01")
+    parser.add_argument("--end-season", type=int, default=None,
+                        help="Last season for CSV history modes, e.g. 2025 for 2025/26")
+    parser.add_argument("--first-test-season", type=int, default=None,
+                        help="First season to test in CSV walk-forward strategy modes")
+    parser.add_argument("--min-train-bets", type=int, default=STRATEGY_ZOO_WF_MIN_TRAIN_BETS,
+                        help="Minimum training bets required before a walk-forward strategy can be selected")
+    parser.add_argument("--validation-start-season", type=int, default=2022,
+                        help="First validation season for H2H coupon criteria sweeps")
     args = parser.parse_args()
+
+    # ── H2H coupon criteria mode: tune knobs with train/validation split ──
+    if args.h2h_coupon_criteria_csv:
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
+        start_season = args.start_season if args.start_season is not None else 2000
+        end_season = args.end_season if args.end_season is not None else max(ALL_SEASONS)
+        first_test_season = args.first_test_season if args.first_test_season is not None else 2012
+        if start_season > end_season:
+            print(f"Invalid season range: {start_season}>{end_season}")
+            return
+        leagues = args.leagues.split(",") if args.leagues else CSV_LEAGUES
+        seasons = list(range(start_season, end_season + 1))
+        matches = load_all_csv_data(leagues, seasons)
+        if not matches:
+            print("No CSV matches loaded; cannot run H2H coupon criteria sweep")
+            return
+
+        criteria_results = optimize_h2h_coupon_criteria(
+            matches,
+            start_season,
+            end_season,
+            first_test_season=first_test_season,
+            validation_start_season=args.validation_start_season,
+        )
+        print_h2h_coupon_criteria_summary(criteria_results)
+
+        suffix = f"{start_season}_{end_season}_train{first_test_season}_{args.validation_start_season - 1}_val{args.validation_start_season}_{end_season}"
+        criteria_path = ROOT / "data" / f"h2h_coupon_criteria_csv_{suffix}.json"
+        with open(criteria_path, "w") as f:
+            json.dump(criteria_results, f, indent=2, default=str)
+        print(f"H2H coupon criteria results saved to {criteria_path}")
+
+        results_path = ROOT / "data" / "backtest_results.json"
+        existing_results = {}
+        if results_path.exists():
+            try:
+                with open(results_path) as f:
+                    existing_results = json.load(f)
+            except Exception:
+                existing_results = {}
+        existing_results[f"h2h_coupon_criteria_csv_{suffix}"] = criteria_results
+        with open(results_path, "w") as f:
+            json.dump(existing_results, f, indent=2, default=str)
+        print(f"Backtest results updated at {results_path}")
+        return
+
+    # ── Strategy zoo walk-forward mode: choose from history, test next season ──
+    if args.strategy_zoo_walk_forward_csv:
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
+        start_season = args.start_season if args.start_season is not None else 2000
+        end_season = args.end_season if args.end_season is not None else max(ALL_SEASONS)
+        if start_season > end_season:
+            print(f"Invalid season range: {start_season}>{end_season}")
+            return
+        leagues = args.leagues.split(",") if args.leagues else CSV_LEAGUES
+        seasons = list(range(start_season, end_season + 1))
+        matches = load_all_csv_data(leagues, seasons)
+        if not matches:
+            print("No CSV matches loaded; cannot run strategy zoo walk-forward")
+            return
+
+        wf_results = walk_forward_csv_strategy_zoo(
+            matches,
+            start_season,
+            end_season,
+            first_test_season=args.first_test_season,
+            min_train_bets=args.min_train_bets,
+        )
+        print_strategy_zoo_walk_forward_summary(wf_results)
+
+        suffix = f"{start_season}_{end_season}_first{wf_results.get('first_test_season')}_min{args.min_train_bets}"
+        wf_path = ROOT / "data" / f"strategy_zoo_walk_forward_csv_{suffix}.json"
+        with open(wf_path, "w") as f:
+            json.dump(wf_results, f, indent=2, default=str)
+        print(f"Strategy zoo walk-forward results saved to {wf_path}")
+
+        results_path = ROOT / "data" / "backtest_results.json"
+        existing_results = {}
+        if results_path.exists():
+            try:
+                with open(results_path) as f:
+                    existing_results = json.load(f)
+            except Exception:
+                existing_results = {}
+        existing_results[f"strategy_zoo_walk_forward_csv_{suffix}"] = wf_results
+        with open(results_path, "w") as f:
+            json.dump(existing_results, f, indent=2, default=str)
+        print(f"Backtest results updated at {results_path}")
+        return
+
+    # ── Strategy zoo CSV mode: many market/history/form strategy families ──
+    if args.strategy_zoo_csv:
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
+        start_season = args.start_season if args.start_season is not None else 2000
+        end_season = args.end_season if args.end_season is not None else max(ALL_SEASONS)
+        if start_season > end_season:
+            print(f"Invalid season range: {start_season}>{end_season}")
+            return
+        leagues = args.leagues.split(",") if args.leagues else CSV_LEAGUES
+        seasons = list(range(start_season, end_season + 1))
+        matches = load_all_csv_data(leagues, seasons)
+        if not matches:
+            print("No CSV matches loaded; cannot run strategy zoo backtest")
+            return
+
+        zoo_results = optimize_csv_strategy_zoo(matches, start_season, end_season)
+        print_strategy_zoo_summary(zoo_results)
+
+        suffix = f"{start_season}_{end_season}"
+        zoo_path = ROOT / "data" / f"strategy_zoo_csv_{suffix}.json"
+        with open(zoo_path, "w") as f:
+            json.dump(zoo_results, f, indent=2, default=str)
+        print(f"Strategy zoo results saved to {zoo_path}")
+
+        results_path = ROOT / "data" / "backtest_results.json"
+        existing_results = {}
+        if results_path.exists():
+            try:
+                with open(results_path) as f:
+                    existing_results = json.load(f)
+            except Exception:
+                existing_results = {}
+        existing_results[f"strategy_zoo_csv_{suffix}"] = zoo_results
+        with open(results_path, "w") as f:
+            json.dump(existing_results, f, indent=2, default=str)
+        print(f"Backtest results updated at {results_path}")
+        return
+
+    # ── Pure CSV historical edge mode: can go back to 2000/01 odds data ──
+    if args.history_edge_csv:
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
+        start_season = args.start_season if args.start_season is not None else 2000
+        end_season = args.end_season if args.end_season is not None else max(ALL_SEASONS)
+        if start_season > end_season:
+            print(f"Invalid season range: {start_season}>{end_season}")
+            return
+        leagues = args.leagues.split(",") if args.leagues else CSV_LEAGUES
+        seasons = list(range(start_season, end_season + 1))
+        matches = load_all_csv_data(leagues, seasons)
+        if not matches:
+            print("No CSV matches loaded; cannot run historical edge CSV backtest")
+            return
+
+        csv_edge_results = optimize_csv_historical_edge(matches, start_season, end_season)
+        print_csv_historical_edge_summary(csv_edge_results)
+
+        suffix = f"{start_season}_{end_season}"
+        edge_path = ROOT / "data" / f"historical_edge_csv_{suffix}.json"
+        with open(edge_path, "w") as f:
+            json.dump(csv_edge_results, f, indent=2, default=str)
+        print(f"CSV historical edge results saved to {edge_path}")
+
+        results_path = ROOT / "data" / "backtest_results.json"
+        existing_results = {}
+        if results_path.exists():
+            try:
+                with open(results_path) as f:
+                    existing_results = json.load(f)
+            except Exception:
+                existing_results = {}
+        existing_results[f"historical_edge_csv_{suffix}"] = csv_edge_results
+        with open(results_path, "w") as f:
+            json.dump(existing_results, f, indent=2, default=str)
+        print(f"Backtest results updated at {results_path}")
+        return
+
+    # ── Money-first historical edge mode: no ML training, no future leakage ──
+    if args.history_edge:
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
+        pred_path = Path(args.history_edge)
+        if not pred_path.exists():
+            print(f"File not found: {pred_path}")
+            return
+        with open(pred_path) as f:
+            raw_preds = json.load(f)
+
+        edge_results = optimize_historical_edge(raw_preds)
+        print_historical_edge_summary(edge_results)
+
+        edge_path = ROOT / "data" / "historical_edge_results.json"
+        with open(edge_path, "w") as f:
+            json.dump(edge_results, f, indent=2, default=str)
+        print(f"Historical edge results saved to {edge_path}")
+
+        results_path = ROOT / "data" / "backtest_results.json"
+        existing_results = {}
+        if results_path.exists():
+            try:
+                with open(results_path) as f:
+                    existing_results = json.load(f)
+            except Exception:
+                existing_results = {}
+        existing_results["historical_edge"] = edge_results
+        with open(results_path, "w") as f:
+            json.dump(existing_results, f, indent=2, default=str)
+        print(f"Backtest results updated at {results_path}")
+        return
+
+    # ── Historical-pattern mode: no ML, no future leakage ──
+    if args.history_patterns:
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
+        pred_path = Path(args.history_patterns)
+        if not pred_path.exists():
+            print(f"File not found: {pred_path}")
+            return
+        with open(pred_path) as f:
+            raw_preds = json.load(f)
+
+        matches = _load_pattern_matches(raw_preds)
+        if not matches:
+            print(f"No usable match list found in {pred_path}")
+            return
+
+        pattern_results = optimize_historical_patterns(matches)
+        print_historical_pattern_summary(pattern_results)
+
+        pattern_path = ROOT / "data" / "historical_pattern_results.json"
+        with open(pattern_path, "w") as f:
+            json.dump(pattern_results, f, indent=2, default=str)
+        print(f"Historical pattern results saved to {pattern_path}")
+
+        results_path = ROOT / "data" / "backtest_results.json"
+        existing_results = {}
+        if results_path.exists():
+            try:
+                with open(results_path) as f:
+                    existing_results = json.load(f)
+            except Exception:
+                existing_results = {}
+        existing_results["historical_patterns"] = pattern_results
+        with open(results_path, "w") as f:
+            json.dump(existing_results, f, indent=2, default=str)
+        print(f"Backtest results updated at {results_path}")
+        return
+
+    # ── Optimize-only mode: grid-search strategies on saved predictions ──
+    if args.optimize:
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
+        pred_path = Path(args.optimize)
+        if not pred_path.exists():
+            print(f"File not found: {pred_path}")
+            return
+        with open(pred_path) as f:
+            raw_preds = json.load(f)
+
+        optimization = optimize_predictions(raw_preds)
+        print_optimization_summary(optimization)
+
+        opt_path = ROOT / "data" / "strategy_optimization.json"
+        with open(opt_path, "w") as f:
+            json.dump(optimization, f, indent=2, default=str)
+        print(f"Optimization saved to {opt_path}")
+
+        results_path = ROOT / "data" / "backtest_results.json"
+        existing_results = {}
+        if results_path.exists():
+            try:
+                with open(results_path) as f:
+                    existing_results = json.load(f)
+            except Exception:
+                existing_results = {}
+        existing_results["strategy_optimization"] = optimization
+        with open(results_path, "w") as f:
+            json.dump(existing_results, f, indent=2, default=str)
+        print(f"Backtest results updated at {results_path}")
+        return
 
     # ── Analyze-only mode: re-run experiments on saved predictions ──
     if args.analyze:
@@ -1277,11 +5415,17 @@ def main():
             return
         with open(pred_path) as f:
             raw_preds = json.load(f)
+        analysis_results = {}
         for mode_name, mode_data in raw_preds.items():
             v1_preds = mode_data.get("v1", [])
             v2_preds = mode_data.get("v2", [])
             if v1_preds or v2_preds:
-                generate_report(v1_preds, v2_preds, f"Re-analysis: {mode_name}")
+                analysis_results[mode_name] = generate_report(v1_preds, v2_preds, f"Re-analysis: {mode_name}")
+        if analysis_results:
+            output_path = ROOT / "data" / "backtest_results.json"
+            with open(output_path, "w") as f:
+                json.dump(analysis_results, f, indent=2, default=str)
+            print(f"Re-analysis saved to {output_path}")
         return
 
     # Neither flag means both

@@ -71,6 +71,11 @@ export FOOTBALL_DATA_API_KEY="din-nøgle-her"
 export API_FOOTBALL_KEY="din-nøgle-her"
 ```
 
+`API_FOOTBALL_KEY` aktiverer pipeline-data for lineups, skader/suspensioner,
+spiller-rating, fixture-statistik og xG når API'en leverer det. Pipeline gemmer
+også odds snapshots og pick snapshots, så vi kan måle closing-line value i stedet
+for kun hitrate.
+
 ## 💻 Brug
 
 ### GUI Mode (standard)
@@ -85,6 +90,15 @@ python main.py --train      # Træn modeller og start GUI
 ```bash
 python main.py --no-gui             # Kør predictions i terminal
 python main.py --no-gui --train     # Træn + predictions i terminal
+```
+
+### Live prediction pipeline
+
+```bash
+python run_pipeline.py                    # Full pipeline
+python run_pipeline.py --odds-only        # Gem odds movement snapshots
+python run_pipeline.py --context-only     # Hent lineups/skader/spillerdata
+python run_pipeline.py --watch            # Kør løbende hvert 15. minut
 ```
 
 ### Med API nøgler
