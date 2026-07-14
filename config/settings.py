@@ -69,6 +69,7 @@ LEAGUES = {
     "DED": {"name": "Eredivisie",       "country": "Netherlands","fd_code": "DED","api_id": 88,  "emoji": "🇳🇱"},
     "PPL": {"name": "Primeira Liga",    "country": "Portugal", "fd_code": "PPL", "api_id": 94,  "emoji": "🇵🇹"},
     "BSA": {"name": "Série A",          "country": "Brazil",   "fd_code": "BSA", "api_id": 71,  "emoji": "🇧🇷"},
+    "WC":  {"name": "FIFA World Cup",  "country": "International", "fd_code": "WC", "api_id": 1, "emoji": "🌍"},
 }
 
 # ──────────────────────────────────────────────
@@ -94,10 +95,10 @@ ML_SETTINGS = {
         "weights": {"xgboost": 0.4, "neural_network": 0.35, "random_forest": 0.25},
     },
     "coupon": {
-        # Strategy-zoo walk-forward 2012-2025:
-        # mature H2H coupons: +4,352 DKK from 10,000, 55.9% coupon hit,
-        # 626 DKK max drawdown. Singles stayed negative, so coupon-first.
-        "strategy": "historical_h2h_coupon",
+        # No coupon strategy passed the locked promotion gates in the July 2026
+        # research run. Keep production coupons disabled until a registry entry
+        # is explicitly promoted on untouched data.
+        "strategy": "disabled_no_promoted_strategy",
         "min_h2h_matches": 10,
         "min_h2h_rate_pct": 75.0,
         "odds_min": 1.20,
@@ -114,14 +115,12 @@ ML_SETTINGS = {
 }
 
 # ──────────────────────────────────────────────
-# PAPER TRADING — live tracking before real money
-# Based on walk-forward 2019-2025 (22495 evaluated predictions):
-#   v1 Serie A draw market-underdog with model edge >= 2%:
-#     +7,255 DKK from 10,000, 36.1% hit rate, 1,010 DKK max drawdown.
-#   v1 top-league value coupons: +13,632 DKK from 10,000.
-#   v2 remains disabled because it lost on accuracy, Brier, and log loss.
+# PAPER TRADING — forward-only tracking before real money
+# Betting recommendations remain disabled while the research registry has no
+# promoted strategy. The model still runs in shadow mode for honest evaluation.
 # ──────────────────────────────────────────────
 PAPER_TRADING = {
+    "enabled": False,
     "profitable_leagues": ["SA"],
     "excluded_leagues": ["ELC"],
     # Filtering

@@ -21,6 +21,12 @@ from config.settings import LEAGUES, ML_SETTINGS
 logger = logging.getLogger(__name__)
 
 
+def current_season_start(today: Optional[date] = None) -> int:
+    """Return the European season start year (August is the rollover)."""
+    current = today or date.today()
+    return current.year if current.month >= 8 else current.year - 1
+
+
 class PredictionEngine:
     """Main prediction engine that manages ML models and generates predictions."""
 
@@ -132,7 +138,7 @@ class PredictionEngine:
                 if self.data_aggregator:
                     # Fetch multiple seasons based on config
                     for offset in range(num_seasons):
-                        season_year = 2025 - offset
+                        season_year = current_season_start() - offset
                         try:
                             matches = self.data_aggregator.fetch_historical_matches(league_code, season_year)
                             all_matches.extend(matches)
@@ -191,13 +197,29 @@ class PredictionEngine:
                         pass
             logger.info(f"Inserted {inserted} matches into local DB for stats computation")
 
-            # Compute team stats from the now-populated local DB
+            # Compute season-level team stats once per team/league/season.
+            computed_team_stats = set()
             for match in all_matches:
                 if match.get("status") == "FINISHED" and match.get("home_score") is not None:
-                    for team_name in [match["home_team_name"], match["away_team_name"]]:
+                    teams = {
+                        (
+                            match["home_team_name"],
+                            match.get("league_code", ""),
+                            match.get("season", 2025),
+                        ),
+                        (
+                            match["away_team_name"],
+                            match.get("league_code", ""),
+                            match.get("season", 2025),
+                        ),
+                    }
+                    for team_name, league_code, season in teams:
+                        stats_key = (team_name, league_code, season)
+                        if stats_key in computed_team_stats:
+                            continue
+                        computed_team_stats.add(stats_key)
                         stats = self.db.compute_team_stats_from_matches(
-                            team_name, match.get("league_code", ""),
-                            match.get("season", 2025)
+                            team_name, league_code, season
                         )
                         if stats.get("matches_played", 0) >= 3:
                             self.db.upsert_team_stats(stats)

@@ -289,6 +289,7 @@ class FreeFootballClient:
         "DED": "ned.1",
         "CL":  "uefa.champions",
         "EL":  "uefa.europa",
+        "WC":  "fifa.world",
     }
 
     def _espn_get_scoreboard(self, league_code: str, match_date: Optional[str] = None) -> List[Dict]:
@@ -316,7 +317,7 @@ class FreeFootballClient:
         """Get today's matches from ESPN across top leagues."""
         all_matches = []
         # Only fetch top 6 leagues to avoid being too slow
-        top_leagues = ["PL", "PD", "BL1", "SA", "FL1", "DED"]
+        top_leagues = ["WC", "PL", "PD", "BL1", "SA", "FL1", "DED"]
         for league_code in top_leagues:
             try:
                 matches = self._espn_get_scoreboard(league_code)

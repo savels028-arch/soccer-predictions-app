@@ -2,6 +2,14 @@
 
 Generated: 2026-05-11
 
+> **SUPERSEDED 2026-07-14 — not a live betting recommendation.** This report
+> is preserved as a historical experiment log. Its headline profits were
+> selected from older sweeps and do not pass the newer leakage-resistant,
+> locked-policy promotion gates. The current full research run is
+> `NO_PROMOTION`: no 1X2, O/U 2.5, Asian-handicap or coupon strategy is approved
+> for actionable bets. See `research/README.md` and the latest artifact under
+> `data/research/runs/` for the current evidence.
+
 ## Penge Først
 
 Målet er ikke at ramme flest kampe. Målet er at tjene penge.
@@ -15,7 +23,7 @@ Det vi leder efter i historikken er derfor:
 - hvor stort fald kunne vi have ramt undervejs.
 - om historikken viser en gentagelig fordel, ikke bare en heldig lille sample.
 
-Bedste pengestrategi lige nu:
+Historisk bedste in-sample kandidat i denne nu forældede rapport:
 
 - Historik-edge kuponer.
 - Brug markedsfavoritten, men kun når samme hjemmehold mod samme udehold tidligere havde et tydeligt mønster.
@@ -27,9 +35,9 @@ Bedste pengestrategi lige nu:
 - Profit: +19,366 DKK.
 - Drawdown: 2,708 DKK.
 - Kupon-hit: 31.82%.
-- Det er den bedste vækst-strategi vi har fundet indtil nu.
+- Resultatet er ikke længere godkendt som en fremadrettet strategi.
 
-Bedste rene historik-strategi:
+Historisk bedste rene historik-kandidat i denne rapport:
 
 - Samme hjemmehold mod samme udehold.
 - Spil kun når der var mindst 3 tidligere indbyrdes kampe, og mindst 80% endte med samme 1X2-resultat.
@@ -39,7 +47,7 @@ Bedste rene historik-strategi:
 - Drawdown: 1,637 DKK.
 - Det viser, at historikken har værdi, men den har ikke slået den bedste pengestrategi endnu.
 
-Bedste mere rolige historik-kupon:
+Historisk mere rolig historik-kupon i denne rapport:
 
 - Samme hjemme-vs-ude historik-bekræftelse, max 3 kampe på kuponen.
 - Start: 10,000 DKK.
@@ -327,9 +335,9 @@ Added `backtest.py --strategy-zoo-walk-forward-csv` on 2026-05-13. This mode cho
   - Best repeated coupon family in recent folds: direct H2H / favorite-agrees-with-H2H.
 - Interpretation:
   - The single-bet strategy is not good enough out-of-sample, even with high hit rate.
-  - The coupon edge survives no-hindsight testing after the history is mature enough.
-  - Forward recommendation is paper-trade the mature H2H coupon strategy, not broad singles.
-  - Real-money staking should wait for live paper-trading because odds availability, timing, and bookmaker limits can change the edge.
+  - This older coupon result looked promising, but it did not survive the stricter 2026-07-14 locked-policy promotion gates.
+  - There is no current forward coupon recommendation; the live product must abstain.
+  - Real-money staking remains disabled unless a future forward-only run passes every promotion gate with verified at-pick odds.
 
 ## H2H Coupon Criteria Sweep
 
@@ -370,21 +378,53 @@ Added and ran `backtest.py --h2h-coupon-criteria-csv --start-season 2000 --end-s
   - The last-five-games form filter did not improve this H2H coupon strategy.
 - Decision:
   - Do not replace live config from this sweep.
-  - The existing mature walk-forward H2H coupon config remains stronger as a forward recommendation because it was chosen year-by-year without hindsight and returned +4,352 DKK from 2012-2025 with low drawdown.
-  - Closing-odds support should be tracked live as a paper-trading diagnostic before using it to change staking.
+  - The older mature H2H coupon result is superseded and is not a forward recommendation after the stricter 2026-07-14 run returned `NO_PROMOTION`.
+  - Closing odds may be tracked as a diagnostic, but actionable evaluation requires verified pre-match odds captured at pick time.
+
+## Over/Under 2.5 Market Test
+
+Added and ran `backtest.py --over-under25-walk-forward-csv` on 2026-06-03.
+
+- Purpose: test whether moving from 1X2 into goal markets creates a better money edge.
+- Scope:
+  - Full archive run: 91,366 source matches, 29,403 usable matches with Bet365 O/U 2.5 odds.
+  - Newer odds-rich run: 24,624 source matches, 24,604 usable matches with Bet365 O/U 2.5 odds.
+- Strategy families tested:
+  - market favourite and market underdog on O/U 2.5.
+  - Poisson total-goal probability.
+  - Poisson edge against no-vig market probability.
+  - recent team over/under rates.
+  - league over/under rates.
+  - pair over/under history.
+  - market/Poisson agreement.
+- Full archive no-hindsight result:
+  - Candidates evaluated: 204,624.
+  - Bankroll: 10,000 -> 8,240.
+  - Profit: -1,760 DKK.
+  - ROI: -5.57%.
+  - Bets: 316.
+  - Hit rate: 56.01%.
+  - Max drawdown: 2,979 DKK.
+- Newer odds-rich no-hindsight result:
+  - Candidates evaluated: 178,091.
+  - Bankroll: 10,000 -> 2,308.
+  - Profit: -7,692 DKK.
+  - ROI: -9.72%.
+  - Bets: 791.
+  - Hit rate: 49.43%.
+  - Max drawdown: 7,725 DKK.
+- Decision:
+  - Reject O/U 2.5 for live betting for now.
+  - Do not add O/U 2.5 to the coupon engine just because competitors market goal tips.
+  - Goal markets stay in research mode until we can beat this backtest with no-hindsight selection and controlled drawdown.
 
 ## Config Changes Applied Locally
 
-- `ML_SETTINGS["coupon"]` now uses the mature historical H2H coupon strategy:
-  - at least 10 prior direct H2H matches.
-  - at least 75% same dominant outcome.
-  - odds 1.20-2.50.
-  - historical edge at least 2%.
-  - exactly 2 coupon legs when enough picks exist.
-- `PAPER_TRADING` now tracks the recommended v1 Serie A draw-underdog strategy.
-- `run_pipeline.py` now uses `PAPER_TRADING` to mark optimized single recommendations.
+- These entries describe the 2026-05 experiment state and are retained only for audit history.
+- The current config disables the legacy H2H coupon and paper-trading strategies because the latest locked-policy run returned `NO_PROMOTION`.
+- `run_pipeline.py` must publish `ABSTAIN` unless a future registered strategy passes the promotion gates.
 - `run_pipeline.py` now respects coupon `allowed_leagues`.
-- `run_pipeline.py` now supports `historical_h2h_coupon` picks directly from the match database, including reversed home/away H2H fixtures.
+- Legacy `historical_h2h_coupon` code is not an approved live betting path.
 - `AB_TEST["enabled"]` remains `False`.
 
 ## Why We Do Not Hit More

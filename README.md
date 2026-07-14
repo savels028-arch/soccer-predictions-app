@@ -117,6 +117,17 @@ scripts/run-local-pipeline.sh
 scripts/install-local-scheduler.sh
 ```
 
+Hvis projektet ligger under `~/Desktop`, kan macOS blokere `launchd` med
+`Operation not permitted`. Brug i stedet en driftskopi uden for Desktop:
+
+```bash
+mkdir -p ~/AIBets
+rsync -a --exclude .git --exclude deploy/node_modules --exclude deploy/.next \
+  ./ ~/AIBets/soccer-predictions-app/
+cd ~/AIBets/soccer-predictions-app
+scripts/install-local-scheduler.sh
+```
+
 Den lokale scheduler kører når Mac'en er vågen:
 
 - daglig full pipeline kl. 08:30
@@ -129,6 +140,13 @@ Stop scheduler igen med:
 ```bash
 scripts/uninstall-local-scheduler.sh
 ```
+
+## 🔬 Reproducerbar strategi-research
+
+Det isolerede research-lag tester 1X2 og over/under 2,5 med point-in-time
+features, nested walk-forward, en låst tre-sæsoners holdout og faste
+promotion-gates. Det ændrer aldrig live-predictions automatisk. Se
+[metode, CLI, datadækning og aktuelle resultater](research/README.md).
 
 ### Med API nøgler
 
@@ -185,6 +203,7 @@ soccer-predictions-app/
 ├── config/
 │   ├── __init__.py
 │   └── settings.py              # ⚙️ App konfiguration
+├── research/                    # 🔬 Leakage-free strategi-research og CLI
 ├── src/
 │   ├── __init__.py
 │   ├── api/
@@ -207,6 +226,7 @@ soccer-predictions-app/
 ├── data/
 │   ├── db/                           # 💾 SQLite database filer
 │   ├── models/                       # 🧠 Gemte ML modeller
+│   ├── research/                     # 🔬 Genererede research-runs og feature-cache
 │   └── cache/                        # 📦 API cache
 └── logs/                             # 📋 Log filer
 ```

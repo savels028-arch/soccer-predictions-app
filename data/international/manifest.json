@@ -1,0 +1,28 @@
+{
+  "artifact": {
+    "path": "international_elo_v1.json",
+    "sha256": "b4921269ea67e93c51ebd692a6bbdd35c6c42fb5c57cb1504869a0bec88cddf7",
+    "status": "VALIDATED_FORECAST_ONLY"
+  },
+  "report": {
+    "path": "validation_report.md"
+  },
+  "schema": "aibets.international_manifest.v1",
+  "snapshot": {
+    "end": "2026-07-10",
+    "path": "results_1990_plus.csv.gz",
+    "rows": 32384,
+    "sha256": "2ab759f217040100e044d9123b0932e5f437c15fd9d55f0debc9726bdf54314e",
+    "start": "1990-01-12"
+  },
+  "source": {
+    "commit": "f73286079f8c6b48a59f8a16e895d757119dca71",
+    "license": "CC0-1.0",
+    "license_url": "https://github.com/martj42/international_results/blob/f73286079f8c6b48a59f8a16e895d757119dca71/LICENSE",
+    "name": "Mart Jürisoo international_results",
+    "openfootball_mirror": "https://github.com/openfootball/internationals",
+    "repository": "https://github.com/martj42/international_results",
+    "sha256": "096184efc2d705b2acd6f5aebec3887a42019f24e2f8c11f60b76fa4b38a6a7c",
+    "url": "https://raw.githubusercontent.com/martj42/international_results/f73286079f8c6b48a59f8a16e895d757119dca71/results.csv"
+  }
+}

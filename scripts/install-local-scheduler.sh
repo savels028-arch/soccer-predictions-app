@@ -5,6 +5,31 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LAUNCH_DIR="$HOME/Library/LaunchAgents"
 LOG_DIR="$ROOT/logs"
 
+case "$ROOT" in
+  "$HOME/Desktop/"*)
+    if [ "${AIBETS_ALLOW_DESKTOP_SCHEDULER:-}" != "1" ]; then
+      cat >&2 <<EOF
+This project is under Desktop:
+  $ROOT
+
+macOS may block launchd jobs from reading Desktop folders. That makes the
+scheduler look installed, but the pipeline fails with "Operation not permitted".
+
+Use a non-Desktop runtime copy instead:
+  mkdir -p "$HOME/AIBets"
+  rsync -a --exclude .git --exclude deploy/node_modules --exclude deploy/.next \\
+    "$ROOT/" "$HOME/AIBets/soccer-predictions-app/"
+  cd "$HOME/AIBets/soccer-predictions-app"
+  scripts/install-local-scheduler.sh
+
+If you have explicitly granted Full Disk Access and still want Desktop mode:
+  AIBETS_ALLOW_DESKTOP_SCHEDULER=1 scripts/install-local-scheduler.sh
+EOF
+      exit 1
+    fi
+    ;;
+esac
+
 mkdir -p "$LAUNCH_DIR" "$LOG_DIR"
 
 write_plist() {

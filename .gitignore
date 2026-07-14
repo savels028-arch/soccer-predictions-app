@@ -7,6 +7,8 @@ __pycache__/
 venv/
 env/
 .env/
+.env
+.env.*
 
 # Database
 data/db/*.db
@@ -20,9 +22,12 @@ data/models/*.h5
 
 # Cache
 data/cache/
+data/research/cache/
+data/research/runs/
 
 # Logs
 logs/*.log
+.runtime/
 
 # IDE
 .vscode/
@@ -37,5 +42,14 @@ logs/*.log
 dist/
 build/
 *.egg-info/
-deploy/
+# The production frontend is a separate Git repository.
+/deploy/
+deploy/node_modules/
+deploy/.next/
+deploy/.open-next/
+deploy/.wrangler/
+deploy/.dev.vars
+deploy/.env*.local
+deploy/cloudflare-env.d.ts
 service-account.json
+.gstack/
