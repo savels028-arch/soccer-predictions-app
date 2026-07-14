@@ -28,7 +28,7 @@ def test_cli_defaults_stop_at_latest_complete_local_season():
     audit_args = parser.parse_args(["audit"])
     backtest_args = parser.parse_args(["backtest"])
 
-    assert audit_args.end_season == LATEST_COMPLETE_SEASON == 2024
+    assert audit_args.end_season == LATEST_COMPLETE_SEASON == 2025
     assert backtest_args.end_season == LATEST_COMPLETE_SEASON
     assert backtest_args.last_test_season == LATEST_COMPLETE_SEASON
 

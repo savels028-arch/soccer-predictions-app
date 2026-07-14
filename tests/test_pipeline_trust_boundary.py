@@ -384,7 +384,7 @@ def test_pipeline_sync_failure_is_nonzero_after_writer_returns_failure():
     pipeline = object.__new__(PredictionPipeline)
     pipeline._stats = {}
     pipeline.fs = SimpleNamespace(
-        sync_public_cache=lambda: SimpleNamespace(
+        sync_public_cache=lambda **_kwargs: SimpleNamespace(
             synced=False,
             reason="http_503",
             attempted_at="2026-07-14T12:00:00Z",
@@ -392,7 +392,7 @@ def test_pipeline_sync_failure_is_nonzero_after_writer_returns_failure():
     )
 
     with pytest.raises(PublicCacheSyncFailed, match="http_503"):
-        pipeline.sync_public_cache()
+        pipeline.sync_public_cache(mode="full")
 
     assert pipeline._stats["public_cache_synced"] is False
 
@@ -412,3 +412,16 @@ def test_local_wrapper_has_shared_lock_and_mandatory_sync_secret():
     assert "Missing AIBets public-cache sync credential" in wrapper
     assert "refresh-football-data-cache.py --season" in wrapper
     assert "refusing to train on a stale or incomplete cache" in wrapper
+    assert "preserving the last validated artifact and failing the train job" in wrapper
+
+
+def test_runtime_sync_copies_only_validator_owned_research_data():
+    sync = (
+        Path(__file__).resolve().parents[1] / "scripts" / "sync-local-runtime.sh"
+    ).read_text(encoding="utf-8")
+
+    assert 'data/cache/football_data_csv' in sync
+    assert 'data/strategy_zoo_public.json' in sync
+    assert 'data/strategy_zoo_public.sha256' in sync
+    assert 'rsync -a "$ROOT/data/"' not in sync
+    assert "\n  --delete" not in sync

@@ -9,6 +9,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from run_pipeline import PredictionPipeline, build_model_breakdown
+from src.firestore_writer import FirestoreWriter
 from src.firestore_writer import build_source_weights_payload
 from src.public_cache_sync import (
     load_public_cache_contract,
@@ -27,6 +28,7 @@ EXPECTED_CACHE_IDS = {
     "prediction_history",
     "paper_trading",
     "forecast_history",
+    "strategy_zoo",
 }
 
 
@@ -59,6 +61,7 @@ def test_public_cache_contract_has_only_active_producer_consumer_ids():
         "prediction_history",
         "paper_trading",
         "forecast_history",
+        "strategy_zoo",
     ):
         assert contract["documents"][cache_id]["maxAgeSeconds"] is None
 
@@ -96,6 +99,27 @@ def test_bulk_request_rejects_unknown_cache_and_oversize_payload():
     }
     with pytest.raises(RuntimeError, match="request_too_large"):
         serialize_bulk_request({"matches": _envelope(["too large"])}, contract=tiny_contract)
+
+
+def test_bulk_request_requires_every_contract_document_for_the_run_mode():
+    with pytest.raises(RuntimeError, match="missing_required_cache_envelopes"):
+        serialize_bulk_request({"prediction_history": _envelope({})}, mode="evaluate")
+
+    evaluate_ids = {
+        cache_id
+        for cache_id, settings in load_public_cache_contract()["documents"].items()
+        if "evaluate" in settings["requiredInModes"]
+    }
+    payload = json.loads(
+        serialize_bulk_request(
+            {cache_id: _envelope({}) for cache_id in evaluate_ids},
+            mode="evaluate",
+        )
+    )
+    assert set(payload["caches"]) == evaluate_ids
+
+    with pytest.raises(RuntimeError, match="invalid_cache_mode"):
+        serialize_bulk_request({"matches": _envelope({})}, mode="fulll")
 
 
 def test_sync_uses_bearer_auth_and_retries_only_transient_failure(monkeypatch):
@@ -233,6 +257,26 @@ def test_model_breakdown_uses_only_valid_current_model_probabilities():
     }
 
 
+def test_strategy_zoo_cache_revalidates_and_stages_the_public_artifact(monkeypatch):
+    payload = {
+        "schemaVersion": 1,
+        "dataset": {"completeThroughSeason": 2024},
+        "strategies": [{"id": "fixed-rule"}],
+    }
+    monkeypatch.setattr(
+        "research.run_pattern_zoo.verify_artifact_against_canonical",
+        lambda: payload,
+    )
+    writer = object.__new__(FirestoreWriter)
+    staged = {}
+    writer.write_cache = lambda name, data: staged.update({name: data})
+
+    result = writer.refresh_strategy_zoo_cache()
+
+    assert result is payload
+    assert staged == {"strategy_zoo": payload}
+
+
 def test_full_run_refreshes_performance_after_evaluation_then_syncs():
     pipeline = object.__new__(PredictionPipeline)
     events = []
@@ -249,7 +293,7 @@ def test_full_run_refreshes_performance_after_evaluation_then_syncs():
     pipeline.evaluate_finished = lambda: events.append("evaluate")
     pipeline.update_source_performance = lambda: events.append("sources")
     pipeline.refresh_public_performance_caches = lambda: events.append("final_cache")
-    pipeline.sync_public_cache = lambda: events.append("sync")
+    pipeline.sync_public_cache = lambda **kwargs: events.append(f"sync:{kwargs['mode']}")
     pipeline._stats = {
         key: 0
         for key in (
@@ -269,7 +313,7 @@ def test_full_run_refreshes_performance_after_evaluation_then_syncs():
     pipeline.run_full()
 
     assert events.index("early_cache") < events.index("evaluate")
-    assert events[-4:] == ["evaluate", "sources", "final_cache", "sync"]
+    assert events[-4:] == ["evaluate", "sources", "final_cache", "sync:full"]
 
 
 def test_evaluate_only_refreshes_after_source_update_then_syncs():
@@ -279,8 +323,8 @@ def test_evaluate_only_refreshes_after_source_update_then_syncs():
     pipeline.evaluate_finished = lambda: events.append("evaluate")
     pipeline.update_source_performance = lambda: events.append("sources")
     pipeline.refresh_public_performance_caches = lambda: events.append("final_cache")
-    pipeline.sync_public_cache = lambda: events.append("sync")
+    pipeline.sync_public_cache = lambda **kwargs: events.append(f"sync:{kwargs['mode']}")
 
     pipeline.run_evaluate_only()
 
-    assert events == ["matches", "evaluate", "sources", "final_cache", "sync"]
+    assert events == ["matches", "evaluate", "sources", "final_cache", "sync:evaluate"]

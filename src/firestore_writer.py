@@ -822,9 +822,9 @@ class FirestoreWriter:
                 cache_type,
             )
 
-    def sync_public_cache(self) -> PublicCacheSyncResult:
+    def sync_public_cache(self, *, mode: str) -> PublicCacheSyncResult:
         """Publish all cache envelopes staged during this pipeline run once."""
-        result = publish_public_cache(dict(self._public_cache_envelopes))
+        result = publish_public_cache(dict(self._public_cache_envelopes), mode=mode)
         self.public_cache_sync_status = result
         if result.synced:
             log.info(
@@ -905,6 +905,27 @@ class FirestoreWriter:
         log.info(
             "Refreshed forecast_history cache with %s non-betting forecasts",
             payload["summary"]["totalForecasts"],
+        )
+        return payload
+
+    def refresh_strategy_zoo_cache(self) -> dict:
+        """Publish the audited, static strategy-zoo research artifact.
+
+        The research generator owns this payload.  The live pipeline only
+        validates and republishes it; it never recalculates or retunes a
+        historical rule while serving the public site.
+        """
+        from research.run_pattern_zoo import verify_artifact_against_canonical
+
+        payload = getattr(self, "_verified_strategy_zoo_payload", None)
+        if payload is None:
+            payload = verify_artifact_against_canonical()
+            self._verified_strategy_zoo_payload = payload
+        self.write_cache("strategy_zoo", payload)
+        log.info(
+            "Refreshed strategy_zoo cache with %s strategies through season %s",
+            len(payload["strategies"]),
+            payload["dataset"]["completeThroughSeason"],
         )
         return payload
 

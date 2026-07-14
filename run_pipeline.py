@@ -2987,6 +2987,7 @@ class PredictionPipeline:
                 ),
             ),
             ("forecast_history", self.fs.refresh_forecast_history_cache),
+            ("strategy_zoo", self.fs.refresh_strategy_zoo_cache),
             ("source_weights", self.fs.refresh_source_weights_cache),
         )
         for cache_id, refresh in refreshers:
@@ -2995,10 +2996,10 @@ class PredictionPipeline:
             except Exception as e:
                 log.warning("  Final %s cache refresh failed: %s", cache_id, e)
 
-    def sync_public_cache(self):
+    def sync_public_cache(self, *, mode: str):
         """Publish staged caches and fail the run if the website stays stale."""
         try:
-            result = self.fs.sync_public_cache()
+            result = self.fs.sync_public_cache(mode=mode)
         except Exception as e:
             # Keep the exception deliberately generic: sync credentials must
             # never be copied into pipeline logs.
@@ -3072,7 +3073,7 @@ class PredictionPipeline:
         # later Firestore stage fails.  Rebuild performance caches again here
         # so history, P&L and source metrics include this run's evaluations.
         self.refresh_public_performance_caches()
-        self.sync_public_cache()
+        self.sync_public_cache(mode="full")
 
         elapsed = (datetime.now() - start).total_seconds()
         log.info("═══════════════════════════════════════")
@@ -3098,7 +3099,7 @@ class PredictionPipeline:
         self.enrich_match_context()
         self.fetch_odds()
         self.write_legacy_cache(preserve_predictions=True)
-        self.sync_public_cache()
+        self.sync_public_cache(mode="odds")
 
     def run_evaluate_only(self):
         """Just evaluate finished matches."""
@@ -3119,7 +3120,7 @@ class PredictionPipeline:
             else:
                 log.warning("  Source performance update failed: %s", e)
         self.refresh_public_performance_caches()
-        self.sync_public_cache()
+        self.sync_public_cache(mode="evaluate")
 
     def run_context_only(self):
         """Just refresh lineup/injury/player context."""

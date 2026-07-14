@@ -111,6 +111,11 @@ if [ "$train_requested" = true ]; then
     echo "Football-Data refresh failed; refusing to train on a stale or incomplete cache." | tee -a "$LOG_FILE" >&2
     exit 1
   fi
+  echo "Rebuilding the point-in-time Strategy Zoo artifact." | tee -a "$LOG_FILE"
+  if ! "$PYTHON_BIN" -m research.run_pattern_zoo 2>&1 | tee -a "$LOG_FILE"; then
+    echo "Strategy Zoo rebuild failed; preserving the last validated artifact and failing the train job." | tee -a "$LOG_FILE" >&2
+    exit 1
+  fi
 fi
 
 "$PYTHON_BIN" run_pipeline.py "$@" --verbose 2>&1 | tee -a "$LOG_FILE"

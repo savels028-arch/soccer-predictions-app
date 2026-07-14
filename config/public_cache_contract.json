@@ -37,6 +37,10 @@
     "forecast_history": {
       "maxAgeSeconds": null,
       "requiredInModes": ["full", "evaluate"]
+    },
+    "strategy_zoo": {
+      "maxAgeSeconds": null,
+      "requiredInModes": ["full", "evaluate"]
     }
   }
 }

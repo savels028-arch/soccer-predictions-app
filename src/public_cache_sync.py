@@ -80,6 +80,7 @@ def serialize_bulk_request(
     caches: Mapping[str, Mapping[str, Any]],
     *,
     contract: Optional[Mapping[str, Any]] = None,
+    mode: Optional[str] = None,
 ) -> bytes:
     resolved_contract = dict(contract or load_public_cache_contract())
     allowed = frozenset(resolved_contract["documents"])
@@ -88,6 +89,23 @@ def serialize_bulk_request(
         raise PublicCacheSyncError("cache_contract_violation")
     if not caches:
         raise PublicCacheSyncError("no_cache_envelopes")
+    if mode is not None:
+        if not isinstance(mode, str) or not mode:
+            raise PublicCacheSyncError("invalid_cache_mode")
+        known_modes = {
+            required_mode
+            for settings in resolved_contract["documents"].values()
+            for required_mode in settings.get("requiredInModes", [])
+        }
+        if mode not in known_modes:
+            raise PublicCacheSyncError("invalid_cache_mode")
+        required = {
+            cache_id
+            for cache_id, settings in resolved_contract["documents"].items()
+            if mode in settings.get("requiredInModes", [])
+        }
+        if required.difference(caches):
+            raise PublicCacheSyncError("missing_required_cache_envelopes")
 
     for cache_id, envelope in caches.items():
         if not isinstance(envelope, Mapping):
@@ -117,6 +135,7 @@ def sync_public_cache(
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
     attempts: int = DEFAULT_ATTEMPTS,
     sleep=time.sleep,
+    mode: Optional[str] = None,
 ) -> PublicCacheSyncResult:
     """POST all staged envelopes once, retrying only transient failures.
 
@@ -151,7 +170,7 @@ def sync_public_cache(
             False, len(caches), 0, 0, "invalid_sync_url", attempted_at
         )
     try:
-        payload = serialize_bulk_request(caches)
+        payload = serialize_bulk_request(caches, mode=mode)
     except PublicCacheSyncError as exc:
         return PublicCacheSyncResult(
             False, len(caches), 0, 0, str(exc), attempted_at

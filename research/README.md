@@ -41,6 +41,35 @@ Brug `--leagues PL PD ...` til et afgrænset ligasæt, `--no-boosting` til en
 hurtigere baseline og `--rebuild-features` når feature-logikken er ændret. Se
 alle valg med `venv/bin/python -m research.run_zoo backtest --help`.
 
+### Offentligt Strategy Zoo-overblik
+
+Den faste, offentlige strategioversigt genereres separat fra modeludvælgelsen:
+
+```bash
+venv/bin/python -m research.run_pattern_zoo
+```
+
+Kommandoen skriver det validerede artifact
+[`data/strategy_zoo_public.json`](../data/strategy_zoo_public.json). Det viser
+33 på forhånd definerede H2H-, 1X2-, uafgjort-, mål- og exact-score-regler år
+for år. Reglerne bliver ikke genvalgt ud fra samme års resultat. Kampe med samme
+starttid isoleres fra hinanden, og kun komplette Bet365-opening-markeder kan
+skabe P&L. Manglende odds giver derfor aldrig syntetisk profit.
+
+Det aktuelle artifact dækker 115.840 evaluerede kampe fra 1993/94 til og med
+2025/26. Alle ti 2025/26-filer blev hentet og atomisk valideret efter sæsonens
+afslutning; der er derfor ingen karantænesatte kampe i den aktuelle udgave.
+
+Den samlede status er `NO_CONFIRMED_BETTING_EDGE`. Tre af 141 H2H-kandidater
+bestod en separat win-rate-test med Benjamini–Hochberg-korrektion ved q<=0,05:
+Ajax–Waalwijk, PSV–Waalwijk og Feyenoord–Zwolle. Det bekræfter et gentageligt
+resultatmønster mod en 50%-nulhypotese, ikke profit til de tilbudte odds. Alle
+tre står derfor fortsat uden bekræftet betting-edge eller garanti.
+
+Den lokale uge-træning genopbygger artifactet efter en bestået data-refresh.
+Hvis genopbygningen fejler, bevares det seneste validerede artifact i stedet
+for at publicere et halvt eller ukomplet resultat.
+
 Hver kørsel skriver et manifest med SHA256 for datasæt, feature-cache og hver
 research-kildefil, samlet code-fingerprint samt Git dirty/untracked-status.
 Feature-cache-nøglen afledes af datasæt, parser/feature-kode og den eksplicitte
@@ -52,23 +81,23 @@ er derfor ikke versionsstyret.
 
 ## Datasæt og begrænsninger
 
-Den dokumenterede fulde kørsel bruger dataset-id
-`722889f3145638357ee9` fra 318 lokale Football-Data CSV-filer:
+Den aktuelle canonical cache bruger dataset-id `7e131786cd7a35f0ae84` fra 328
+lokale Football-Data CSV-filer:
 
-- 112.307 valide, unikke klubkampe fra 23. juli 1993 til 25. maj 2025.
+- 115.840 valide, unikke klubkampe fra 23. juli 1993 til 24. maj 2026.
 - Ti turneringer: Premier League, Championship, Bundesliga, 2. Bundesliga,
   La Liga, Serie A, Ligue 1, Eredivisie, Primeira Liga og belgisk 1. division.
-- Åbningsodds findes for 87.918 1X2-kampe (78,3 %), 75.220 O/U 2,5-kampe
-  (67,0 %) og 75.381 Asian Handicap-kampe (67,1 %). Closing odds findes for
-  45.831 1X2-kampe og 21.227 O/U-kampe.
+- Åbningsodds findes for 91.451 1X2-kampe (78,9 %), 78.753 O/U 2,5-kampe
+  (68,0 %) og 78.907 Asian Handicap-kampe (68,1 %). Closing odds findes for
+  49.364 1X2-kampe og 24.760 O/U-kampe.
 - Kampe uden komplette odds opdaterer stadig historiske hold- og ligafeatures,
   men kan ikke blive til afregnede bets.
 
-Sæson 2025/26 er bevidst sat i karantæne. Det lokale snapshot sluttede 11. maj
-2026 og manglede 137 kampe i forhold til den forventede komplette cache. Det
-indgår derfor hverken i feature-cachen, policy-valget eller holdout-resultatet.
-Kørslen stopper ved den seneste komplette sæson, 2024/25; 2025/26 må først
-tilføjes efter en ny data-audit.
+Den fulde modelkørsel dokumenteret længere nede er fortsat et frosset,
+reproducerbart run på det tidligere dataset-id `722889f3145638357ee9` gennem
+2024/25. Dens holdout-tal omskrives ikke bagudrettet, blot fordi den canonical
+cache nu også indeholder 2025/26. En ny fuld walk-forward-kørsel skal have sit
+eget run-id og manifest.
 
 Dette datasæt indeholder ikke landsholds- eller VM-kampe, ægte xG, skader,
 lineups, vejr eller bookmaker-limits. Historiske bookmakerfelter har også

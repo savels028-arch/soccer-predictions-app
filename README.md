@@ -148,6 +148,11 @@ features, nested walk-forward, en låst tre-sæsoners holdout og faste
 promotion-gates. Det ændrer aldrig live-predictions automatisk. Se
 [metode, CLI, datadækning og aktuelle resultater](research/README.md).
 
+Den offentlige Strategy Zoo-side bruger et separat, valideret artifact med 33
+faste strategier og sæsonresultater fra 1993/94 til 2025/26. Genbyg det med
+`venv/bin/python -m research.run_pattern_zoo`. Ufuldstændige sæsoner sættes i
+karantæne, og fraværende bookmaker-odds bliver aldrig udfyldt med beregnet P&L.
+
 ### Med API nøgler
 
 ```bash
@@ -227,6 +232,7 @@ soccer-predictions-app/
 │   ├── db/                           # 💾 SQLite database filer
 │   ├── models/                       # 🧠 Gemte ML modeller
 │   ├── research/                     # 🔬 Genererede research-runs og feature-cache
+│   ├── strategy_zoo_public.json      # 📈 Valideret public Strategy Zoo-artifact
 │   └── cache/                        # 📦 API cache
 └── logs/                             # 📋 Log filer
 ```

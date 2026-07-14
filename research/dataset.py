@@ -22,10 +22,10 @@ from src.api.csv_football_client import FootballDataCSVClient
 
 MIN_SEASON = 1993
 MAX_SEASON = 2025
-# The local 2025/26 snapshot is incomplete and must not be selected by
-# default.  It remains within MAX_SEASON so explicit audits can quarantine or
-# inspect it, while production research stops at the last complete season.
-LATEST_COMPLETE_SEASON = 2024
+# The ten canonical 2025/26 league files were refreshed and validated after
+# the season ended.  Advance this constant only after the atomic refresh has
+# completed for every configured league; partial live seasons stay excluded.
+LATEST_COMPLETE_SEASON = 2025
 CANONICAL_CACHE_DIR = (
     Path(__file__).resolve().parents[1] / "data" / "cache" / "football_data_csv"
 )
