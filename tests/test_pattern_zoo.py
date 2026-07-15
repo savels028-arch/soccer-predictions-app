@@ -10,6 +10,8 @@ from research.dataset import LATEST_COMPLETE_SEASON
 from research.pattern_zoo import (
     StrategyZooValidationError,
     _Event,
+    _build_season_audits,
+    _market_profile_stability,
     _summary,
     build_strategy_zoo,
     load_strategy_zoo,
@@ -211,6 +213,226 @@ def test_exact_score_is_accuracy_only_without_exact_score_odds():
     assert strategy["overall"]["roiPct"] is None
 
 
+def test_baselines_expose_flat_stake_pnl_and_honest_unpriced_goal_markets():
+    matches = [
+        _match(
+            "2024-08-01T12:00:00Z",
+            "Alpha",
+            "Beta",
+            2,
+            1,
+            season=2024,
+            one_x_two=(1.5, 3.5, 5.0),
+            totals=(1.8, 2.1),
+        ),
+        _match(
+            "2024-08-02T12:00:00Z",
+            "Gamma",
+            "Delta",
+            0,
+            1,
+            season=2024,
+            one_x_two=(2.2, 3.3, 2.8),
+            totals=(2.2, 1.7),
+        ),
+        _match(
+            "2024-08-03T12:00:00Z",
+            "Epsilon",
+            "Zeta",
+            1,
+            1,
+            season=2024,
+            one_x_two=(2.4, 3.0, 2.4),
+            totals=(1.9, 1.9),
+        ),
+    ]
+    payload = _build(matches)
+
+    favourite = _strategy(payload, "all_unique_favourites")
+    assert favourite["overall"]["bets"] == 2
+    assert favourite["overall"]["stakeUnits"] == 2.0
+    assert favourite["overall"]["pnlAvailable"] is True
+    assert favourite["comparison"]["kind"] == "contrast"
+    assert favourite["comparison"]["sameOpportunitySet"] is False
+
+    for identifier in ("all_home_wins", "all_draws", "all_away_wins"):
+        baseline = _strategy(payload, identifier)
+        assert baseline["overall"]["bets"] == 3
+        assert baseline["overall"]["stakeUnits"] == 3.0
+
+    over15 = _strategy(payload, "all_over15")
+    under15 = _strategy(payload, "all_under15")
+    assert over15["overall"]["opportunities"] == under15["overall"]["opportunities"] == 3
+    assert over15["overall"]["hits"] + under15["overall"]["hits"] == 3
+    assert over15["overall"]["bets"] == over15["overall"]["stakeUnits"] == 0
+    assert over15["overall"]["pnlAvailable"] is False
+    assert over15["overall"]["pnlAvailabilityReason"] == "no_verified_pre_match_odds_for_market"
+    assert over15["comparison"]["oppositeStrategyId"] == "all_under15"
+
+    over25 = _strategy(payload, "all_over25")
+    under25 = _strategy(payload, "all_under25")
+    assert over25["overall"]["bets"] == under25["overall"]["bets"] == 3
+    assert over25["overall"]["hits"] + under25["overall"]["hits"] == 3
+    assert over25["overall"]["profitUnits"] == pytest.approx(-1.21, abs=0.01)
+    assert under25["overall"]["profitUnits"] == pytest.approx(0.58, abs=0.01)
+    assert over25["comparison"] == {
+        "groupId": "all_ou25",
+        "role": "over25",
+        "oppositeStrategyId": "all_under25",
+        "kind": "binary_complement",
+        "sameOpportunitySet": True,
+    }
+
+
+def test_goal_signal_fade_uses_identical_opportunities_and_the_opposite_real_quote():
+    matches = [
+        _match(
+            f"2020-0{month}-01T12:00:00Z",
+            "Alpha",
+            "Beta",
+            2,
+            1,
+            totals=(1.75, 2.15),
+        )
+        for month in range(1, 6)
+    ]
+    matches.append(
+        _match(
+            "2020-06-01T12:00:00Z",
+            "Alpha",
+            "Beta",
+            1,
+            0,
+            totals=(1.75, 2.15),
+        )
+    )
+
+    payload = _build(matches)
+    follow = _strategy(payload, "h2h_over25_dominance")
+    fade = _strategy(payload, "fade_h2h_over25_dominance")
+
+    assert follow["overall"]["opportunities"] == fade["overall"]["opportunities"] == 1
+    assert follow["overall"]["bets"] == fade["overall"]["bets"] == 1
+    assert follow["overall"]["hits"] == 0
+    assert fade["overall"]["hits"] == 1
+    assert follow["overall"]["profitUnits"] == -1.0
+    assert fade["overall"]["profitUnits"] == pytest.approx(1.14, abs=0.01)
+    assert follow["comparison"]["oppositeStrategyId"] == fade["id"]
+    assert fade["comparison"]["oppositeStrategyId"] == follow["id"]
+    assert follow["comparison"]["sameOpportunitySet"] is True
+
+
+def test_season_market_profiles_partition_outcomes_goals_and_team_favourites():
+    matches = [
+        _match("2024-08-01T12:00:00Z", "A", "B", 2, 1, season=2024, one_x_two=(1.5, 3.5, 5.0)),
+        _match("2024-08-02T12:00:00Z", "C", "D", 0, 1, season=2024, one_x_two=(2.2, 3.3, 2.8)),
+        _match("2024-08-03T12:00:00Z", "E", "F", 1, 1, season=2024, one_x_two=(2.4, 3.0, 2.4)),
+        _match("2024-08-04T12:00:00Z", "G", "H", 1, 1, season=2024, one_x_two=(1.8, 3.2, 4.0)),
+    ]
+    profile = _build(matches)["seasonMarketProfiles"]["bySeason"][0]
+
+    assert profile["scoredMatches"] == 4
+    assert sum(profile["oneXTwo"][side]["count"] for side in ("home", "draw", "away")) == 4
+    over_counts = []
+    for threshold in ("0.5", "1.5", "2.5", "3.5", "4.5", "5.5"):
+        row = profile["totalGoals"][threshold]
+        assert row["over"]["count"] + row["under"]["count"] == 4
+        over_counts.append(row["over"]["count"])
+    assert over_counts == sorted(over_counts, reverse=True)
+    assert sum(row["count"] for row in profile["exactTotalGoals"].values()) == 4
+    assert profile["teamFavourites"] == {
+        "completePricedMatches": 4,
+        "uniqueTeamSelections": 3,
+        "tiesSkipped": 1,
+        "won": 1,
+        "drawn": 1,
+        "lost": 1,
+        "winRatePct": 33.33,
+        "drawRatePct": 33.33,
+        "lossRatePct": 33.33,
+    }
+
+
+def test_favourite_strategy_uses_the_same_team_favourite_definition_as_the_profile():
+    payload = _build([
+        _match(
+            "2024-08-01T12:00:00Z",
+            "Alpha",
+            "Beta",
+            2,
+            0,
+            season=2024,
+            one_x_two=(1.8, 1.5, 4.0),
+        ),
+    ])
+
+    profile = payload["seasonMarketProfiles"]["bySeason"][0]
+    favourite = _strategy(payload, "all_unique_favourites")
+    assert profile["teamFavourites"]["uniqueTeamSelections"] == 1
+    assert profile["teamFavourites"]["won"] == 1
+    assert favourite["overall"]["bets"] == 1
+    assert favourite["overall"]["wins"] == 1
+
+
+def test_season_market_profile_and_walk_forward_never_use_future_seasons():
+    original_matches = [
+        _match("2020-08-01T12:00:00Z", "A", "B", 1, 0, season=2020),
+        _match("2021-08-01T12:00:00Z", "C", "D", 4, 4, season=2021),
+    ]
+    changed_matches = copy.deepcopy(original_matches)
+    changed_matches[1]["home_score"] = 0
+    changed_matches[1]["away_score"] = 0
+    original_payload = _build(original_matches)
+    first = original_payload["seasonMarketProfiles"]["bySeason"][0]
+    changed = _build(changed_matches)["seasonMarketProfiles"]["bySeason"][0]
+    assert changed == first
+    home_stability = original_payload["seasonMarketProfiles"]["stability"]["metrics"]["home"]
+    assert home_stability["seasonsObserved"] == 2
+    assert home_stability["meanPct"] == 50.0
+    assert home_stability["stdDevPctPoints"] == 50.0
+    assert home_stability["last5MeanPct"] == 50.0
+    assert home_stability["priorMeanPct"] is None
+
+    def strategy(identifier, profits):
+        return {
+            "id": identifier,
+            "yearly": [
+                {
+                    "season": season,
+                    "bets": 200,
+                    "stakeUnits": 200.0,
+                    "profitUnits": profit,
+                    "roiPct": profit / 2.0,
+                }
+                for season, profit in zip(range(2018, 2024), profits)
+            ],
+        }
+
+    strategies = [
+        strategy("alpha", [20, 20, 20, 20, 20, -10]),
+        strategy("beta", [10, 10, 10, 10, 10, 30]),
+    ]
+    audits = _build_season_audits(strategies, list(range(2018, 2024)))
+    final = audits[-1]
+    assert final["hindsightRanking"][0]["strategyId"] == "beta"
+    assert final["walkForward"]["selectedStrategyId"] == "alpha"
+    assert final["walkForward"]["basedThroughSeason"] == 2022
+    assert final["walkForward"]["selectedPriorBets"] == 1_000
+
+    mutated = copy.deepcopy(strategies)
+    mutated[0]["yearly"][-1]["profitUnits"] = 100.0
+    mutated[0]["yearly"][-1]["roiPct"] = 50.0
+    mutated_audits = _build_season_audits(mutated, list(range(2018, 2024)))
+    assert mutated_audits[-1]["walkForward"]["selectedStrategyId"] == "alpha"
+    assert mutated_audits[-1]["walkForward"]["selectedPriorRoiPct"] == final["walkForward"]["selectedPriorRoiPct"]
+
+    negative = [strategy("negative", [-10, -10, -10, -10, -10, 100])]
+    cash = _build_season_audits(negative, list(range(2018, 2024)))[-1]["walkForward"]
+    assert cash["selectedStrategyId"] is None
+    assert cash["activationReason"] == "best_prior_roi_not_positive"
+    assert cash["bets"] == cash["stakeUnits"] == cash["profitUnits"] == 0
+
+
 def test_validator_fails_closed_on_guarantees_and_synthetic_pnl(tmp_path):
     payload = _build([_match("2024-08-01T12:00:00Z", "Alpha", "Beta", 1, 0, season=2024)])
     guarantee = copy.deepcopy(payload)
@@ -226,16 +448,94 @@ def test_validator_fails_closed_on_guarantees_and_synthetic_pnl(tmp_path):
 
     path = tmp_path / "strategy-zoo.json"
     path.write_text(json.dumps(payload), encoding="utf-8")
-    assert load_strategy_zoo(path)["schemaVersion"] == 1
+    assert load_strategy_zoo(path)["schemaVersion"] == 2
 
     path.with_suffix(".sha256").write_text(
         hashlib.sha256(path.read_bytes()).hexdigest() + "\n",
         encoding="ascii",
     )
-    assert load_strategy_zoo(path, require_checksum=True)["schemaVersion"] == 1
+    assert load_strategy_zoo(path, require_checksum=True)["schemaVersion"] == 2
     path.write_text(path.read_text(encoding="utf-8") + " ", encoding="utf-8")
     with pytest.raises(StrategyZooValidationError, match="checksum"):
         load_strategy_zoo(path, require_checksum=True)
+
+
+def test_validator_rejects_exact_goal_buckets_that_disagree_with_thresholds():
+    payload = _build([
+        _match("2024-08-01T12:00:00Z", "Alpha", "Beta", 1, 0, season=2024)
+    ])
+    forged = copy.deepcopy(payload)
+    for profile in (
+        forged["seasonMarketProfiles"]["bySeason"][0],
+        forged["seasonMarketProfiles"]["allTime"],
+    ):
+        profile["exactTotalGoals"]["0"] = {"count": 1, "ratePct": 100.0}
+        profile["exactTotalGoals"]["1"] = {"count": 0, "ratePct": 0.0}
+
+    with pytest.raises(StrategyZooValidationError, match="exactTotalGoals disagrees"):
+        validate_strategy_zoo(forged)
+
+
+def test_validator_cross_checks_team_favourite_profiles_against_strategy_results():
+    payload = _build([
+        _match(
+            "2024-08-01T12:00:00Z",
+            "Alpha",
+            "Beta",
+            2,
+            0,
+            season=2024,
+            one_x_two=(1.8, 1.5, 4.0),
+        )
+    ])
+    forged = copy.deepcopy(payload)
+    for profile in (
+        forged["seasonMarketProfiles"]["bySeason"][0],
+        forged["seasonMarketProfiles"]["allTime"],
+    ):
+        favourites = profile["teamFavourites"]
+        favourites["won"] = 0
+        favourites["lost"] = 1
+        favourites["winRatePct"] = 0.0
+        favourites["lossRatePct"] = 100.0
+    forged["seasonMarketProfiles"]["stability"] = _market_profile_stability(
+        forged["seasonMarketProfiles"]["bySeason"]
+    )
+
+    with pytest.raises(StrategyZooValidationError, match="hold-favourite strategy disagree"):
+        validate_strategy_zoo(forged)
+
+    coverage_forged = copy.deepcopy(payload)
+    coverage_forged["coverage"]["bySeason"][0]["b3651x2Matches"] = 0
+    coverage_forged["coverage"]["bySeason"][0]["b3651x2CoveragePct"] = 0.0
+    with pytest.raises(StrategyZooValidationError, match="favourite quote coverage disagrees"):
+        validate_strategy_zoo(coverage_forged)
+
+
+def test_validator_rejects_non_complementary_priced_opposite_wins():
+    payload = _build([
+        _match(
+            "2024-08-01T12:00:00Z",
+            "Alpha",
+            "Beta",
+            2,
+            1,
+            season=2024,
+            totals=(1.8, 2.1),
+        )
+    ])
+    forged = copy.deepcopy(payload)
+    under = next(item for item in forged["strategies"] if item["id"] == "all_under25")
+    for metric in (under["yearly"][0], under["overall"]):
+        metric["wins"] = 1
+        metric["profitUnits"] = 1.09
+        metric["roiPct"] = 109.0
+        metric["maxDrawdownUnits"] = 0.0
+        metric["positivePricedSeasons"] = 1
+        metric["positivePricedSeasonRatePct"] = 100.0
+
+    with pytest.raises(StrategyZooValidationError, match="complementary opportunities"):
+        validate_strategy_zoo(forged)
 
 
 def test_publication_rebuild_rejects_coherent_checksum_valid_forgery(tmp_path, monkeypatch):

@@ -803,24 +803,27 @@ class FirestoreWriter:
     # BACKWARD COMPAT: cache/ collection
     # ──────────────────────────────────────
 
+    def stage_public_cache(self, cache_type: str, data: Any):
+        """Stage one allow-listed payload for the next Cloudflare bulk sync."""
+        if cache_type in PUBLIC_CACHE_DOCUMENT_IDS:
+            self._public_cache_envelopes[cache_type] = {
+                "data": data,
+                "updatedAt": utc_now_iso(),
+            }
+        else:
+            log.warning(
+                "Cache %s is not in the public-cache contract",
+                cache_type,
+            )
+
     def write_cache(self, cache_type: str, data: Any):
-        """Write Firestore cache and stage its public Cloudflare envelope."""
-        updated_at = utc_now_iso()
+        """Write a backward-compatible Firestore cache and stage it publicly."""
         self.db.collection("cache").document(cache_type).set({
             "data": data,
             "updatedAt": firestore.SERVER_TIMESTAMP,
             "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         })
-        if cache_type in PUBLIC_CACHE_DOCUMENT_IDS:
-            self._public_cache_envelopes[cache_type] = {
-                "data": data,
-                "updatedAt": updated_at,
-            }
-        else:
-            log.warning(
-                "Cache %s was written to Firestore but is not in the public-cache contract",
-                cache_type,
-            )
+        self.stage_public_cache(cache_type, data)
 
     def sync_public_cache(self, *, mode: str) -> PublicCacheSyncResult:
         """Publish all cache envelopes staged during this pipeline run once."""
@@ -837,8 +840,9 @@ class FirestoreWriter:
             self._public_cache_envelopes.clear()
         else:
             log.error(
-                "PUBLIC CACHE NOT SYNCED (%s; %s documents). Firestore is current, "
-                "but aibets.dk may remain stale until the next successful run.",
+                "PUBLIC CACHE NOT SYNCED (%s; %s documents). Upstream evaluation may be "
+                "current, but public-only artifacts and aibets.dk remain stale until the "
+                "next successful sync.",
                 result.reason,
                 result.cache_count,
             )
@@ -921,7 +925,10 @@ class FirestoreWriter:
         if payload is None:
             payload = verify_artifact_against_canonical()
             self._verified_strategy_zoo_payload = payload
-        self.write_cache("strategy_zoo", payload)
+        # The audited artifact is the system of record and is larger than one
+        # Firestore document.  It is consumed only by the Cloudflare frontend,
+        # so stage it directly instead of duplicating it in cache/strategy_zoo.
+        self.stage_public_cache("strategy_zoo", payload)
         log.info(
             "Refreshed strategy_zoo cache with %s strategies through season %s",
             len(payload["strategies"]),

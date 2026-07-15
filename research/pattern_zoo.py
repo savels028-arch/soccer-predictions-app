@@ -30,13 +30,20 @@ from research.features import extract_1x2_quotes, extract_ou25_quotes
 from research.metrics import max_drawdown
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 DEFAULT_PUBLIC_PATH = Path(__file__).resolve().parents[1] / "data" / "strategy_zoo_public.json"
 DEFAULT_PUBLIC_CHECKSUM_PATH = DEFAULT_PUBLIC_PATH.with_suffix(".sha256")
-MAX_PUBLIC_BYTES = 1_000_000
+# Schema v2 adds audited annual rankings and descriptive season profiles.  The
+# compact canonical payload is ~1.05 MB, still far below Cloudflare KV's value
+# limit; retain a tight regression guard with modest headroom.
+MAX_PUBLIC_BYTES = 1_250_000
 ODDS_HAIRCUT = 0.01
 ROI_BOOTSTRAP_RESAMPLES = 2_000
 ROI_BOOTSTRAP_SEED = 20260714
+HINDSIGHT_MINIMUM_SEASON_BETS = 200
+WALK_FORWARD_MINIMUM_PRIOR_BETS = 1_000
+WALK_FORWARD_MINIMUM_PRIOR_PRICED_SEASONS = 5
+WALK_FORWARD_ACTIVATION_THRESHOLD_ROI_PCT = 0.0
 
 _COMPETITION_GROUPS = {
     "PL": "ENG",
@@ -87,6 +94,7 @@ class StrategyDefinition:
     family: str
     market: str
     rule: Mapping[str, Any]
+    comparison: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -201,10 +209,162 @@ def _band_rule(selection: str, lower: float, upper: float) -> Dict[str, Any]:
     }
 
 
+def _comparison(
+    group_id: str | None = None,
+    role: str | None = None,
+    opposite_strategy_id: str | None = None,
+    *,
+    kind: str = "none",
+    same_opportunity_set: bool = False,
+) -> Dict[str, Any]:
+    return {
+        "groupId": group_id,
+        "role": role,
+        "oppositeStrategyId": opposite_strategy_id,
+        "kind": kind,
+        "sameOpportunitySet": same_opportunity_set,
+    }
+
+
+def _definition_comparison(definition: StrategyDefinition) -> Dict[str, Any]:
+    return dict(definition.comparison or _comparison())
+
+
 def strategy_definitions() -> tuple[StrategyDefinition, ...]:
     """Return the fixed strategy catalogue in stable display order."""
 
     definitions = [
+        StrategyDefinition(
+            "all_unique_favourites",
+            "Alle entydige holdfavoritter",
+            "baselines",
+            "1x2",
+            {
+                "selection": "unique_lower_priced_home_or_away_team",
+                "tiePolicy": "skip",
+                "quote": "bet365_open_complete_market",
+            },
+            _comparison(
+                "all_unique_price_extremes",
+                "favourite",
+                "all_unique_outsiders",
+                kind="contrast",
+                same_opportunity_set=False,
+            ),
+        ),
+        StrategyDefinition(
+            "all_unique_outsiders",
+            "Alle entydige 1X2-outsidere",
+            "baselines",
+            "1x2",
+            {
+                "selection": "unique_highest_priced_1x2_outcome",
+                "tiePolicy": "skip",
+                "quote": "bet365_open_complete_market",
+            },
+            _comparison(
+                "all_unique_price_extremes",
+                "outsider",
+                "all_unique_favourites",
+                kind="contrast",
+                same_opportunity_set=False,
+            ),
+        ),
+        StrategyDefinition(
+            "all_home_wins",
+            "Hjemmesejr i alle kampe",
+            "baselines",
+            "1x2",
+            {"selection": "home", "quote": "bet365_open_complete_market"},
+            _comparison(
+                "all_1x2_outcomes",
+                "home",
+                kind="contrast",
+                same_opportunity_set=True,
+            ),
+        ),
+        StrategyDefinition(
+            "all_draws",
+            "Uafgjort i alle kampe",
+            "baselines",
+            "1x2",
+            {"selection": "draw", "quote": "bet365_open_complete_market"},
+            _comparison(
+                "all_1x2_outcomes",
+                "draw",
+                kind="contrast",
+                same_opportunity_set=True,
+            ),
+        ),
+        StrategyDefinition(
+            "all_away_wins",
+            "Udesejr i alle kampe",
+            "baselines",
+            "1x2",
+            {"selection": "away", "quote": "bet365_open_complete_market"},
+            _comparison(
+                "all_1x2_outcomes",
+                "away",
+                kind="contrast",
+                same_opportunity_set=True,
+            ),
+        ),
+        StrategyDefinition(
+            "all_over15",
+            "Over 1,5 mål i alle kampe",
+            "baselines",
+            "over_under_1_5",
+            {"selection": "over15", "quote": None, "outcomeOnly": True},
+            _comparison(
+                "all_ou15",
+                "over15",
+                "all_under15",
+                kind="binary_complement",
+                same_opportunity_set=True,
+            ),
+        ),
+        StrategyDefinition(
+            "all_under15",
+            "Under 1,5 mål i alle kampe",
+            "baselines",
+            "over_under_1_5",
+            {"selection": "under15", "quote": None, "outcomeOnly": True},
+            _comparison(
+                "all_ou15",
+                "under15",
+                "all_over15",
+                kind="binary_complement",
+                same_opportunity_set=True,
+            ),
+        ),
+        StrategyDefinition(
+            "all_over25",
+            "Over 2,5 mål i alle kampe",
+            "baselines",
+            "over_under_2_5",
+            {"selection": "over25", "quote": "bet365_open_complete_market"},
+            _comparison(
+                "all_ou25",
+                "over25",
+                "all_under25",
+                kind="binary_complement",
+                same_opportunity_set=True,
+            ),
+        ),
+        StrategyDefinition(
+            "all_under25",
+            "Under 2,5 mål i alle kampe",
+            "baselines",
+            "over_under_2_5",
+            {"selection": "under25", "quote": "bet365_open_complete_market"},
+            _comparison(
+                "all_ou25",
+                "under25",
+                "all_over25",
+                kind="binary_complement",
+                same_opportunity_set=True,
+            ),
+        ),
         StrategyDefinition(
             "directed_h2h_dominance",
             "Samme hjemmehold dominerer H2H",
@@ -235,6 +395,31 @@ def strategy_definitions() -> tuple[StrategyDefinition, ...]:
             "goals",
             "over_under_2_5",
             {"minimumPriorMeetings": 5, "minimumOverRatePct": 70.0},
+            _comparison(
+                "h2h_over25_signal",
+                "follow",
+                "fade_h2h_over25_dominance",
+                kind="mirrored_signal",
+                same_opportunity_set=True,
+            ),
+        ),
+        StrategyDefinition(
+            "fade_h2h_over25_dominance",
+            "Modspil: H2H over 2,5-signal",
+            "goals",
+            "over_under_2_5",
+            {
+                "signalStrategyId": "h2h_over25_dominance",
+                "selection": "under25",
+                "quote": "bet365_open_complete_market",
+            },
+            _comparison(
+                "h2h_over25_signal",
+                "fade",
+                "h2h_over25_dominance",
+                kind="mirrored_signal",
+                same_opportunity_set=True,
+            ),
         ),
         StrategyDefinition(
             "h2h_under25_dominance",
@@ -242,6 +427,31 @@ def strategy_definitions() -> tuple[StrategyDefinition, ...]:
             "goals",
             "over_under_2_5",
             {"minimumPriorMeetings": 5, "minimumUnderRatePct": 70.0},
+            _comparison(
+                "h2h_under25_signal",
+                "follow",
+                "fade_h2h_under25_dominance",
+                kind="mirrored_signal",
+                same_opportunity_set=True,
+            ),
+        ),
+        StrategyDefinition(
+            "fade_h2h_under25_dominance",
+            "Modspil: H2H under 2,5-signal",
+            "goals",
+            "over_under_2_5",
+            {
+                "signalStrategyId": "h2h_under25_dominance",
+                "selection": "over25",
+                "quote": "bet365_open_complete_market",
+            },
+            _comparison(
+                "h2h_under25_signal",
+                "fade",
+                "h2h_under25_dominance",
+                kind="mirrored_signal",
+                same_opportunity_set=True,
+            ),
         ),
         StrategyDefinition(
             "league_over25_extreme",
@@ -249,6 +459,31 @@ def strategy_definitions() -> tuple[StrategyDefinition, ...]:
             "goals",
             "over_under_2_5",
             {"rollingLeagueMatches": 500, "minimumHistory": 200, "minimumOverRatePct": 60.0},
+            _comparison(
+                "league_over25_signal",
+                "follow",
+                "fade_league_over25_extreme",
+                kind="mirrored_signal",
+                same_opportunity_set=True,
+            ),
+        ),
+        StrategyDefinition(
+            "fade_league_over25_extreme",
+            "Modspil: ligaens over 2,5-signal",
+            "goals",
+            "over_under_2_5",
+            {
+                "signalStrategyId": "league_over25_extreme",
+                "selection": "under25",
+                "quote": "bet365_open_complete_market",
+            },
+            _comparison(
+                "league_over25_signal",
+                "fade",
+                "league_over25_extreme",
+                kind="mirrored_signal",
+                same_opportunity_set=True,
+            ),
         ),
         StrategyDefinition(
             "league_under25_extreme",
@@ -256,6 +491,31 @@ def strategy_definitions() -> tuple[StrategyDefinition, ...]:
             "goals",
             "over_under_2_5",
             {"rollingLeagueMatches": 500, "minimumHistory": 200, "minimumUnderRatePct": 60.0},
+            _comparison(
+                "league_under25_signal",
+                "follow",
+                "fade_league_under25_extreme",
+                kind="mirrored_signal",
+                same_opportunity_set=True,
+            ),
+        ),
+        StrategyDefinition(
+            "fade_league_under25_extreme",
+            "Modspil: ligaens under 2,5-signal",
+            "goals",
+            "over_under_2_5",
+            {
+                "signalStrategyId": "league_under25_extreme",
+                "selection": "over25",
+                "quote": "bet365_open_complete_market",
+            },
+            _comparison(
+                "league_under25_signal",
+                "fade",
+                "league_under25_extreme",
+                kind="mirrored_signal",
+                same_opportunity_set=True,
+            ),
         ),
         StrategyDefinition(
             "league_goal_bucket_mode",
@@ -294,10 +554,10 @@ def strategy_definitions() -> tuple[StrategyDefinition, ...]:
         definitions.append(
             StrategyDefinition(
                 _band_id("favourite", lower, upper),
-                f"1X2-favorit @ {lower:.2f}–<{upper:.2f}",
+                f"Holdfavorit @ {lower:.2f}–<{upper:.2f}",
                 "odds",
                 "1x2",
-                _band_rule("lowest_priced_1x2_outcome", lower, upper),
+                _band_rule("lower_priced_home_or_away_team", lower, upper),
             )
         )
     for lower, upper in DRAW_BANDS:
@@ -425,6 +685,16 @@ def _unique_price_extreme(prices: Mapping[str, float], *, highest: bool) -> str 
     return ranked[0][0]
 
 
+def _team_favourite(prices: Mapping[str, float]) -> str | None:
+    """Return the uniquely shorter-priced team, excluding the draw quote."""
+
+    home_price = float(prices["home"])
+    away_price = float(prices["away"])
+    if math.isclose(home_price, away_price, abs_tol=1e-12):
+        return None
+    return "home" if home_price < away_price else "away"
+
+
 def _wilson_interval(hits: int, total: int) -> list[float] | None:
     if total <= 0:
         return None
@@ -517,6 +787,7 @@ def _summary(
         for kickoff in sorted(profit_by_kickoff)
     ]
     positive_seasons = sum(math.fsum(values) > 0.0 for values in priced_by_season.values())
+    pnl_available = bool(priced)
     return {
         "opportunities": opportunities,
         "hits": hits,
@@ -524,6 +795,15 @@ def _summary(
         "hitRateCi95Pct": _wilson_interval(hits, opportunities),
         "bets": len(priced),
         "wins": wins,
+        "stakeUnits": float(len(priced)),
+        "pnlAvailable": pnl_available,
+        "pnlAvailabilityReason": (
+            None
+            if pnl_available
+            else "no_verified_pre_match_odds_for_market"
+            if opportunities
+            else "no_qualifying_opportunities"
+        ),
         "oddsCoveragePct": round(len(priced) / opportunities * 100.0, 2) if opportunities else 0.0,
         "averageOpeningOdds": _round_optional(average_odds, 3),
         "profitUnits": round(profit, 2) if priced else None,
@@ -619,6 +899,8 @@ def _strategy_payload(
                 ),
             }
         )
+        if season > complete_through_season:
+            metrics["pnlAvailabilityReason"] = "incomplete_local_snapshot"
         yearly.append(metrics)
     active = [row["season"] for row in yearly if row["available"]]
     return {
@@ -627,6 +909,7 @@ def _strategy_payload(
         "family": definition.family,
         "market": definition.market,
         "rule": dict(definition.rule),
+        "comparison": _definition_comparison(definition),
         "status": status,
         "statusReasons": reasons,
         "guaranteed": False,
@@ -981,6 +1264,362 @@ def _build_findings(
     }
 
 
+_TOTAL_GOAL_THRESHOLDS = ("0.5", "1.5", "2.5", "3.5", "4.5", "5.5")
+_EXACT_TOTAL_GOAL_BUCKETS = ("0", "1", "2", "3", "4", "5", "6+")
+
+
+def _count_rate(count: int, total: int) -> Dict[str, Any]:
+    return {
+        "count": count,
+        "ratePct": round(count / total * 100.0, 2) if total else None,
+    }
+
+
+def _market_profile_row(
+    matches: Sequence[_PreparedMatch],
+    *,
+    scope: str,
+    season: int | None,
+    label: str,
+) -> Dict[str, Any]:
+    scored = len(matches)
+    outcomes = Counter(_outcome(match) for match in matches)
+    total_goals = [match.home_score + match.away_score for match in matches]
+    totals: Dict[str, Any] = {}
+    for threshold_label in _TOTAL_GOAL_THRESHOLDS:
+        threshold = float(threshold_label)
+        over = sum(total > threshold for total in total_goals)
+        totals[threshold_label] = {
+            "over": _count_rate(over, scored),
+            "under": _count_rate(scored - over, scored),
+        }
+
+    exact_totals = Counter(str(total) if total < 6 else "6+" for total in total_goals)
+    complete_priced = 0
+    unique_team_selections = 0
+    ties_skipped = 0
+    favourite_wins = 0
+    favourite_draws = 0
+    for match in matches:
+        prices = _verified_prices(match.raw, "1x2")
+        if prices is None:
+            continue
+        complete_priced += 1
+        favourite = _team_favourite(prices)
+        if favourite is None:
+            ties_skipped += 1
+            continue
+        unique_team_selections += 1
+        actual = _outcome(match)
+        favourite_wins += int(
+            (favourite == "home" and actual == "H")
+            or (favourite == "away" and actual == "A")
+        )
+        favourite_draws += int(actual == "D")
+    favourite_losses = unique_team_selections - favourite_wins - favourite_draws
+    return {
+        "scope": scope,
+        "season": season,
+        "label": label,
+        "scoredMatches": scored,
+        "oneXTwo": {
+            "home": _count_rate(outcomes["H"], scored),
+            "draw": _count_rate(outcomes["D"], scored),
+            "away": _count_rate(outcomes["A"], scored),
+        },
+        "totalGoals": totals,
+        "exactTotalGoals": {
+            bucket: _count_rate(exact_totals[bucket], scored)
+            for bucket in _EXACT_TOTAL_GOAL_BUCKETS
+        },
+        "teamFavourites": {
+            "completePricedMatches": complete_priced,
+            "uniqueTeamSelections": unique_team_selections,
+            "tiesSkipped": ties_skipped,
+            "won": favourite_wins,
+            "drawn": favourite_draws,
+            "lost": favourite_losses,
+            "winRatePct": (
+                round(favourite_wins / unique_team_selections * 100.0, 2)
+                if unique_team_selections
+                else None
+            ),
+            "drawRatePct": (
+                round(favourite_draws / unique_team_selections * 100.0, 2)
+                if unique_team_selections
+                else None
+            ),
+            "lossRatePct": (
+                round(favourite_losses / unique_team_selections * 100.0, 2)
+                if unique_team_selections
+                else None
+            ),
+        },
+    }
+
+
+def _market_profile_stability(rows: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
+    evaluated = [row for row in rows if int(row["scoredMatches"]) > 0]
+
+    def metric_stats(values: Sequence[float | None]) -> Dict[str, Any]:
+        finite = [float(value) for value in values if value is not None]
+        if not finite:
+            return {
+                "seasonsObserved": 0,
+                "meanPct": None,
+                "stdDevPctPoints": None,
+                "minPct": None,
+                "maxPct": None,
+                "majoritySeasons": 0,
+                "last5MeanPct": None,
+                "priorMeanPct": None,
+                "deltaPctPoints": None,
+                "directionChanges": 0,
+                "trendSlopePctPointsPerSeason": None,
+            }
+        mean = math.fsum(finite) / len(finite)
+        variance = math.fsum((value - mean) ** 2 for value in finite) / len(finite)
+        last_five = finite[-5:]
+        prior = finite[:-5]
+        last_five_mean = math.fsum(last_five) / len(last_five)
+        prior_mean = math.fsum(prior) / len(prior) if prior else None
+        differences = [current - previous for previous, current in zip(finite, finite[1:])]
+        directions = [1 if difference > 0 else -1 for difference in differences if not math.isclose(difference, 0.0)]
+        direction_changes = sum(first != second for first, second in zip(directions, directions[1:]))
+        x_mean = (len(finite) - 1) / 2.0
+        denominator = math.fsum((index - x_mean) ** 2 for index in range(len(finite)))
+        slope = (
+            math.fsum((index - x_mean) * (value - mean) for index, value in enumerate(finite))
+            / denominator
+            if denominator
+            else None
+        )
+        return {
+            "seasonsObserved": len(finite),
+            "meanPct": round(mean, 2),
+            "stdDevPctPoints": round(math.sqrt(variance), 2),
+            "minPct": round(min(finite), 2),
+            "maxPct": round(max(finite), 2),
+            "majoritySeasons": sum(value > 50.0 for value in finite),
+            "last5MeanPct": round(last_five_mean, 2),
+            "priorMeanPct": round(prior_mean, 2) if prior_mean is not None else None,
+            "deltaPctPoints": (
+                round(last_five_mean - prior_mean, 2) if prior_mean is not None else None
+            ),
+            "directionChanges": direction_changes,
+            "trendSlopePctPointsPerSeason": round(slope, 3) if slope is not None else None,
+        }
+
+    most_common = {"home": 0, "draw": 0, "away": 0, "tied": 0}
+    for row in evaluated:
+        counts = {side: int(row["oneXTwo"][side]["count"]) for side in ("home", "draw", "away")}
+        maximum = max(counts.values())
+        leaders = [side for side, count in counts.items() if count == maximum]
+        most_common[leaders[0] if len(leaders) == 1 else "tied"] += 1
+    return {
+        "evaluatedSeasons": len(evaluated),
+        "metrics": {
+            "home": metric_stats([row["oneXTwo"]["home"]["ratePct"] for row in evaluated]),
+            "draw": metric_stats([row["oneXTwo"]["draw"]["ratePct"] for row in evaluated]),
+            "away": metric_stats([row["oneXTwo"]["away"]["ratePct"] for row in evaluated]),
+            **{
+                f"over{threshold.replace('.', '')}": metric_stats(
+                    [row["totalGoals"][threshold]["over"]["ratePct"] for row in evaluated]
+                )
+                for threshold in _TOTAL_GOAL_THRESHOLDS
+            },
+            "teamFavouriteWin": metric_stats(
+                [row["teamFavourites"]["winRatePct"] for row in evaluated]
+            ),
+        },
+        "recurrence": {
+            "mostCommon1x2OutcomeSeasons": most_common,
+            "overMajoritySeasons": {
+                threshold: sum(
+                    row["totalGoals"][threshold]["over"]["ratePct"] is not None
+                    and float(row["totalGoals"][threshold]["over"]["ratePct"]) > 50.0
+                    for row in evaluated
+                )
+                for threshold in _TOTAL_GOAL_THRESHOLDS
+            },
+            "teamFavouriteMajorityWinSeasons": sum(
+                row["teamFavourites"]["winRatePct"] is not None
+                and float(row["teamFavourites"]["winRatePct"]) > 50.0
+                for row in evaluated
+            ),
+        },
+    }
+
+
+def _build_season_market_profiles(
+    matches: Sequence[_PreparedMatch],
+    seasons: Sequence[int],
+) -> Dict[str, Any]:
+    by_season_matches: MutableMapping[int, list[_PreparedMatch]] = defaultdict(list)
+    for match in matches:
+        by_season_matches[match.season].append(match)
+    rows = [
+        _market_profile_row(
+            by_season_matches.get(season, []),
+            scope="season",
+            season=season,
+            label=f"{season}/{str(season + 1)[-2:]}",
+        )
+        for season in seasons
+    ]
+    return {
+        "methodology": {
+            "descriptiveOnly": True,
+            "scoredMatchDenominator": "all_scored_canonical_matches",
+            "favouriteDefinition": "unique_lower_home_or_away_bet365_open_price_in_complete_1x2_market",
+            "favouriteTiePolicy": "skip",
+            "guaranteesOrEdgeClaims": False,
+        },
+        "allTime": _market_profile_row(
+            matches,
+            scope="all_time",
+            season=None,
+            label="Alle sæsoner",
+        ),
+        "bySeason": rows,
+        "stability": _market_profile_stability(rows),
+    }
+
+
+def _selection_policy() -> Dict[str, Any]:
+    return {
+        "hindsightMinimumSeasonBets": HINDSIGHT_MINIMUM_SEASON_BETS,
+        "walkForwardMinimumPriorBets": WALK_FORWARD_MINIMUM_PRIOR_BETS,
+        "walkForwardMinimumPriorPricedSeasons": WALK_FORWARD_MINIMUM_PRIOR_PRICED_SEASONS,
+        "walkForwardActivationThresholdRoiPct": WALK_FORWARD_ACTIVATION_THRESHOLD_ROI_PCT,
+        "walkForwardUsesOnlyPriorSeasons": True,
+        "walkForwardTieBreak": "roi_desc_then_strategy_id_asc",
+        "cashWhenNoPositiveCandidate": True,
+    }
+
+
+def _build_season_audits(
+    strategies: Sequence[Mapping[str, Any]],
+    seasons: Sequence[int],
+) -> list[Dict[str, Any]]:
+    """Build descriptive annual rankings and a causal retrospective selector.
+
+    The hindsight ranking is explicitly descriptive and may use season-S
+    results.  The walk-forward choice for S is made solely from rows before S,
+    is frozen for the season, and stays in cash unless the best eligible prior
+    pooled ROI is strictly positive.
+    """
+
+    yearly_by_strategy = {
+        str(strategy["id"]): {
+            int(row["season"]): row for row in strategy["yearly"]
+        }
+        for strategy in strategies
+    }
+    audits: list[Dict[str, Any]] = []
+    first_season = min(seasons)
+    for season in seasons:
+        hindsight_candidates: list[tuple[float, str, Mapping[str, Any]]] = []
+        for strategy in strategies:
+            identifier = str(strategy["id"])
+            row = yearly_by_strategy[identifier][season]
+            if int(row["bets"]) < HINDSIGHT_MINIMUM_SEASON_BETS or row["roiPct"] is None:
+                continue
+            hindsight_candidates.append((float(row["roiPct"]), identifier, row))
+        hindsight_candidates.sort(key=lambda item: (-item[0], item[1]))
+        hindsight_ranking = [
+            {
+                "rank": rank,
+                "strategyId": identifier,
+                "bets": int(row["bets"]),
+                "stakeUnits": float(row["stakeUnits"]),
+                "profitUnits": float(row["profitUnits"]),
+                "roiPct": float(row["roiPct"]),
+            }
+            for rank, (_, identifier, row) in enumerate(hindsight_candidates, start=1)
+        ]
+
+        eligible: list[tuple[float, str, int, int, float]] = []
+        for strategy in strategies:
+            identifier = str(strategy["id"])
+            prior_rows = [
+                row
+                for prior_season, row in yearly_by_strategy[identifier].items()
+                if prior_season < season and int(row["bets"]) > 0
+            ]
+            prior_bets = sum(int(row["bets"]) for row in prior_rows)
+            prior_priced_seasons = len(prior_rows)
+            if (
+                prior_bets < WALK_FORWARD_MINIMUM_PRIOR_BETS
+                or prior_priced_seasons < WALK_FORWARD_MINIMUM_PRIOR_PRICED_SEASONS
+            ):
+                continue
+            prior_profit = math.fsum(float(row["profitUnits"]) for row in prior_rows)
+            prior_roi = prior_profit / prior_bets * 100.0
+            eligible.append(
+                (prior_roi, identifier, prior_bets, prior_priced_seasons, prior_profit)
+            )
+        eligible.sort(key=lambda item: (-item[0], item[1]))
+
+        selected_strategy_id: str | None = None
+        selected_prior_bets = 0
+        selected_prior_priced_seasons = 0
+        selected_prior_profit: float | None = None
+        selected_prior_roi: float | None = None
+        activated = False
+        if not eligible:
+            activation_reason = "no_eligible_strategy"
+        elif eligible[0][0] <= WALK_FORWARD_ACTIVATION_THRESHOLD_ROI_PCT:
+            activation_reason = "best_prior_roi_not_positive"
+        else:
+            prior_roi, selected_strategy_id, selected_prior_bets, selected_prior_priced_seasons, prior_profit = eligible[0]
+            selected_prior_profit = round(prior_profit, 2)
+            selected_prior_roi = round(prior_roi, 2)
+            activated = True
+            activation_reason = "positive_prior_roi"
+
+        selected_row = (
+            yearly_by_strategy[selected_strategy_id][season]
+            if selected_strategy_id is not None
+            else None
+        )
+        selected_bets = int(selected_row["bets"]) if selected_row is not None else 0
+        selected_stake = float(selected_row["stakeUnits"]) if selected_row is not None else 0.0
+        selected_profit = (
+            float(selected_row["profitUnits"])
+            if selected_row is not None and selected_row["profitUnits"] is not None
+            else 0.0
+        )
+        selected_roi = (
+            float(selected_row["roiPct"])
+            if selected_row is not None and selected_row["roiPct"] is not None
+            else None
+        )
+        audits.append(
+            {
+                "season": season,
+                "label": f"{season}/{str(season + 1)[-2:]}",
+                "hindsightRanking": hindsight_ranking,
+                "walkForward": {
+                    "basedThroughSeason": season - 1 if season > first_season else None,
+                    "eligibleStrategyCount": len(eligible),
+                    "selectedStrategyId": selected_strategy_id,
+                    "selectedPriorBets": selected_prior_bets,
+                    "selectedPriorPricedSeasons": selected_prior_priced_seasons,
+                    "selectedPriorProfitUnits": selected_prior_profit,
+                    "selectedPriorRoiPct": selected_prior_roi,
+                    "activated": activated,
+                    "activationReason": activation_reason,
+                    "bets": selected_bets,
+                    "stakeUnits": selected_stake,
+                    "profitUnits": selected_profit,
+                    "roiPct": selected_roi,
+                },
+            }
+        )
+    return audits
+
+
 def build_strategy_zoo(
     matches: Iterable[Mapping[str, Any]],
     dataset_manifest: Mapping[str, Any] | None = None,
@@ -1054,6 +1693,7 @@ def build_strategy_zoo(
 
         for match in group:
             actual_1x2 = _outcome(match)
+            actual_total15 = "over15" if match.home_score + match.away_score > 1 else "under15"
             actual_total = "over25" if match.home_score + match.away_score > 2 else "under25"
             actual_bucket = _goal_bucket(match.home_score + match.away_score)
             actual_score = f"{match.home_score}-{match.away_score}"
@@ -1070,6 +1710,12 @@ def build_strategy_zoo(
                 coverage[match.season]["b3651x2Matches"] += 1
             if prices_ou is not None:
                 coverage[match.season]["b365Ou25Matches"] += 1
+
+            # Outcome-only 1.5 baselines deliberately remain unpriced: the
+            # canonical Football-Data archive has scores but no coherent
+            # historical Bet365 O/U 1.5 quote pair.
+            events["all_over15"].append(_event(match, "over15", actual_total15))
+            events["all_under15"].append(_event(match, "under15", actual_total15))
 
             directed_label, directed_count, directed_rate = _unique_mode(directed_results[directed_key])
             if directed_label in _OUTCOME_LABELS and directed_count >= 4 and directed_rate >= 0.70:
@@ -1112,21 +1758,45 @@ def build_strategy_zoo(
             if total_count >= 5:
                 over_rate = total_history["over25"] / total_count
                 if over_rate >= 0.70:
-                    price = prices_ou.get("over25") if prices_ou else None
-                    events["h2h_over25_dominance"].append(_event(match, "over25", actual_total, price))
+                    over_price = prices_ou.get("over25") if prices_ou else None
+                    under_price = prices_ou.get("under25") if prices_ou else None
+                    events["h2h_over25_dominance"].append(
+                        _event(match, "over25", actual_total, over_price)
+                    )
+                    events["fade_h2h_over25_dominance"].append(
+                        _event(match, "under25", actual_total, under_price)
+                    )
                 if over_rate <= 0.30:
-                    price = prices_ou.get("under25") if prices_ou else None
-                    events["h2h_under25_dominance"].append(_event(match, "under25", actual_total, price))
+                    under_price = prices_ou.get("under25") if prices_ou else None
+                    over_price = prices_ou.get("over25") if prices_ou else None
+                    events["h2h_under25_dominance"].append(
+                        _event(match, "under25", actual_total, under_price)
+                    )
+                    events["fade_h2h_under25_dominance"].append(
+                        _event(match, "over25", actual_total, over_price)
+                    )
 
             league_over = league_over_history[match.league]
             if len(league_over) >= 200:
                 league_rate = sum(league_over) / len(league_over)
                 if league_rate >= 0.60:
-                    price = prices_ou.get("over25") if prices_ou else None
-                    events["league_over25_extreme"].append(_event(match, "over25", actual_total, price))
+                    over_price = prices_ou.get("over25") if prices_ou else None
+                    under_price = prices_ou.get("under25") if prices_ou else None
+                    events["league_over25_extreme"].append(
+                        _event(match, "over25", actual_total, over_price)
+                    )
+                    events["fade_league_over25_extreme"].append(
+                        _event(match, "under25", actual_total, under_price)
+                    )
                 if league_rate <= 0.40:
-                    price = prices_ou.get("under25") if prices_ou else None
-                    events["league_under25_extreme"].append(_event(match, "under25", actual_total, price))
+                    under_price = prices_ou.get("under25") if prices_ou else None
+                    over_price = prices_ou.get("over25") if prices_ou else None
+                    events["league_under25_extreme"].append(
+                        _event(match, "under25", actual_total, under_price)
+                    )
+                    events["fade_league_under25_extreme"].append(
+                        _event(match, "over25", actual_total, over_price)
+                    )
 
             bucket_history = league_bucket_history[match.league]
             if len(bucket_history) >= 200:
@@ -1150,16 +1820,26 @@ def build_strategy_zoo(
 
             if prices_1x2 is not None:
                 price_outcome = {"home": "H", "draw": "D", "away": "A"}
-                favourite = _unique_price_extreme(prices_1x2, highest=False)
+                favourite = _team_favourite(prices_1x2)
                 outsider = _unique_price_extreme(prices_1x2, highest=True)
                 if favourite is not None:
                     price = prices_1x2[favourite]
+                    events["all_unique_favourites"].append(
+                        _event(match, price_outcome[favourite], actual_1x2, price)
+                    )
                     for band in FAVOURITE_BANDS:
                         if _within_band(price, band):
                             identifier = _band_id("favourite", *band)
                             events[identifier].append(_event(match, price_outcome[favourite], actual_1x2, price))
                             break
                 draw_price = prices_1x2["draw"]
+                events["all_home_wins"].append(
+                    _event(match, "H", actual_1x2, prices_1x2["home"])
+                )
+                events["all_draws"].append(_event(match, "D", actual_1x2, draw_price))
+                events["all_away_wins"].append(
+                    _event(match, "A", actual_1x2, prices_1x2["away"])
+                )
                 for band in DRAW_BANDS:
                     if _within_band(draw_price, band):
                         identifier = _band_id("draw", *band)
@@ -1167,6 +1847,9 @@ def build_strategy_zoo(
                         break
                 if outsider is not None:
                     price = prices_1x2[outsider]
+                    events["all_unique_outsiders"].append(
+                        _event(match, price_outcome[outsider], actual_1x2, price)
+                    )
                     for band in OUTSIDER_BANDS:
                         if _within_band(price, band):
                             identifier = _band_id("outsider", *band)
@@ -1174,6 +1857,12 @@ def build_strategy_zoo(
                             break
 
             if prices_ou is not None:
+                events["all_over25"].append(
+                    _event(match, "over25", actual_total, prices_ou["over25"])
+                )
+                events["all_under25"].append(
+                    _event(match, "under25", actual_total, prices_ou["under25"])
+                )
                 for side in ("over25", "under25"):
                     price = prices_ou[side]
                     for band in TOTALS_BANDS:
@@ -1280,7 +1969,10 @@ def build_strategy_zoo(
         },
         "seasons": seasons,
         "coverage": {"bySeason": coverage_by_season},
+        "seasonMarketProfiles": _build_season_market_profiles(prepared, seasons),
         "strategies": strategies,
+        "selectionPolicy": _selection_policy(),
+        "seasonAudits": _build_season_audits(strategies, seasons),
         "rivalryPatterns": rivalries,
         "findings": _build_findings(strategies, rivalries, score_distribution, h2h_validation),
     }
@@ -1314,6 +2006,26 @@ def _validate_metric(metric: Any, context: str) -> None:
         raise StrategyZooValidationError(f"{context} has more hits than opportunities")
     if counts["bets"] > counts["opportunities"] or counts["wins"] > counts["bets"]:
         raise StrategyZooValidationError(f"{context} has invalid priced-bet counts")
+
+    stake = metric.get("stakeUnits")
+    if not _finite_number(stake) or abs(float(stake) - counts["bets"]) > 1e-9:
+        raise StrategyZooValidationError(f"{context}.stakeUnits must equal one unit per priced bet")
+    pnl_available = metric.get("pnlAvailable")
+    pnl_reason = metric.get("pnlAvailabilityReason")
+    expected_pnl_available = counts["bets"] > 0
+    if pnl_available is not expected_pnl_available:
+        raise StrategyZooValidationError(f"{context} has an inconsistent P&L availability flag")
+    if expected_pnl_available:
+        if pnl_reason is not None:
+            raise StrategyZooValidationError(f"{context} gives a reason for available P&L")
+    else:
+        allowed_reasons = (
+            {"no_verified_pre_match_odds_for_market"}
+            if counts["opportunities"]
+            else {"no_qualifying_opportunities", "incomplete_local_snapshot"}
+        )
+        if pnl_reason not in allowed_reasons:
+            raise StrategyZooValidationError(f"{context} hides why P&L is unavailable")
 
     hit_rate = metric.get("hitRatePct")
     expected_hit_rate = (
@@ -1694,6 +2406,203 @@ def _validate_h2h_validation(value: Any, complete_through_season: int) -> None:
         raise StrategyZooValidationError(f"{context} has an inconsistent status")
 
 
+def _validate_count_rate(value: Any, denominator: int, context: str) -> int:
+    if not isinstance(value, Mapping) or set(value) != {"count", "ratePct"}:
+        raise StrategyZooValidationError(f"{context} has an unsupported schema")
+    count = value.get("count")
+    if isinstance(count, bool) or not isinstance(count, int) or not 0 <= count <= denominator:
+        raise StrategyZooValidationError(f"{context}.count is invalid")
+    expected_rate = count / denominator * 100.0 if denominator else None
+    rate = value.get("ratePct")
+    if expected_rate is None:
+        if rate is not None:
+            raise StrategyZooValidationError(f"{context} fabricates a rate")
+    elif not _finite_number(rate) or abs(float(rate) - expected_rate) > 0.011:
+        raise StrategyZooValidationError(f"{context}.ratePct disagrees with its denominator")
+    return count
+
+
+def _validate_market_profile_row(value: Any, context: str) -> None:
+    expected_fields = {
+        "scope",
+        "season",
+        "label",
+        "scoredMatches",
+        "oneXTwo",
+        "totalGoals",
+        "exactTotalGoals",
+        "teamFavourites",
+    }
+    if not isinstance(value, Mapping) or set(value) != expected_fields:
+        raise StrategyZooValidationError(f"{context} has an unsupported schema")
+    scored = value.get("scoredMatches")
+    if isinstance(scored, bool) or not isinstance(scored, int) or scored < 0:
+        raise StrategyZooValidationError(f"{context}.scoredMatches is invalid")
+    one_x_two = value.get("oneXTwo")
+    if not isinstance(one_x_two, Mapping) or set(one_x_two) != {"home", "draw", "away"}:
+        raise StrategyZooValidationError(f"{context}.oneXTwo has an unsupported schema")
+    outcome_counts = [
+        _validate_count_rate(one_x_two[side], scored, f"{context}.oneXTwo.{side}")
+        for side in ("home", "draw", "away")
+    ]
+    if sum(outcome_counts) != scored:
+        raise StrategyZooValidationError(f"{context}.oneXTwo does not partition scored matches")
+
+    total_goals = value.get("totalGoals")
+    if not isinstance(total_goals, Mapping) or tuple(total_goals) != _TOTAL_GOAL_THRESHOLDS:
+        raise StrategyZooValidationError(f"{context}.totalGoals has an unsupported schema")
+    previous_over = scored + 1
+    for threshold in _TOTAL_GOAL_THRESHOLDS:
+        threshold_row = total_goals[threshold]
+        if not isinstance(threshold_row, Mapping) or set(threshold_row) != {"over", "under"}:
+            raise StrategyZooValidationError(f"{context}.totalGoals[{threshold}] is invalid")
+        over = _validate_count_rate(
+            threshold_row["over"], scored, f"{context}.totalGoals[{threshold}].over"
+        )
+        under = _validate_count_rate(
+            threshold_row["under"], scored, f"{context}.totalGoals[{threshold}].under"
+        )
+        if over + under != scored:
+            raise StrategyZooValidationError(f"{context}.totalGoals[{threshold}] is not complementary")
+        if over > previous_over:
+            raise StrategyZooValidationError(f"{context}.totalGoals over counts are not monotonic")
+        previous_over = over
+
+    exact = value.get("exactTotalGoals")
+    exact_buckets = _EXACT_TOTAL_GOAL_BUCKETS
+    if not isinstance(exact, Mapping) or tuple(exact) != exact_buckets:
+        raise StrategyZooValidationError(f"{context}.exactTotalGoals has an unsupported schema")
+    if sum(
+        _validate_count_rate(exact[bucket], scored, f"{context}.exactTotalGoals[{bucket}]")
+        for bucket in exact_buckets
+    ) != scored:
+        raise StrategyZooValidationError(f"{context}.exactTotalGoals does not partition scored matches")
+    cumulative_exact = 0
+    for threshold, bucket in zip(_TOTAL_GOAL_THRESHOLDS, exact_buckets[:-1]):
+        cumulative_exact += int(exact[bucket]["count"])
+        if int(total_goals[threshold]["over"]["count"]) != scored - cumulative_exact:
+            raise StrategyZooValidationError(
+                f"{context}.exactTotalGoals disagrees with totalGoals[{threshold}]"
+            )
+
+    favourites = value.get("teamFavourites")
+    favourite_fields = {
+        "completePricedMatches",
+        "uniqueTeamSelections",
+        "tiesSkipped",
+        "won",
+        "drawn",
+        "lost",
+        "winRatePct",
+        "drawRatePct",
+        "lossRatePct",
+    }
+    if not isinstance(favourites, Mapping) or set(favourites) != favourite_fields:
+        raise StrategyZooValidationError(f"{context}.teamFavourites has an unsupported schema")
+    count_fields = (
+        "completePricedMatches",
+        "uniqueTeamSelections",
+        "tiesSkipped",
+        "won",
+        "drawn",
+        "lost",
+    )
+    if any(
+        isinstance(favourites.get(field), bool)
+        or not isinstance(favourites.get(field), int)
+        or favourites[field] < 0
+        for field in count_fields
+    ):
+        raise StrategyZooValidationError(f"{context}.teamFavourites has invalid counts")
+    if (
+        favourites["completePricedMatches"] > scored
+        or favourites["uniqueTeamSelections"] + favourites["tiesSkipped"]
+        != favourites["completePricedMatches"]
+        or favourites["won"] + favourites["drawn"] + favourites["lost"]
+        != favourites["uniqueTeamSelections"]
+    ):
+        raise StrategyZooValidationError(f"{context}.teamFavourites counts disagree")
+    denominator = favourites["uniqueTeamSelections"]
+    for count_field, rate_field in (
+        ("won", "winRatePct"),
+        ("drawn", "drawRatePct"),
+        ("lost", "lossRatePct"),
+    ):
+        expected_rate = favourites[count_field] / denominator * 100.0 if denominator else None
+        rate = favourites[rate_field]
+        if expected_rate is None:
+            if rate is not None:
+                raise StrategyZooValidationError(f"{context}.teamFavourites fabricates a rate")
+        elif not _finite_number(rate) or abs(float(rate) - expected_rate) > 0.011:
+            raise StrategyZooValidationError(f"{context}.teamFavourites.{rate_field} disagrees")
+
+
+def _validate_season_market_profiles(
+    value: Any,
+    seasons: Sequence[int],
+    coverage_rows: Sequence[Mapping[str, Any]],
+    evaluated_matches: int,
+) -> None:
+    if not isinstance(value, Mapping) or set(value) != {"methodology", "allTime", "bySeason", "stability"}:
+        raise StrategyZooValidationError("seasonMarketProfiles has an unsupported schema")
+    if value.get("methodology") != {
+        "descriptiveOnly": True,
+        "scoredMatchDenominator": "all_scored_canonical_matches",
+        "favouriteDefinition": "unique_lower_home_or_away_bet365_open_price_in_complete_1x2_market",
+        "favouriteTiePolicy": "skip",
+        "guaranteesOrEdgeClaims": False,
+    }:
+        raise StrategyZooValidationError("seasonMarketProfiles methodology is inconsistent")
+    rows = value.get("bySeason")
+    if not isinstance(rows, list) or [row.get("season") for row in rows if isinstance(row, Mapping)] != list(seasons):
+        raise StrategyZooValidationError("seasonMarketProfiles must contain every season")
+    for row, coverage in zip(rows, coverage_rows):
+        _validate_market_profile_row(row, f"seasonMarketProfiles.bySeason[{coverage['season']}]")
+        season = coverage["season"]
+        if (
+            row["scope"] != "season"
+            or row["label"] != f"{season}/{str(season + 1)[-2:]}"
+            or row["scoredMatches"] != coverage["evaluatedMatches"]
+        ):
+            raise StrategyZooValidationError("seasonMarketProfiles season metadata disagrees")
+        if (
+            coverage["quarantinedMatches"] == 0
+            and row["teamFavourites"]["completePricedMatches"] != coverage["b3651x2Matches"]
+        ):
+            raise StrategyZooValidationError(
+                "seasonMarketProfiles favourite quote coverage disagrees"
+            )
+
+    all_time = value.get("allTime")
+    _validate_market_profile_row(all_time, "seasonMarketProfiles.allTime")
+    if (
+        all_time["scope"] != "all_time"
+        or all_time["season"] is not None
+        or all_time["label"] != "Alle sæsoner"
+        or all_time["scoredMatches"] != evaluated_matches
+    ):
+        raise StrategyZooValidationError("seasonMarketProfiles all-time metadata disagrees")
+    for side in ("home", "draw", "away"):
+        if all_time["oneXTwo"][side]["count"] != sum(row["oneXTwo"][side]["count"] for row in rows):
+            raise StrategyZooValidationError("seasonMarketProfiles all-time 1X2 counts disagree")
+    for threshold in _TOTAL_GOAL_THRESHOLDS:
+        for side in ("over", "under"):
+            if all_time["totalGoals"][threshold][side]["count"] != sum(
+                row["totalGoals"][threshold][side]["count"] for row in rows
+            ):
+                raise StrategyZooValidationError("seasonMarketProfiles all-time goal counts disagree")
+    for bucket in _EXACT_TOTAL_GOAL_BUCKETS:
+        if all_time["exactTotalGoals"][bucket]["count"] != sum(
+            row["exactTotalGoals"][bucket]["count"] for row in rows
+        ):
+            raise StrategyZooValidationError("seasonMarketProfiles all-time exact totals disagree")
+    for field in ("completePricedMatches", "uniqueTeamSelections", "tiesSkipped", "won", "drawn", "lost"):
+        if all_time["teamFavourites"][field] != sum(row["teamFavourites"][field] for row in rows):
+            raise StrategyZooValidationError("seasonMarketProfiles all-time favourite counts disagree")
+    if value.get("stability") != _market_profile_stability(rows):
+        raise StrategyZooValidationError("seasonMarketProfiles stability disagrees with season rows")
+
+
 def validate_strategy_zoo(payload: Any) -> Dict[str, Any]:
     """Validate and return an isolated JSON-safe strategy-zoo payload."""
 
@@ -1707,7 +2616,10 @@ def validate_strategy_zoo(payload: Any) -> Dict[str, Any]:
         "methodology",
         "seasons",
         "coverage",
+        "seasonMarketProfiles",
         "strategies",
+        "selectionPolicy",
+        "seasonAudits",
         "rivalryPatterns",
         "findings",
     }:
@@ -1888,6 +2800,12 @@ def validate_strategy_zoo(payload: Any) -> Dict[str, Any]:
         "quarantinedMatches": quarantined_matches,
     }:
         raise StrategyZooValidationError("coverage totals disagree with dataset")
+    _validate_season_market_profiles(
+        payload.get("seasonMarketProfiles"),
+        seasons,
+        coverage_rows,
+        evaluated_matches,
+    )
     strategies = payload.get("strategies")
     definitions = strategy_definitions()
     if (
@@ -1904,6 +2822,7 @@ def validate_strategy_zoo(payload: Any) -> Dict[str, Any]:
             "family",
             "market",
             "rule",
+            "comparison",
             "status",
             "statusReasons",
             "guaranteed",
@@ -1922,6 +2841,7 @@ def validate_strategy_zoo(payload: Any) -> Dict[str, Any]:
             or strategy.get("family") != definition.family
             or strategy.get("market") != definition.market
             or strategy.get("rule") != dict(definition.rule)
+            or strategy.get("comparison") != _definition_comparison(definition)
         ):
             raise StrategyZooValidationError(f"{identifier} metadata differs from the fixed catalog")
         if strategy.get("guaranteed") is not False:
@@ -1941,6 +2861,9 @@ def validate_strategy_zoo(payload: Any) -> Dict[str, Any]:
                 "hitRateCi95Pct",
                 "bets",
                 "wins",
+                "stakeUnits",
+                "pnlAvailable",
+                "pnlAvailabilityReason",
                 "oddsCoveragePct",
                 "averageOpeningOdds",
                 "profitUnits",
@@ -2001,8 +2924,11 @@ def validate_strategy_zoo(payload: Any) -> Dict[str, Any]:
             "hits",
             "hitRatePct",
             "hitRateCi95Pct",
-            "bets",
-            "wins",
+                "bets",
+                "wins",
+                "stakeUnits",
+                "pnlAvailable",
+                "pnlAvailabilityReason",
             "oddsCoveragePct",
             "averageOpeningOdds",
             "profitUnits",
@@ -2016,7 +2942,7 @@ def validate_strategy_zoo(payload: Any) -> Dict[str, Any]:
         }:
             raise StrategyZooValidationError(f"{identifier}.overall has an unsupported schema")
         _validate_metric(overall, f"{identifier}.overall")
-        for field in ("opportunities", "hits", "bets", "wins"):
+        for field in ("opportunities", "hits", "bets", "wins", "stakeUnits"):
             if overall[field] != sum(row[field] for row in yearly):
                 raise StrategyZooValidationError(f"{identifier}.overall.{field} disagrees with yearly rows")
         yearly_profit = math.fsum(
@@ -2048,6 +2974,66 @@ def validate_strategy_zoo(payload: Any) -> Dict[str, Any]:
             raise StrategyZooValidationError(f"{identifier} has an inconsistent last active season")
         if strategy.get("market") == "exact_score" and overall["bets"] != 0:
             raise StrategyZooValidationError(f"{identifier} fabricates exact-score P&L")
+        if strategy["rule"].get("outcomeOnly") is True and overall["bets"] != 0:
+            raise StrategyZooValidationError(f"{identifier} fabricates outcome-only P&L")
+
+    strategies_by_id = {strategy["id"]: strategy for strategy in strategies}
+    favourite_strategy = strategies_by_id["all_unique_favourites"]
+    favourite_profiles = payload["seasonMarketProfiles"]["bySeason"]
+    for profile, metric in zip(favourite_profiles, favourite_strategy["yearly"]):
+        if not metric["available"]:
+            continue
+        favourites = profile["teamFavourites"]
+        if (
+            favourites["uniqueTeamSelections"] != metric["opportunities"]
+            or favourites["uniqueTeamSelections"] != metric["bets"]
+            or favourites["won"] != metric["hits"]
+            or favourites["won"] != metric["wins"]
+        ):
+            raise StrategyZooValidationError(
+                "season market profiles and hold-favourite strategy disagree"
+            )
+    available_favourite_profiles = [
+        profile
+        for profile, metric in zip(favourite_profiles, favourite_strategy["yearly"])
+        if metric["available"]
+    ]
+    if (
+        favourite_strategy["overall"]["opportunities"]
+        != sum(profile["teamFavourites"]["uniqueTeamSelections"] for profile in available_favourite_profiles)
+        or favourite_strategy["overall"]["hits"]
+        != sum(profile["teamFavourites"]["won"] for profile in available_favourite_profiles)
+    ):
+        raise StrategyZooValidationError(
+            "all-time market profile and hold-favourite strategy disagree"
+        )
+    for strategy in strategies:
+        comparison = strategy["comparison"]
+        opposite_id = comparison["oppositeStrategyId"]
+        if opposite_id is None:
+            continue
+        opposite = strategies_by_id.get(opposite_id)
+        if opposite is None or opposite["comparison"]["oppositeStrategyId"] != strategy["id"]:
+            raise StrategyZooValidationError(f"{strategy['id']} has a non-reciprocal comparison")
+        for field in ("groupId", "kind", "sameOpportunitySet"):
+            if comparison[field] != opposite["comparison"][field]:
+                raise StrategyZooValidationError(f"{strategy['id']} comparison metadata disagrees")
+        if comparison["sameOpportunitySet"]:
+            for row, opposite_row in zip(strategy["yearly"], opposite["yearly"]):
+                if (
+                    row["opportunities"] != opposite_row["opportunities"]
+                    or row["bets"] != opposite_row["bets"]
+                    or row["hits"] + opposite_row["hits"] != row["opportunities"]
+                    or row["wins"] + opposite_row["wins"] != row["bets"]
+                ):
+                    raise StrategyZooValidationError(
+                        f"{strategy['id']} and {opposite_id} do not share complementary opportunities"
+                    )
+
+    if payload.get("selectionPolicy") != _selection_policy():
+        raise StrategyZooValidationError("selectionPolicy is inconsistent")
+    if payload.get("seasonAudits") != _build_season_audits(strategies, seasons):
+        raise StrategyZooValidationError("seasonAudits disagree with causal strategy metrics")
     rivalries = payload.get("rivalryPatterns")
     if not isinstance(rivalries, list) or len(rivalries) > 40:
         raise StrategyZooValidationError("rivalryPatterns must be an array of at most 40 rows")

@@ -51,10 +51,14 @@ venv/bin/python -m research.run_pattern_zoo
 
 Kommandoen skriver det validerede artifact
 [`data/strategy_zoo_public.json`](../data/strategy_zoo_public.json). Det viser
-33 på forhånd definerede H2H-, 1X2-, uafgjort-, mål- og exact-score-regler år
-for år. Reglerne bliver ikke genvalgt ud fra samme års resultat. Kampe med samme
-starttid isoleres fra hinanden, og kun komplette Bet365-opening-markeder kan
-skabe P&L. Manglende odds giver derfor aldrig syntetisk profit.
+46 på forhånd definerede H2H-, 1X2-, uafgjort-, mål- og exact-score-regler år
+for år. Før strategierne vises et rent sæsongrundkort med hjemme/uafgjort/ude,
+Over/Under 0,5–5,5, eksakte måltotaler og holdfavoritternes W/D/L. Artifactet
+måler også hvad der gentager sig på tværs af sæsoner, og adskiller en vinder
+valgt efter sæsonen fra et walk-forward-valg baseret kun på tidligere sæsoner.
+Reglerne bliver ikke genvalgt ud fra samme års resultat. Kampe med samme starttid
+isoleres fra hinanden, og kun komplette Bet365-opening-markeder kan skabe P&L.
+Manglende odds giver derfor aldrig syntetisk profit.
 
 Det aktuelle artifact dækker 115.840 evaluerede kampe fra 1993/94 til og med
 2025/26. Alle ti 2025/26-filer blev hentet og atomisk valideret efter sæsonens

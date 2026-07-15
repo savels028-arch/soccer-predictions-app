@@ -259,7 +259,7 @@ def test_model_breakdown_uses_only_valid_current_model_probabilities():
 
 def test_strategy_zoo_cache_revalidates_and_stages_the_public_artifact(monkeypatch):
     payload = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "dataset": {"completeThroughSeason": 2024},
         "strategies": [{"id": "fixed-rule"}],
     }
@@ -268,13 +268,19 @@ def test_strategy_zoo_cache_revalidates_and_stages_the_public_artifact(monkeypat
         lambda: payload,
     )
     writer = object.__new__(FirestoreWriter)
-    staged = {}
-    writer.write_cache = lambda name, data: staged.update({name: data})
+    writer._public_cache_envelopes = {}
+
+    class FirestoreMustNotBeUsed:
+        def collection(self, _name):
+            raise AssertionError("strategy zoo must bypass the Firestore document limit")
+
+    writer.db = FirestoreMustNotBeUsed()
 
     result = writer.refresh_strategy_zoo_cache()
 
     assert result is payload
-    assert staged == {"strategy_zoo": payload}
+    assert writer._public_cache_envelopes["strategy_zoo"]["data"] is payload
+    assert isinstance(writer._public_cache_envelopes["strategy_zoo"]["updatedAt"], str)
 
 
 def test_full_run_refreshes_performance_after_evaluation_then_syncs():
