@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "maxRequestBytes": 5242880,
+  "documents": {
+    "matches": {
+      "maxAgeSeconds": 129600,
+      "requiredInModes": ["full", "odds"]
+    },
+    "ai_predictions": {
+      "maxAgeSeconds": 129600,
+      "requiredInModes": ["full"]
+    },
+    "ml_predictions": {
+      "maxAgeSeconds": 129600,
+      "requiredInModes": ["full"]
+    },
+    "model_breakdown": {
+      "maxAgeSeconds": 129600,
+      "requiredInModes": ["full"]
+    },
+    "source_weights": {
+      "maxAgeSeconds": null,
+      "requiredInModes": ["full", "evaluate"]
+    },
+    "coupon_history": {
+      "maxAgeSeconds": null,
+      "requiredInModes": ["full", "evaluate"]
+    },
+    "prediction_history": {
+      "maxAgeSeconds": null,
+      "requiredInModes": ["full", "evaluate"]
+    },
+    "paper_trading": {
+      "maxAgeSeconds": null,
+      "requiredInModes": ["full", "evaluate"]
+    },
+    "forecast_history": {
+      "maxAgeSeconds": null,
+      "requiredInModes": ["full", "evaluate"]
+    },
+    "strategy_zoo": {
+      "maxAgeSeconds": null,
+      "requiredInModes": ["full", "evaluate"]
+    }
+  }
+}

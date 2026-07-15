@@ -12,6 +12,7 @@ from backtest import (
     LABEL_DRAW,
     LABEL_HOME,
     _bet_label_for_style,
+    _build_over_under_rows,
     _build_pattern_predictions,
     _compute_team_stats_snapshot,
     _csv_match_to_history_prediction,
@@ -24,13 +25,237 @@ from backtest import (
     simulate_flat_bankroll,
     walk_forward_csv_strategy_zoo,
 )
-from config.settings import ML_SETTINGS_V2
+from config.settings import LEAGUES, ML_SETTINGS_V2
+from src.api.csv_football_client import FootballDataCSVClient, _season_code_for_year
+from src.api.free_football_client import FreeFootballClient
 from src.database.db_manager import DatabaseManager
 from src.predictions.feature_engineering import FeatureEngineer, FeatureEngineerV2
 from src.predictions.models import RandomForestModel
 from src.predictions.prediction_engine import PredictionEngine
-from run_pipeline import _calibrate_probs_by_league, _historical_h2h_coupon_pick
+from run_pipeline import PredictionPipeline, _calibrate_probs_by_league, _historical_h2h_coupon_pick
 from src.firestore_writer import build_coupon_history_payload
+
+
+def test_world_cup_is_available_from_espn_feed():
+    assert LEAGUES["WC"]["name"] == "FIFA World Cup"
+    assert FreeFootballClient.ESPN_LEAGUES["WC"] == "fifa.world"
+
+
+def test_csv_history_supports_1990s_warmup_seasons():
+    assert _season_code_for_year(1993) == "9394"
+    assert _season_code_for_year(1999) == "9900"
+    assert _season_code_for_year(1992) is None
+    assert FootballDataCSVClient.LEAGUE_CSV_MAP["BEL1"] == "B1"
+    assert "BSA" not in FootballDataCSVClient.LEAGUE_CSV_MAP
+
+
+def test_csv_parser_preserves_legacy_market_prices_and_stable_ids():
+    client = FootballDataCSVClient()
+    row = {
+        "Date": "14/08/05",
+        "HomeTeam": "Alpha",
+        "AwayTeam": "Beta",
+        "FTHG": "2",
+        "FTAG": "1",
+        "FTR": "H",
+        # The incomplete B365 quote must not be mixed with another book.
+        "B365H": "1.80",
+        "BWH": "1.90",
+        "BWD": "3.40",
+        "BWA": "4.20",
+        "BbAvH": "1.92",
+        "BbAvD": "3.35",
+        "BbAvA": "4.10",
+        "BbMxH": "2.00",
+        "BbMxD": "3.50",
+        "BbMxA": "4.40",
+        "BbAv>2.5": "1.85",
+        "BbAv<2.5": "2.02",
+        "BbMx>2.5": "1.92",
+        "BbMx<2.5": "2.10",
+        "BbAHh": "-0.50",
+        "BbAvAHH": "1.95",
+        "BbAvAHA": "1.93",
+        "PAHH": "1.97",
+        "PAHA": "1.91",
+        "AHCh": "-0.75",
+        "PCAHH": "2.01",
+        "PCAHA": "1.89",
+    }
+
+    first = client._normalize_csv_row(row, "PL", LEAGUES["PL"], 2005)
+    second = client._normalize_csv_row(row, "PL", LEAGUES["PL"], 2005)
+
+    assert first["api_id"] == second["api_id"]
+    assert first["home_odds"] == 1.9
+    assert first["draw_odds"] == 3.4
+    assert first["away_odds"] == 4.2
+    assert first["extra_data"]["avg_home_odds"] == 1.92
+    assert first["extra_data"]["max_away_odds"] == 4.4
+    assert first["extra_data"]["avg_over25"] == 1.85
+    assert first["extra_data"]["avg_under25"] == 2.02
+    assert first["extra_data"]["asian_handicap_line"] == -0.5
+    assert first["extra_data"]["pinnacle_asian_home"] == 1.97
+    assert first["extra_data"]["pinnacle_asian_away"] == 1.91
+    assert first["extra_data"]["asian_handicap_close_line"] == -0.75
+    assert first["extra_data"]["pinnacle_close_asian_home"] == 2.01
+    assert first["extra_data"]["pinnacle_close_asian_away"] == 1.89
+
+
+def test_over_under_history_uses_unpriced_matches_and_legacy_average_odds():
+    matches = [
+        {
+            "match_date": "1999-01-01T15:00:00",
+            "league_code": "PL",
+            "season": 1998,
+            "home_team_name": "Alpha",
+            "away_team_name": "Beta",
+            "home_score": 2,
+            "away_score": 1,
+            "extra_data": {},
+        },
+        {
+            "match_date": "2005-01-01T15:00:00",
+            "league_code": "PL",
+            "season": 2004,
+            "home_team_name": "Alpha",
+            "away_team_name": "Beta",
+            "home_score": 1,
+            "away_score": 0,
+            "extra_data": {"avg_over25": 1.9, "avg_under25": 2.0},
+        },
+    ]
+
+    rows = _build_over_under_rows(matches)
+
+    assert len(rows) == 1
+    assert rows[0]["odds_basis"] == "average_open"
+    assert rows[0]["team_history_matches"] == 1
+    assert rows[0]["pair_history_matches"] == 1
+
+
+def test_over_under_history_batches_simultaneous_matches_before_updates():
+    priced = {"avg_over25": 1.9, "avg_under25": 2.0}
+    matches = [
+        {
+            "match_date": "2005-01-01T15:00:00",
+            "league_code": "PL",
+            "season": 2004,
+            "home_team_name": "Alpha",
+            "away_team_name": "Beta",
+            "home_score": 2,
+            "away_score": 1,
+            "extra_data": priced,
+        },
+        {
+            "match_date": "2005-01-01T15:00:00",
+            "league_code": "PL",
+            "season": 2004,
+            "home_team_name": "Gamma",
+            "away_team_name": "Delta",
+            "home_score": 0,
+            "away_score": 0,
+            "extra_data": priced,
+        },
+        {
+            "match_date": "2005-01-02T15:00:00",
+            "league_code": "PL",
+            "season": 2004,
+            "home_team_name": "Alpha",
+            "away_team_name": "Gamma",
+            "home_score": 1,
+            "away_score": 1,
+            "extra_data": priced,
+        },
+    ]
+
+    rows = _build_over_under_rows(matches)
+
+    assert rows[0]["league_history_matches"] == 0
+    assert rows[1]["league_history_matches"] == 0
+    assert rows[2]["league_history_matches"] == 2
+
+
+def test_odds_only_cache_refresh_preserves_existing_predictions():
+    class FakeWriter:
+        def __init__(self):
+            self.writes = []
+
+        def write_cache(self, name, data):
+            self.writes.append(name)
+
+        def refresh_coupon_history_cache(self):
+            return {}
+
+        def refresh_prediction_history_cache(self):
+            return {}
+
+        def refresh_paper_trading_cache(self, **kwargs):
+            return {"totalBets": 0, "totalProfit": 0, "roi": 0}
+
+    pipeline = object.__new__(PredictionPipeline)
+    pipeline.fs = FakeWriter()
+    pipeline._matches = []
+    pipeline._ml_preds = {}
+    pipeline._odds = []
+
+    pipeline.write_legacy_cache(preserve_predictions=True)
+
+    assert "matches" in pipeline.fs.writes
+    assert "ai_predictions" not in pipeline.fs.writes
+    assert "ml_predictions" not in pipeline.fs.writes
+
+
+def test_legacy_cache_never_substitutes_model_probabilities_for_market_odds():
+    class FakeWriter:
+        def __init__(self):
+            self.cache = {}
+
+        def write_cache(self, name, data):
+            self.cache[name] = data
+
+        def refresh_coupon_history_cache(self):
+            return {}
+
+        def refresh_prediction_history_cache(self):
+            return {}
+
+        def refresh_paper_trading_cache(self, **_kwargs):
+            return {"totalBets": 0, "totalProfit": 0, "roi": 0}
+
+        def refresh_forecast_history_cache(self):
+            return {}
+
+        def refresh_source_weights_cache(self):
+            return {}
+
+    pipeline = object.__new__(PredictionPipeline)
+    pipeline.fs = FakeWriter()
+    pipeline._matches = []
+    pipeline._odds = []
+    pipeline._ml_preds = {
+        "fixture": {
+            "home_team": "Alpha",
+            "away_team": "Beta",
+            "league": "PL",
+            "match_date": "2026-07-15T18:00:00Z",
+            "ensemble": {"home": 0.7, "draw": 0.2, "away": 0.1},
+            "edge": {"home": 0.2},
+            "recommended": "HOME",
+            "decision_status": "BET",
+            "models": {},
+        },
+    }
+
+    pipeline.write_legacy_cache()
+
+    market = pipeline.fs.cache["ml_predictions"]["odds_matches"][0]
+    assert market["odds_1"] == 0
+    assert market["odds_x"] == 0
+    assert market["odds_2"] == 0
+    assert market["odds_available"] is False
+    assert market["value_bet"] is False
+    assert market["value_edge"] == 0
 
 
 def _match(api_id, home, away, when, home_score, away_score, season=2024):
@@ -240,6 +465,27 @@ def test_database_tracks_odds_pick_context_and_league_priors(tmp_path):
         })
     priors = db.get_league_outcome_priors("PL", min_matches=80)
     assert priors == pytest.approx({"home": 1 / 3, "draw": 1 / 3, "away": 1 / 3}, rel=1e-3)
+
+
+def test_get_h2h_falls_back_to_finished_matches_when_cache_empty(tmp_path):
+    db = DatabaseManager(db_path=tmp_path / "h2h.db")
+    db.upsert_match(_match(301, "Arsenal", "Everton", "2023-01-01T15:00:00", 2, 0))
+    db.upsert_match(_match(302, "Everton", "Arsenal", "2024-01-01T15:00:00", 1, 3))
+    scheduled = _match(303, "Arsenal", "Everton", "2024-05-01T15:00:00", None, None)
+    scheduled["status"] = "SCHEDULED"
+    db.upsert_match(scheduled)
+
+    cache_count = db.conn.execute("SELECT COUNT(*) FROM head_to_head").fetchone()[0]
+    assert cache_count == 0
+
+    rows = db.get_h2h("Arsenal FC", "Everton", limit=10, before_date="2025-01-01")
+
+    assert len(rows) == 2
+    assert {row["match_date"] for row in rows} == {
+        "2023-01-01T15:00:00",
+        "2024-01-01T15:00:00",
+    }
+    assert all(row["home_score"] is not None and row["away_score"] is not None for row in rows)
 
 
 def test_league_calibration_blends_toward_priors():
@@ -717,7 +963,7 @@ def test_strategy_zoo_walk_forward_selects_from_prior_seasons():
     assert result["folds"][0]["chosen_single"]["test_simulation"]["bets"] == 1
 
 
-def test_historical_h2h_coupon_pick_maps_reversed_fixtures():
+def test_historical_h2h_coupon_pick_uses_exact_home_away_fixture_only():
     h2h = [
         {"home_team": "Arsenal", "away_team": "Everton", "home_score": 2, "away_score": 0},
         {"home_team": "Everton", "away_team": "Arsenal", "home_score": 1, "away_score": 3},
@@ -731,7 +977,7 @@ def test_historical_h2h_coupon_pick_maps_reversed_fixtures():
         h2h,
         {"home": 1.8, "draw": 3.4, "away": 4.8},
         {
-            "min_h2h_matches": 4,
+            "min_h2h_matches": 2,
             "min_h2h_rate_pct": 75.0,
             "min_edge_pct": 2.0,
             "odds_min": 1.2,
@@ -740,6 +986,6 @@ def test_historical_h2h_coupon_pick_maps_reversed_fixtures():
     )
 
     assert pick["pick"] == "home"
-    assert pick["h2h_count"] == 4
+    assert pick["h2h_count"] == 2
     assert pick["h2h_rate_pct"] == pytest.approx(100.0)
     assert pick["edge"] > 0

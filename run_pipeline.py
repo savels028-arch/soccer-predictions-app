@@ -34,20 +34,32 @@ import argparse
 import traceback
 import time
 import numpy as np
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from typing import Dict, List, Optional, Any, Tuple
+from dateutil import parser as date_parser
 
 # Add project root to path
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 
-from src.firestore_writer import FirestoreWriter, match_id, _normalize_team
+from src.firestore_writer import (
+    FirestoreWriter,
+    NON_BETTING_FORECAST_SCOPE,
+    VALIDATED_FORECAST_ONLY,
+    match_id,
+    _normalize_team,
+)
 from src.api.prediction_scraper import PredictionScraper
 from src.api.danske_spil_client import DanskeSpilClient
 from src.api.free_football_client import FreeFootballClient
 from src.database.db_manager import DatabaseManager
 from src.predictions.prediction_engine import PredictionEngine
 from src.predictions.feature_engineering import FeatureEngineer, FeatureEngineerV2, EloTracker
+from src.predictions.international_model import (
+    InternationalModelUnavailable,
+    ValidatedInternationalModel,
+    try_load_default_international_model,
+)
 from src.api.data_aggregator import DataAggregator
 from config.settings import AB_TEST, DATA_ENRICHMENT, ML_SETTINGS, ML_SETTINGS_V2, PAPER_TRADING
 
@@ -79,10 +91,400 @@ logging.basicConfig(
 log = logging.getLogger("pipeline")
 
 
+# The production ensemble is trained and validated on domestic club leagues.
+# International fixtures need a separate national-team model because neutral
+# venues, tournament structure and team histories are materially different.
+# Keep these fixtures visible, but never let the club model turn its default
+# feature vector into a normal prediction or betting recommendation.
+UNVALIDATED_INTERNATIONAL_LEAGUES = frozenset({"WC"})
+INTERNATIONAL_MODEL_ABSTAIN_REASON = "international_model_not_validated"
+INTERNATIONAL_FORECAST_ONLY_REASON = "international_forecast_only_no_odds_validation"
+
+
+class PublicCacheSyncFailed(RuntimeError):
+    """Raised after Firestore writes when the public cache was not published."""
+
+
+def _model_scope_abstention_reason(league_code: str) -> Optional[str]:
+    """Return a stable reason code when the club model is out of scope."""
+    code = str(league_code or "").strip().upper()
+    if code in UNVALIDATED_INTERNATIONAL_LEAGUES:
+        return INTERNATIONAL_MODEL_ABSTAIN_REASON
+    return None
+
+
+def build_model_breakdown(
+    predictions: Dict[str, Dict[str, Any]],
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Build a per-fixture breakdown from actual model probability outputs.
+
+    Invalid or incomplete outputs are omitted instead of being replaced with
+    neutral/default probabilities.
+    """
+
+    breakdown: Dict[str, List[Dict[str, Any]]] = {}
+    for mid, prediction in predictions.items():
+        models = prediction.get("models")
+        if not isinstance(models, dict):
+            continue
+        rows: List[Dict[str, Any]] = []
+        for model_name, raw_probabilities in models.items():
+            if not isinstance(raw_probabilities, dict):
+                continue
+            try:
+                probabilities = {
+                    outcome: float(raw_probabilities[outcome])
+                    for outcome in ("home", "draw", "away")
+                }
+            except (KeyError, TypeError, ValueError):
+                continue
+            total = sum(probabilities.values())
+            if (
+                not all(math.isfinite(value) and value >= 0 for value in probabilities.values())
+                or total <= 0
+            ):
+                continue
+            normalized = {
+                outcome: value / total for outcome, value in probabilities.items()
+            }
+            predicted = max(normalized, key=normalized.get)
+            source = str(model_name)
+            if source in {"xgboost", "neural_network", "random_forest"}:
+                source = f"ml_{source}"
+            rows.append({
+                "source": source,
+                "predicted_outcome": predicted.upper(),
+                "confidence": round(normalized[predicted] * 100),
+                "probabilities": {
+                    outcome: round(value, 4)
+                    for outcome, value in normalized.items()
+                },
+            })
+        if rows:
+            breakdown[str(mid)] = rows
+    return breakdown
+
+
+def _verified_decimal_odd(value: Any) -> float:
+    """Return a real decimal market odd, or zero when it is unavailable."""
+    try:
+        odd = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return odd if math.isfinite(odd) and odd > 1.0 else 0.0
+
+
+def _normalize_actionable_outcome(value: Any) -> Optional[str]:
+    """Normalize an explicitly persisted 1X2 recommendation."""
+    normalized = str(value or "").strip().upper()
+    aliases = {
+        "1": "HOME",
+        "HOME": "HOME",
+        "HOME_WIN": "HOME",
+        "X": "DRAW",
+        "DRAW": "DRAW",
+        "2": "AWAY",
+        "AWAY": "AWAY",
+        "AWAY_WIN": "AWAY",
+    }
+    return aliases.get(normalized)
+
+
+def _is_pre_match_fixture(match: Dict[str, Any]) -> bool:
+    """Return true only while a fixture kickoff is still in the future."""
+    kickoff_epoch = _timestamp_epoch(match.get("match_date") or match.get("date"))
+    return kickoff_epoch is not None and kickoff_epoch > datetime.now(timezone.utc).timestamp()
+
+
+def _build_abstention_prediction(
+    match: Dict[str, Any],
+    home: str,
+    away: str,
+    league: str,
+    reason: str,
+) -> Dict[str, Any]:
+    """Build the legacy-compatible shadow record for an abstained fixture."""
+    neutral = {"home": 1 / 3, "draw": 1 / 3, "away": 1 / 3}
+    return {
+        "home_team": home,
+        "away_team": away,
+        "match_date": match.get("match_date", ""),
+        "league": league,
+        "ensemble": neutral,
+        "raw_ensemble": neutral,
+        "edge": {},
+        "recommended": None,
+        "confidence": 0.0,
+        "models": {},
+        "calibration": {"applied": False},
+        "context_summary": {},
+        "decision_status": "ABSTAIN",
+        "decision_reason": reason,
+    }
+
+
+def _build_international_forecast_prediction(
+    model: Optional[ValidatedInternationalModel],
+    match: Dict[str, Any],
+    home: str,
+    away: str,
+    league: str,
+) -> Optional[Dict[str, Any]]:
+    """Return a non-bet national-team forecast, or ``None`` fail-closed.
+
+    ``decision_status`` deliberately remains ``ABSTAIN``.  Historical source
+    data has no pre-match odds, so these calibrated probabilities may be shown
+    as a forecast but must stay outside coupons and P&L.
+    """
+    if model is None:
+        return None
+    if not _is_pre_match_fixture(match):
+        return None
+    neutral_raw = match.get("neutral")
+    neutral = neutral_raw if isinstance(neutral_raw, bool) else None
+    try:
+        forecast = model.predict_fixture(
+            home,
+            away,
+            match.get("match_date", ""),
+            neutral=neutral,
+        )
+    except (InternationalModelUnavailable, TypeError, ValueError):
+        return None
+
+    prediction = _build_abstention_prediction(
+        match,
+        home,
+        away,
+        league,
+        INTERNATIONAL_FORECAST_ONLY_REASON,
+    )
+    probabilities = forecast["probabilities"]
+    prediction.update(
+        {
+            "ensemble": probabilities,
+            "raw_ensemble": probabilities,
+            "models": {"international_elo": probabilities},
+            "calibration": {
+                "applied": True,
+                "method": "frozen_elo_probability_calibration",
+                "holdout_accuracy": model.validation["holdout"]["accuracy"],
+                "world_cup_holdout_accuracy": model.validation["world_cup_holdout"]["accuracy"],
+            },
+            "context_summary": {
+                "scope": forecast["decision_scope"],
+                "neutral": forecast["neutral"],
+                "trainingCutoff": forecast["training_cutoff"],
+            },
+            "forecast_status": "VALIDATED_FORECAST_ONLY",
+            "forecast_outcome": forecast["forecast_outcome"],
+            "forecast_confidence": forecast["confidence"],
+            "model_version": forecast["model_version"],
+        }
+    )
+    return prediction
+
+
+def _timestamp_epoch(value: Any) -> Optional[float]:
+    """Normalize persisted Firestore/ISO datetimes for a pre-kickoff check."""
+    if value is None:
+        return None
+    try:
+        parsed = value if isinstance(value, datetime) else date_parser.parse(str(value))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.timestamp()
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _build_finished_forecast_result(
+    mid: str,
+    match: Dict[str, Any],
+    model_output: Dict[str, Any],
+    actual: str,
+    home_score: int,
+    away_score: int,
+) -> Optional[Dict[str, Any]]:
+    """Evaluate only an already-persisted, validated pre-match forecast.
+
+    No model is loaded or called here. Missing metadata, legacy records and
+    outputs created after kickoff fail closed, preventing retroactive forecast
+    generation from contaminating the public history.
+    """
+    if str(model_output.get("forecastStatus") or "").strip().upper() != VALIDATED_FORECAST_ONLY:
+        return None
+    if str(model_output.get("decisionStatus") or "").strip().upper() != "ABSTAIN":
+        return None
+    if str(model_output.get("evaluationScope") or "").strip().upper() != NON_BETTING_FORECAST_SCOPE:
+        return None
+
+    generated_at = model_output.get("generatedAt")
+    kickoff = match.get("match_date") or match.get("date")
+    generated_epoch = _timestamp_epoch(generated_at)
+    kickoff_epoch = _timestamp_epoch(kickoff)
+    if generated_epoch is None or kickoff_epoch is None or generated_epoch > kickoff_epoch:
+        return None
+
+    probabilities = model_output.get("finalProbability") or {}
+    try:
+        probs = {
+            key: float(probabilities.get(key))
+            for key in ("home", "draw", "away")
+        }
+    except (TypeError, ValueError):
+        return None
+    if any(not math.isfinite(value) or value <= 0 or value >= 1 for value in probs.values()):
+        return None
+    total = sum(probs.values())
+    if not 0.99 <= total <= 1.01:
+        return None
+    probs = {key: value / total for key, value in probs.items()}
+
+    forecast_outcome = str(model_output.get("forecastOutcome") or "").strip().upper()
+    if forecast_outcome not in {"HOME", "DRAW", "AWAY"}:
+        return None
+    if forecast_outcome != max(probs, key=probs.get).upper():
+        return None
+    actual = str(actual or "").strip().upper()
+    if actual not in {"HOME", "DRAW", "AWAY"}:
+        return None
+
+    confidence = model_output.get("forecastConfidence")
+    try:
+        confidence = float(confidence)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(confidence) or confidence < 0 or confidence > 1:
+        return None
+
+    actual_vector = {"home": 0.0, "draw": 0.0, "away": 0.0}
+    actual_vector[actual.lower()] = 1.0
+    brier = sum((probs[key] - actual_vector[key]) ** 2 for key in probs)
+    log_loss = -math.log(max(probs[actual.lower()], 1e-15))
+
+    return {
+        "matchId": mid,
+        "matchDate": kickoff,
+        "homeTeam": match.get("home_team_name", match.get("home_team", "")),
+        "awayTeam": match.get("away_team_name", match.get("away_team", "")),
+        "leagueCode": match.get("league_code", match.get("league", "")),
+        "homeScore": int(home_score),
+        "awayScore": int(away_score),
+        "actualOutcome": actual,
+        "forecastOutcome": forecast_outcome,
+        "forecastConfidence": round(confidence * 100, 1),
+        "probabilities": {key: round(value, 4) for key, value in probs.items()},
+        "isCorrect": forecast_outcome == actual,
+        "brierScore": round(brier, 4),
+        "logLoss": round(log_loss, 4),
+        "modelVersion": model_output.get("modelVersion"),
+        "forecastStatus": VALIDATED_FORECAST_ONLY,
+        "decisionStatus": "ABSTAIN",
+        "evaluationScope": NON_BETTING_FORECAST_SCOPE,
+        "eligibleForBetting": False,
+        "forecastGeneratedAt": generated_at,
+    }
+
+
+def _build_finished_betting_result(
+    match: Dict[str, Any],
+    model_output: Dict[str, Any],
+    match_record: Dict[str, Any],
+    actual: str,
+    home_score: int,
+    away_score: int,
+    source: str,
+) -> Optional[Dict[str, Any]]:
+    """Evaluate the persisted recommendation; never infer one from probabilities."""
+    recommendation = _normalize_actionable_outcome(model_output.get("recommendedBet"))
+    if (
+        str(model_output.get("decisionStatus") or "").strip().upper() != "BET"
+        or not recommendation
+    ):
+        return None
+
+    selected = recommendation.lower()
+    odds_at_pick = _verified_decimal_odd(
+        (model_output.get("oddsAtPick") or {}).get(selected)
+    )
+    generated_epoch = _timestamp_epoch(model_output.get("generatedAt"))
+    kickoff_epoch = _timestamp_epoch(match.get("match_date") or match.get("date"))
+    captured_pre_match = bool(
+        generated_epoch is not None
+        and kickoff_epoch is not None
+        and generated_epoch <= kickoff_epoch
+    )
+    pnl_eligible = bool(
+        model_output.get("eligibleForBetting") is True
+        and str(model_output.get("evaluationMode") or "").strip().lower()
+        == "forward_only"
+        and model_output.get("oddsBasis") == "verified_pre_match_odds"
+        and str(model_output.get("oddsSource") or "").strip()
+        and odds_at_pick
+        and captured_pre_match
+    )
+
+    closing_market = (
+        match_record.get("closingOdds") or match_record.get("currentOdds") or {}
+    )
+    closing_odds = _verified_decimal_odd(closing_market.get(selected))
+    clv_pct = (
+        round((odds_at_pick / closing_odds - 1.0) * 100, 2)
+        if pnl_eligible and closing_odds
+        else None
+    )
+    probabilities = model_output.get("finalProbability") or {}
+    try:
+        confidence = float(probabilities.get(selected)) * 100
+    except (TypeError, ValueError):
+        confidence = float(model_output.get("confidenceScore") or 0) * 100
+    edge_data = model_output.get("edge") or {}
+    try:
+        edge = round(float(edge_data.get(selected, 0)) * 100, 1)
+    except (TypeError, ValueError):
+        edge = 0.0
+    is_correct = recommendation == str(actual or "").strip().upper()
+
+    return {
+        "matchDate": str(match.get("match_date") or match.get("date") or "")[:10],
+        "homeTeam": match.get("home_team_name", match.get("home_team", "")),
+        "awayTeam": match.get("away_team_name", match.get("away_team", "")),
+        "leagueCode": match.get("league_code", match.get("league", "")),
+        "homeScore": int(home_score),
+        "awayScore": int(away_score),
+        "actualOutcome": str(actual or "").strip().upper(),
+        "predictedOutcome": recommendation,
+        "recommendedBet": recommendation,
+        "confidence": round(confidence, 1),
+        "source": source,
+        "isCorrect": is_correct,
+        "hasModelOutput": True,
+        "decisionStatus": "BET",
+        "evaluationMode": "forward_only" if pnl_eligible else "accuracy_only",
+        "eligibleForBetting": pnl_eligible,
+        "odds": round(odds_at_pick, 2) if pnl_eligible else None,
+        "oddsAtPick": round(odds_at_pick, 2) if pnl_eligible else None,
+        "oddsBasis": (
+            "verified_pre_match_odds"
+            if pnl_eligible
+            else "unavailable_no_verified_odds"
+        ),
+        "oddsSource": model_output.get("oddsSource") if pnl_eligible else None,
+        "closingLineValuePct": clv_pct,
+        "edge": edge,
+        "profit": (
+            round(odds_at_pick - 1.0 if is_correct else -1.0, 2)
+            if pnl_eligible
+            else None
+        ),
+    }
+
+
 def _current_season() -> int:
     """Dynamic season: August+ = current year, else previous year."""
     now = date.today()
-    return now.year if now.month >= 7 else now.year - 1
+    return now.year if now.month >= 8 else now.year - 1
 
 
 def _valid_1x2_odds(odds: Dict[str, float]) -> bool:
@@ -271,6 +673,54 @@ def find_match_in_list(target_home: str, target_away: str,
     return None
 
 
+def _match_from_odds_event(odds_event: Dict[str, Any]) -> Optional[dict]:
+    """Create an internal upcoming match from a Kambi/Danske Spil odds event."""
+    home = str(odds_event.get("home_team") or "").strip()
+    away = str(odds_event.get("away_team") or "").strip()
+    if not home or not away:
+        return None
+
+    league_code = str(odds_event.get("league_code") or "").strip()
+    if not league_code:
+        return None
+    if league_code not in ML_SETTINGS.get("coupon", {}).get("allowed_leagues", []):
+        return None
+
+    raw_date = str(odds_event.get("match_date") or "")
+    if not raw_date:
+        return None
+    try:
+        kickoff = date_parser.isoparse(raw_date)
+        match_date = kickoff.isoformat()
+    except Exception:
+        match_date = raw_date
+
+    return {
+        "api_id": odds_event.get("event_id"),
+        "home_team_name": home,
+        "away_team_name": away,
+        "home_score": None,
+        "away_score": None,
+        "status": "SCHEDULED",
+        "league_name": odds_event.get("league") or league_code,
+        "league_code": league_code,
+        "match_date": match_date,
+        "source": "danske_spil",
+        "home_odds": odds_event.get("home_odds"),
+        "draw_odds": odds_event.get("draw_odds"),
+        "away_odds": odds_event.get("away_odds"),
+        "extra_data": {
+            "source": "danske_spil",
+            "event_id": odds_event.get("event_id"),
+            "deeplink": odds_event.get("deeplink"),
+            "over_25_odds": odds_event.get("over_25_odds"),
+            "under_25_odds": odds_event.get("under_25_odds"),
+            "btts_yes_odds": odds_event.get("btts_yes_odds"),
+            "btts_no_odds": odds_event.get("btts_no_odds"),
+        },
+    }
+
+
 def _paper_strategy_recommendation(
     league_code: str,
     ensemble: Dict[str, float],
@@ -279,6 +729,8 @@ def _paper_strategy_recommendation(
     cfg: Dict,
 ) -> Optional[str]:
     """Return a configured paper-trading pick as home/draw/away, or None."""
+    if not cfg.get("enabled", False):
+        return None
     allowed_leagues = set(cfg.get("profitable_leagues") or [])
     if allowed_leagues and league_code not in allowed_leagues:
         return None
@@ -330,7 +782,7 @@ def _historical_h2h_coupon_pick(
     odds: Dict[str, float],
     cfg: Dict[str, Any],
 ) -> Optional[Dict[str, Any]]:
-    """Return a no-ML H2H coupon pick when old fixture history is dominant."""
+    """Return a no-ML H2H coupon pick when exact home-vs-away history dominates."""
     counts = {"home": 0, "draw": 0, "away": 0}
 
     for match in h2h or []:
@@ -341,17 +793,17 @@ def _historical_h2h_coupon_pick(
         if home_score is None or away_score is None:
             continue
 
-        same_orientation = fuzzy_match_teams(home, match_home) and fuzzy_match_teams(away, match_away)
-        reversed_orientation = fuzzy_match_teams(home, match_away) and fuzzy_match_teams(away, match_home)
-        if not same_orientation and not reversed_orientation:
+        # The validated strategy is directed H2H: same home side, same away side.
+        # Reversed fixtures are a separate weaker signal and must not be mixed in.
+        if not (fuzzy_match_teams(home, match_home) and fuzzy_match_teams(away, match_away)):
             continue
 
         if home_score == away_score:
             counts["draw"] += 1
-        elif same_orientation:
-            counts["home" if home_score > away_score else "away"] += 1
+        elif home_score > away_score:
+            counts["home"] += 1
         else:
-            counts["away" if home_score > away_score else "home"] += 1
+            counts["away"] += 1
 
     total = sum(counts.values())
     if total < int(cfg.get("min_h2h_matches", 10)):
@@ -412,6 +864,20 @@ class PredictionPipeline:
         )
         self.feature_eng = FeatureEngineer()
 
+        # Separate, fail-closed national-team bundle.  Loading verifies the
+        # artifact and normalized snapshot checksums plus all frozen holdout
+        # gates.  Missing or stale data leaves World Cup fixtures as abstains.
+        self.international_model, international_reason = (
+            try_load_default_international_model()
+        )
+        if self.international_model is None:
+            log.warning("  International model unavailable: %s", international_reason)
+        else:
+            log.info(
+                "  International forecast-only model loaded (cutoff %s)",
+                self.international_model.training_cutoff,
+            )
+
         # v2 engine (challenger) — only if A/B test enabled
         self.ab_enabled = AB_TEST.get("enabled", False)
         if self.ab_enabled:
@@ -462,7 +928,7 @@ class PredictionPipeline:
     # ──────────────────────────────────────
 
     # ESPN league slugs
-    ESPN_LEAGUES = ["PL", "PD", "BL1", "SA", "FL1", "CL", "DED", "PPL"]
+    ESPN_LEAGUES = ["WC", "PL", "PD", "BL1", "SA", "FL1", "CL", "DED", "PPL"]
 
     def fetch_matches(self) -> List[dict]:
         """Fetch today's + upcoming + recent matches from ESPN/TheSportsDB."""
@@ -723,14 +1189,41 @@ class PredictionPipeline:
             self._stats["odds_fetched"] = len(odds)
             log.info(f"  Got {len(odds)} odds entries from Kambi")
 
-            # Match odds to our matches and write to Firestore
+            # Match odds to our matches and write to Firestore. If fixture feeds
+            # are empty, promote valid Kambi events to first-class upcoming matches.
             matched = 0
+            odds_created_matches = 0
             for od in odds:
                 oh = od.get("home_team", "")
                 oa = od.get("away_team", "")
                 
                 # Find matching match
                 m = find_match_in_list(oh, oa, self._matches)
+                if not m:
+                    m = _match_from_odds_event(od)
+                    if not m:
+                        continue
+                    mid = match_id(
+                        m.get("match_date", ""),
+                        m.get("home_team_name", ""),
+                        m.get("away_team_name", ""),
+                    )
+                    if not find_match_in_list(
+                        m.get("home_team_name", ""),
+                        m.get("away_team_name", ""),
+                        self._matches,
+                    ):
+                        self._matches.append(m)
+                        odds_created_matches += 1
+                        try:
+                            self.fs.upsert_match(m)
+                        except Exception as e:
+                            log.debug(f"  Failed to upsert Kambi fixture {oh} vs {oa}: {e}")
+                        try:
+                            self.db.upsert_match(m)
+                        except Exception as e:
+                            log.debug(f"  Failed to store Kambi fixture locally {oh} vs {oa}: {e}")
+
                 if m:
                     mid = match_id(
                         m.get("match_date", ""),
@@ -789,6 +1282,9 @@ class PredictionPipeline:
                         log.error(f"  Failed to write odds for {oh} vs {oa}: {e}")
 
             log.info(f"  Matched {matched}/{len(odds)} odds to our matches")
+            if odds_created_matches:
+                self._stats["matches_fetched"] = len(self._matches)
+                log.info(f"  Created {odds_created_matches} playable fixtures from Kambi odds")
 
             # FlashScore odds as fallback for matches without Danske Spil odds
             if self.flashscore:
@@ -1076,20 +1572,34 @@ class PredictionPipeline:
         """Run ML ensemble on all upcoming matches."""
         log.info("── Stage 4: Running ML predictions ──")
 
-        if not self.engine.is_trained:
+        upcoming = [m for m in self._matches
+                    if m.get("status") in ("SCHEDULED", "IN_PLAY", "pre")]
+        has_international = any(
+            _model_scope_abstention_reason(m.get("league_code", m.get("league", "")))
+            for m in upcoming
+        )
+        has_club_fixtures = any(
+            not _model_scope_abstention_reason(
+                m.get("league_code", m.get("league", ""))
+            )
+            for m in upcoming
+        )
+
+        if not self.engine.is_trained and has_club_fixtures:
             log.warning("  ML models not trained. Attempting to retrain...")
             try:
                 results = self.train_models()
                 if not results or not self.engine.is_trained:
-                    log.warning("  Retraining failed. Skipping ML predictions.")
-                    return {}
-                log.info("  Retraining successful, continuing with predictions.")
+                    log.warning("  Club retraining failed; international fixtures remain available.")
+                    if not has_international:
+                        return {}
+                else:
+                    log.info("  Retraining successful, continuing with predictions.")
             except Exception as e:
                 log.error(f"  Retraining failed: {e}")
-                return {}
+                if not has_international:
+                    return {}
 
-        upcoming = [m for m in self._matches
-                    if m.get("status") in ("SCHEDULED", "IN_PLAY", "pre")]
         log.info(f"  Running predictions for {len(upcoming)} upcoming matches")
 
         ml_preds = {}
@@ -1107,6 +1617,64 @@ class PredictionPipeline:
 
                 # Get team stats — dynamic season
                 league = m.get("league_code", m.get("league", "PL"))
+                abstain_reason = _model_scope_abstention_reason(league)
+                if abstain_reason:
+                    abstention = _build_international_forecast_prediction(
+                        getattr(self, "international_model", None),
+                        m,
+                        home,
+                        away,
+                        league,
+                    )
+                    if abstention is None:
+                        abstention = _build_abstention_prediction(
+                            m, home, away, league, abstain_reason
+                        )
+                    odds_map = {
+                        "home": home_odds or 0.0,
+                        "draw": draw_odds or 0.0,
+                        "away": away_odds or 0.0,
+                    }
+                    forecast_only = (
+                        abstention.get("forecast_status") == "VALIDATED_FORECAST_ONLY"
+                    )
+                    if _is_pre_match_fixture(m):
+                        self.fs.save_model_output(
+                            mid,
+                            abstention["ensemble"],
+                            confidence=0.0,
+                            model_version=abstention.get(
+                                "model_version", "international_shadow_abstain"
+                            ),
+                            odds_at_pick=odds_map,
+                            calibration=abstention.get("calibration") if forecast_only else None,
+                            context_summary=abstention.get("context_summary") if forecast_only else None,
+                            decision_status="ABSTAIN",
+                            decision_reason=abstention["decision_reason"],
+                            forecast_status=abstention.get("forecast_status"),
+                            forecast_outcome=abstention.get("forecast_outcome"),
+                            forecast_confidence=abstention.get("forecast_confidence"),
+                        )
+                    else:
+                        log.info(
+                            "  Not persisting an international output after kickoff: %s vs %s",
+                            home,
+                            away,
+                        )
+                    ml_preds[mid] = abstention
+                    log.info(
+                        "  Abstaining for %s vs %s (%s): %s",
+                        home,
+                        away,
+                        league,
+                        abstention["decision_reason"],
+                    )
+                    continue
+
+                if not self.engine.is_trained:
+                    log.warning("  Skipping club fixture because the club model is unavailable")
+                    continue
+
                 current_season = _current_season()
                 home_stats = self.db.compute_team_stats_from_matches(home, league, current_season) or {}
                 away_stats = self.db.compute_team_stats_from_matches(away, league, current_season) or {}
@@ -1200,19 +1768,44 @@ class PredictionPipeline:
                 if fair:
                     edge = {k: round(ensemble[k] - fair[k], 4) for k in ensemble}
 
-                # Determine recommended single bet from the walk-forward paper strategy.
+                verified_odds_basis = None
+                verified_odds_source = None
+                if (
+                    od
+                    and str(od.get("source") or "").strip().lower() == "danske_spil"
+                    and _is_pre_match_fixture(m)
+                    and _valid_1x2_odds(odds_map)
+                ):
+                    verified_odds_basis = "verified_pre_match_odds"
+                    verified_odds_source = "danske_spil"
+
+                # A recommendation is actionable only with a verified price
+                # captured before kickoff. The probability winner remains a
+                # diagnostic forecast and must not silently replace the pick.
                 best_outcome = max(ensemble, key=ensemble.get)
                 confidence = ensemble[best_outcome]
-                recommended_key = _paper_strategy_recommendation(
-                    league,
-                    ensemble,
-                    edge,
-                    odds_map,
-                    PAPER_TRADING,
-                )
+                recommended_key = None
+                if verified_odds_basis:
+                    recommended_key = _paper_strategy_recommendation(
+                        league,
+                        ensemble,
+                        edge,
+                        odds_map,
+                        PAPER_TRADING,
+                    )
                 recommended = recommended_key.upper() if recommended_key else None
                 if recommended_key:
                     confidence = ensemble.get(recommended_key, confidence)
+                decision_status = "BET" if recommended_key else "ABSTAIN"
+                decision_reason = (
+                    None
+                    if recommended_key
+                    else (
+                        "no_verified_pre_match_odds"
+                        if PAPER_TRADING.get("enabled", False) and not verified_odds_basis
+                        else "no_promoted_strategy"
+                    )
+                )
 
                 # Save model output
                 self.fs.save_model_output(
@@ -1220,8 +1813,12 @@ class PredictionPipeline:
                     recommended, confidence,
                     model_version=f"ensemble_v1_{len(model_results)}models",
                     odds_at_pick=odds_map,
+                    odds_basis=verified_odds_basis,
+                    odds_source=verified_odds_source,
                     calibration=calibration_meta,
                     context_summary=context_summary,
+                    decision_status=decision_status,
+                    decision_reason=decision_reason,
                 )
 
                 if recommended_key:
@@ -1259,6 +1856,13 @@ class PredictionPipeline:
                     "models": model_results,
                     "calibration": calibration_meta,
                     "context_summary": context_summary,
+                    "decision_status": decision_status,
+                    "decision_reason": decision_reason,
+                    "eligible_for_betting": bool(recommended_key and verified_odds_basis),
+                    "evaluation_mode": "forward_only" if recommended_key else None,
+                    "odds_at_pick": odds_map,
+                    "odds_basis": verified_odds_basis,
+                    "odds_source": verified_odds_source,
                 }
 
             except Exception as e:
@@ -1284,6 +1888,54 @@ class PredictionPipeline:
                     away_odds = od.get("away_odds") if od else None
 
                     league = m.get("league_code", m.get("league", "PL"))
+                    abstain_reason = _model_scope_abstention_reason(league)
+                    if abstain_reason:
+                        abstention_v2 = _build_international_forecast_prediction(
+                            getattr(self, "international_model", None),
+                            m,
+                            home,
+                            away,
+                            league,
+                        )
+                        if abstention_v2 is None:
+                            abstention_v2 = _build_abstention_prediction(
+                                m, home, away, league, abstain_reason
+                            )
+                        odds_map_v2 = {
+                            "home": home_odds or 0.0,
+                            "draw": draw_odds or 0.0,
+                            "away": away_odds or 0.0,
+                        }
+                        forecast_only_v2 = (
+                            abstention_v2.get("forecast_status")
+                            == "VALIDATED_FORECAST_ONLY"
+                        )
+                        if _is_pre_match_fixture(m):
+                            self.fs.save_model_output(
+                                f"{mid}_v2",
+                                abstention_v2["ensemble"],
+                                confidence=0.0,
+                                model_version=abstention_v2.get(
+                                    "model_version", "international_shadow_abstain_v2"
+                                ),
+                                odds_at_pick=odds_map_v2,
+                                calibration=(
+                                    abstention_v2.get("calibration")
+                                    if forecast_only_v2 else None
+                                ),
+                                context_summary=(
+                                    abstention_v2.get("context_summary")
+                                    if forecast_only_v2 else None
+                                ),
+                                decision_status="ABSTAIN",
+                                decision_reason=abstention_v2["decision_reason"],
+                                forecast_status=abstention_v2.get("forecast_status"),
+                                forecast_outcome=abstention_v2.get("forecast_outcome"),
+                                forecast_confidence=abstention_v2.get("forecast_confidence"),
+                            )
+                        ml_preds_v2[mid] = abstention_v2
+                        continue
+
                     current_season = _current_season()
                     home_stats = self.db.compute_team_stats_from_matches(home, league, current_season) or {}
                     away_stats = self.db.compute_team_stats_from_matches(away, league, current_season) or {}
@@ -1414,13 +2066,40 @@ class PredictionPipeline:
                     if fair_v2:
                         edge_v2 = {k: round(ensemble_v2[k] - fair_v2[k], 4) for k in ensemble_v2}
 
+                    verified_odds_basis_v2 = None
+                    verified_odds_source_v2 = None
+                    if (
+                        od
+                        and str(od.get("source") or "").strip().lower() == "danske_spil"
+                        and _is_pre_match_fixture(m)
+                        and _valid_1x2_odds(odds_map_v2)
+                    ):
+                        verified_odds_basis_v2 = "verified_pre_match_odds"
+                        verified_odds_source_v2 = "danske_spil"
+
                     best_outcome = max(ensemble_v2, key=ensemble_v2.get)
                     confidence_v2 = ensemble_v2[best_outcome]
                     recommended_v2 = None
-                    if edge_v2:
+                    if (
+                        verified_odds_basis_v2
+                        and PAPER_TRADING.get("enabled", False)
+                        and edge_v2
+                    ):
                         best_edge_outcome = max(edge_v2, key=edge_v2.get)
                         if edge_v2[best_edge_outcome] > 0.03 and ensemble_v2[best_edge_outcome] > 0.50:
                             recommended_v2 = best_edge_outcome.upper()
+                            confidence_v2 = ensemble_v2[best_edge_outcome]
+                    decision_status_v2 = "BET" if recommended_v2 else "ABSTAIN"
+                    decision_reason_v2 = (
+                        None
+                        if recommended_v2
+                        else (
+                            "no_verified_pre_match_odds"
+                            if PAPER_TRADING.get("enabled", False)
+                            and not verified_odds_basis_v2
+                            else "no_promoted_strategy"
+                        )
+                    )
 
                     # Save v2 model output (with _v2 suffix)
                     self.fs.save_model_output(
@@ -1428,8 +2107,12 @@ class PredictionPipeline:
                         recommended_v2, confidence_v2,
                         model_version=f"ensemble_v2_{len(model_results_v2)}models",
                         odds_at_pick=odds_map_v2,
+                        odds_basis=verified_odds_basis_v2,
+                        odds_source=verified_odds_source_v2,
                         calibration=calibration_meta_v2,
                         context_summary=context_summary_v2,
+                        decision_status=decision_status_v2,
+                        decision_reason=decision_reason_v2,
                     )
 
                     if recommended_v2:
@@ -1495,6 +2178,15 @@ class PredictionPipeline:
                         "poisson_score": poisson_score_str,
                         "btts_prob": btts_prob,
                         "over25_prob": over25_prob,
+                        "decision_status": decision_status_v2,
+                        "decision_reason": decision_reason_v2,
+                        "eligible_for_betting": bool(
+                            recommended_v2 and verified_odds_basis_v2
+                        ),
+                        "evaluation_mode": "forward_only" if recommended_v2 else None,
+                        "odds_at_pick": odds_map_v2,
+                        "odds_basis": verified_odds_basis_v2,
+                        "odds_source": verified_odds_source_v2,
                     }
                 except Exception as e:
                     log.error(f"  v2 prediction failed for {home} vs {away}: {e}")
@@ -1605,10 +2297,11 @@ class PredictionPipeline:
     # ──────────────────────────────────────
 
     def build_daily_coupon(self):
-        """Build today's Vinderkupon from model outputs + odds.
-        
-        Coupon quality filters are controlled from config/settings.py so the
-        live coupon follows the best current backtest strategy.
+        """Build today's coupon only from a strategy that passed promotion gates.
+
+        The current configuration deliberately abstains.  A future promoted
+        strategy must persist its exact recommendation and verified at-pick
+        bookmaker odds before this method can create an actionable coupon.
         """
         log.info("── Stage 6: Building daily coupon ──")
         today = date.today().strftime("%Y-%m-%d")
@@ -1635,6 +2328,16 @@ class PredictionPipeline:
         sort_by = coupon_cfg.get("sort_by", "edge_x_confidence")
         allowed_leagues = set(coupon_cfg.get("allowed_leagues", []))
         coupon_strategy = coupon_cfg.get("strategy", "walk_forward_value_coupon")
+        if coupon_strategy == "disabled_no_promoted_strategy":
+            self.fs.save_no_coupon(today, "no_promoted_strategy", {
+                "candidateCount": 0,
+                "selectedCount": 0,
+                "version": version_label,
+                "strategy": coupon_strategy,
+            })
+            self.fs.refresh_coupon_history_cache()
+            log.info("  Coupon skipped: no strategy has passed promotion gates")
+            return
 
         # Exclude leagues with negative backtest ROI (e.g. Championship)
         excluded_leagues = set(PAPER_TRADING.get("excluded_leagues", []))
@@ -1643,6 +2346,19 @@ class PredictionPipeline:
         candidates = []
         skipped_league = 0
         for mid, pred in source_preds.items():
+            # Only the saved strategy recommendation is a coupon candidate.
+            # ``max(ensemble)`` is a forecast diagnostic, not a bet.
+            recommended = _normalize_actionable_outcome(pred.get("recommended"))
+            if (
+                str(pred.get("decision_status") or "").strip().upper() != "BET"
+                or not recommended
+                or pred.get("eligible_for_betting") is not True
+                or pred.get("evaluation_mode") != "forward_only"
+                or pred.get("odds_basis") != "verified_pre_match_odds"
+                or not str(pred.get("odds_source") or "").strip()
+            ):
+                continue
+
             # Skip excluded leagues (negative ROI in backtest)
             league_code = pred.get("league", "")
             if allowed_leagues and league_code not in allowed_leagues:
@@ -1652,20 +2368,20 @@ class PredictionPipeline:
                 skipped_league += 1
                 continue
 
-            od = find_match_in_list(
-                pred["home_team"], pred["away_team"], self._odds
-            )
-            if not od:
-                continue
-
-            odds_map = {
-                "home": od.get("home_odds", 0),
-                "draw": od.get("draw_odds", 0),
-                "away": od.get("away_odds", 0),
-            }
+            # Coupon settlement uses the exact, verified price snapshot that
+            # accompanied the persisted recommendation, never a later market
+            # lookup or a model-implied price.
+            odds_map = pred.get("odds_at_pick") or {}
             h2h_meta = None
+            best_outcome = recommended.lower()
             if coupon_strategy == "historical_h2h_coupon":
-                h2h = self.db.get_h2h(pred["home_team"], pred["away_team"]) or []
+                h2h_limit = max(50, int(coupon_cfg.get("min_h2h_matches", 10)) * 4)
+                h2h = self.db.get_h2h(
+                    pred["home_team"],
+                    pred["away_team"],
+                    limit=h2h_limit,
+                    before_date=pred.get("match_date"),
+                ) or []
                 h2h_meta = _historical_h2h_coupon_pick(
                     pred["home_team"],
                     pred["away_team"],
@@ -1675,17 +2391,19 @@ class PredictionPipeline:
                 )
                 if not h2h_meta:
                     continue
-                best_outcome = h2h_meta["pick"]
+                # H2H may filter/score a promoted pick, but it cannot replace
+                # the outcome that was persisted by the prediction strategy.
+                if h2h_meta["pick"] != best_outcome:
+                    continue
                 odds_val = h2h_meta["odds"]
                 edge_val = h2h_meta["edge"]
                 selection_probability = h2h_meta["confidence"]
                 confidence_pct = selection_probability * 100
             else:
-                best_outcome = max(pred["ensemble"], key=pred["ensemble"].get)
                 odds_val = odds_map.get(best_outcome, 0)
                 edge_val = pred.get("edge", {}).get(best_outcome, 0)
                 selection_probability = pred["ensemble"].get(best_outcome, 0.33)
-                confidence_pct = pred["confidence"] * 100
+                confidence_pct = selection_probability * 100
 
             if odds_val <= 1.0:
                 continue
@@ -1724,6 +2442,11 @@ class PredictionPipeline:
                 "kelly_fraction": round(kelly_fraction, 4),
                 "version": version_label,
                 "strategy": coupon_strategy,
+                "decisionStatus": "BET",
+                "evaluationMode": "forward_only",
+                "eligibleForBetting": True,
+                "oddsBasis": "verified_pre_match_odds",
+                "oddsSource": pred.get("odds_source"),
             })
             if h2h_meta:
                 candidates[-1].update({
@@ -1822,6 +2545,7 @@ class PredictionPipeline:
 
         results_saved = 0
         results_saved_v2 = 0
+        forecast_results_saved = 0
         quota_errors = 0
         for m in finished:
             if quota_errors >= 2:
@@ -1855,41 +2579,26 @@ class PredictionPipeline:
                 mo_doc = self.fs.db.collection("model_outputs").document(mid).get()
                 if mo_doc.exists:
                     mo_data = mo_doc.to_dict()
-                    fp = mo_data.get("finalProbability", {})
-                    if fp:
-                        predicted = max(fp, key=fp.get).upper()
-                        confidence = round(mo_data.get("confidenceScore", 0.5) * 100)
-
-                        # Get odds for paper-trading P&L
-                        match_odds = model_out.get("closingOdds") or model_out.get("currentOdds") or {}
-                        pred_odds = match_odds.get(predicted.lower(), 0)
-                        odds_at_pick = (mo_data.get("oddsAtPick") or {}).get(predicted.lower(), 0)
-                        clv_pct = 0.0
-                        if odds_at_pick and pred_odds:
-                            clv_pct = round((float(odds_at_pick) / float(pred_odds) - 1.0) * 100, 2)
-                        edge_data = mo_data.get("edge", {})
-                        pred_edge = round(edge_data.get(predicted.lower(), 0) * 100, 1) if edge_data else 0
-
-                        result_doc = {
-                            "matchDate": m.get("match_date", "")[:10],
-                            "homeTeam": home,
-                            "awayTeam": away,
-                            "leagueCode": m.get("league_code", m.get("league", "")),
-                            "homeScore": hs,
-                            "awayScore": as_,
-                            "actualOutcome": actual,
-                            "predictedOutcome": predicted,
-                            "confidence": confidence,
-                            "source": "ML Ensemble v1",
-                            "isCorrect": predicted == actual,
-                            "hasModelOutput": True,
-                            # Paper-trading fields
-                            "odds": round(pred_odds, 2) if pred_odds else 0,
-                            "oddsAtPick": round(odds_at_pick, 2) if odds_at_pick else 0,
-                            "closingLineValuePct": clv_pct,
-                            "edge": pred_edge,
-                            "profit": round(pred_odds - 1, 2) if (predicted == actual and pred_odds > 0) else -1.0,
-                        }
+                    forecast_result = _build_finished_forecast_result(
+                        mid,
+                        m,
+                        mo_data,
+                        actual,
+                        hs,
+                        as_,
+                    )
+                    if forecast_result and self.fs.save_forecast_result(forecast_result):
+                        forecast_results_saved += 1
+                    result_doc = _build_finished_betting_result(
+                        m,
+                        mo_data,
+                        model_out,
+                        actual,
+                        hs,
+                        as_,
+                        "ML Ensemble v1",
+                    )
+                    if result_doc:
                         saved = self.fs.save_prediction_result(result_doc)
                         if saved:
                             results_saved += 1
@@ -1900,45 +2609,58 @@ class PredictionPipeline:
                     mo_doc_v2 = self.fs.db.collection("model_outputs").document(f"{mid}_v2").get()
                     if mo_doc_v2.exists:
                         mo_data_v2 = mo_doc_v2.to_dict()
-                        fp_v2 = mo_data_v2.get("finalProbability", {})
-                        if fp_v2:
-                            predicted_v2 = max(fp_v2, key=fp_v2.get).upper()
-                            conf_v2 = round(mo_data_v2.get("confidenceScore", 0.5) * 100)
-                            saved_v2 = self.fs.save_prediction_result({
-                                "matchDate": m.get("match_date", "")[:10],
-                                "homeTeam": home,
-                                "awayTeam": away,
-                                "leagueCode": m.get("league_code", m.get("league", "")),
-                                "homeScore": hs,
-                                "awayScore": as_,
-                                "actualOutcome": actual,
-                                "predictedOutcome": predicted_v2,
-                                "confidence": conf_v2,
-                                "source": "ML Ensemble v2",
-                                "isCorrect": predicted_v2 == actual,
-                                "hasModelOutput": True,
-                            })
+                        result_v2 = _build_finished_betting_result(
+                            m,
+                            mo_data_v2,
+                            model_out,
+                            actual,
+                            hs,
+                            as_,
+                            "ML Ensemble v2",
+                        )
+                        if result_v2:
+                            saved_v2 = self.fs.save_prediction_result(result_v2)
                             if saved_v2:
                                 results_saved_v2 += 1
                 except Exception as e:
                     log.debug(f"  v2 evaluation error for {mid}: {e}")
 
         self._stats["results_saved"] = results_saved
+        self._stats["forecast_results_saved"] = forecast_results_saved
         if self.ab_enabled:
             self._stats_v2["results_saved"] = results_saved_v2
             log.info(f"  Saved {results_saved} v1 + {results_saved_v2} v2 prediction results")
         else:
             log.info(f"  Saved {results_saved} new prediction results")
+        log.info(
+            "  Saved %s new non-betting forecast results",
+            forecast_results_saved,
+        )
 
         # Evaluate pending coupons
         try:
             self._evaluate_coupons(finished)
             self.fs.refresh_coupon_history_cache()
+            self.fs.refresh_prediction_history_cache()
+            self.fs.refresh_paper_trading_cache(
+                stake=PAPER_TRADING.get("stake_per_bet", 100),
+                bankroll=PAPER_TRADING.get("starting_bankroll", 10000),
+            )
         except Exception as e:
             if "Quota" in str(e) or "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
                 log.warning("  Skipping coupon evaluation — Firestore quota exhausted")
             else:
                 raise
+
+        # Forecast history is intentionally refreshed independently from all
+        # betting/coupon caches so a failure cannot affect either data path.
+        try:
+            self.fs.refresh_forecast_history_cache()
+        except Exception as e:
+            if "Quota" in str(e) or "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
+                log.warning("  Skipping forecast history refresh — Firestore quota exhausted")
+            else:
+                log.warning("  Forecast history cache refresh failed: %s", e)
 
     def _evaluate_coupons(self, finished_matches: list):
         """Evaluate pending daily coupons against finished matches."""
@@ -2005,7 +2727,7 @@ class PredictionPipeline:
             return
 
         # Collect predictions per source
-        source_results: Dict[str, List[Tuple[Dict, str]]] = {}  # source → [(probs, actual)]
+        source_results: Dict[str, List[Tuple[Dict, str, Dict, str]]] = {}
         for mid, actual in finished_mids:
             try:
                 preds = self.fs.get_predictions_for_match(mid)
@@ -2014,7 +2736,12 @@ class PredictionPipeline:
                     probs = p.get("probabilities", {})
                     if src not in source_results:
                         source_results[src] = []
-                    source_results[src].append((probs, actual))
+                    source_results[src].append((
+                        probs,
+                        actual,
+                        p.get("oddsAtScrape") if isinstance(p.get("oddsAtScrape"), dict) else {},
+                        str(p.get("oddsBasis") or ""),
+                    ))
             except Exception as e:
                 if "429" in str(e) or "Quota" in str(e):
                     log.warning("  Quota hit in Stage 8 — using partial data")
@@ -2030,8 +2757,9 @@ class PredictionPipeline:
             brier_sum = 0.0
             log_loss_sum = 0.0
             roi_sum = 0.0
+            roi_bets = 0
 
-            for probs, actual in results:
+            for probs, actual, odds_at_scrape, odds_basis in results:
                 predicted = max(probs, key=probs.get)
                 if predicted.upper() == actual:
                     correct += 1
@@ -2039,41 +2767,34 @@ class PredictionPipeline:
                 brier_sum += self.fs.brier_score(probs, actual)
                 log_loss_sum += self.fs.log_loss_single(probs, actual)
 
-                # ROI: use actual market odds from stored prediction data if available
-                pred_prob = probs.get(predicted.lower(), 0.33)
-                # Try to get actual market odds from prediction extra data
-                actual_odds = 0
-                try:
-                    odds_map = p.get("odds", {})
-                    if odds_map:
-                        actual_odds = odds_map.get(predicted.lower(), 0)
-                except Exception:
-                    pass
-                if actual_odds and actual_odds > 1.0:
-                    implied_odds = actual_odds
-                elif pred_prob > 0:
-                    implied_odds = 1.0 / pred_prob
-                else:
-                    implied_odds = 3.0
-                    if predicted.upper() == actual:
-                        roi_sum += (implied_odds - 1)  # profit
-                    else:
-                        roi_sum -= 1  # loss
+                # ROI is published only when a verified pre-match market price
+                # was stored with the source prediction.  Model-implied/fair
+                # odds are not bookmaker prices and must never be substituted.
+                actual_odds = (
+                    _verified_decimal_odd(odds_at_scrape.get(predicted))
+                    if odds_basis == "verified_pre_match_odds"
+                    else 0.0
+                )
+                if actual_odds:
+                    roi_bets += 1
+                    roi_sum += actual_odds - 1 if predicted.upper() == actual else -1
 
             metrics = {
                 "totalPredictions": total,
                 "correct": correct,
                 "accuracy": round(correct / total, 4) if total > 0 else 0,
-                "roi": round(roi_sum / total, 4) if total > 0 else 0,
+                "roi": round(roi_sum / roi_bets, 4) if roi_bets else None,
+                "roiBets": roi_bets,
+                "roiBasis": "verified_pre_match_odds" if roi_bets else "unavailable_no_verified_odds",
                 "brierScore": round(brier_sum / total, 4) if total > 0 else 0.5,
                 "logLoss": round(log_loss_sum / total, 4) if total > 0 else 1.0,
-                "weight": 0.1,  # Will be computed below
             }
 
             self.fs.update_source(source, metrics)
             self._stats["sources_updated"] += 1
+            roi_label = f"{metrics['roi']:.4f}" if metrics["roi"] is not None else "n/a"
             log.info(f"  {source}: accuracy={metrics['accuracy']:.1%}, "
-                     f"brier={metrics['brierScore']:.3f}, roi={metrics['roi']:.4f}")
+                     f"brier={metrics['brierScore']:.3f}, roi={roi_label}")
 
         # Compute normalized weights from inverse Brier Score
         if source_results:
@@ -2108,7 +2829,7 @@ class PredictionPipeline:
     # STAGE 9: Write backward-compatible cache
     # ──────────────────────────────────────
 
-    def write_legacy_cache(self):
+    def write_legacy_cache(self, preserve_predictions: bool = False):
         """Write to cache/ collection so the existing frontend continues to work."""
         log.info("── Stage 9: Writing legacy cache ──")
 
@@ -2134,8 +2855,14 @@ class PredictionPipeline:
         ai_preds = []
         for mid, pred in self._ml_preds.items():
             ens = pred["ensemble"]
-            best = max(ens, key=ens.get)
-            confidence = round(ens[best] * 100)
+            recommended = _normalize_actionable_outcome(pred.get("recommended"))
+            is_actionable = bool(
+                recommended
+                and str(pred.get("decision_status") or "").strip().upper() == "BET"
+            )
+            selected = recommended.lower() if recommended else None
+            confidence = round(ens.get(selected, 0) * 100) if is_actionable else 0
+            outcome = recommended if is_actionable else "ABSTAIN"
 
             ai_preds.append({
                 "matchId": mid,
@@ -2144,15 +2871,25 @@ class PredictionPipeline:
                 "league": pred["league"],
                 "match_date": pred["match_date"],
                 "kickoff": "",
-                "predicted_outcome": best.upper(),
+                "predicted_outcome": outcome,
                 "confidence": confidence,
                 "home_prob": round(ens.get("home", 0.33) * 100),
                 "draw_prob": round(ens.get("draw", 0.33) * 100),
                 "away_prob": round(ens.get("away", 0.34) * 100),
-                "sources": ["ML Ensemble"],
-                "consensus": best.upper(),
+                "sources": ["ML Ensemble"] if is_actionable else [],
+                "consensus": outcome,
+                "decision_status": pred.get("decision_status"),
+                "abstain_reason": pred.get("decision_reason"),
+                "forecast_status": pred.get("forecast_status"),
+                "forecast_outcome": pred.get("forecast_outcome"),
+                "forecast_confidence": (
+                    round(float(pred.get("forecast_confidence", 0.0)) * 100)
+                    if pred.get("forecast_status") == "VALIDATED_FORECAST_ONLY"
+                    else None
+                ),
             })
-        self.fs.write_cache("ai_predictions", ai_preds)
+        if not preserve_predictions:
+            self.fs.write_cache("ai_predictions", ai_preds)
 
         # cache/ml_predictions — odds + predictions in old format
         odds_matches = []
@@ -2161,15 +2898,24 @@ class PredictionPipeline:
                 pred["home_team"], pred["away_team"], self._odds
             )
             ens = pred["ensemble"]
-            best = max(ens, key=ens.get)
-            confidence = round(ens[best] * 100)
+            recommended = _normalize_actionable_outcome(pred.get("recommended"))
+            is_actionable = bool(
+                recommended
+                and str(pred.get("decision_status") or "").strip().upper() == "BET"
+            )
+            selected = recommended.lower() if recommended else None
+            confidence = round(ens.get(selected, 0) * 100) if is_actionable else 0
 
-            ho = od.get("home_odds", 0) if od else 0
-            do_ = od.get("draw_odds", 0) if od else 0
-            ao = od.get("away_odds", 0) if od else 0
+            ho = _verified_decimal_odd(od.get("home_odds")) if od else 0.0
+            do_ = _verified_decimal_odd(od.get("draw_odds")) if od else 0.0
+            ao = _verified_decimal_odd(od.get("away_odds")) if od else 0.0
+            has_complete_market = all(value > 1.0 for value in (ho, do_, ao))
 
             # Calculate edge
-            edge_val = pred.get("edge", {}).get(best, 0)
+            edge_val = pred.get("edge", {}).get(selected, 0) if selected else 0
+
+            if not is_actionable:
+                continue
 
             odds_matches.append({
                 "home_team": pred["home_team"],
@@ -2177,104 +2923,100 @@ class PredictionPipeline:
                 "league": pred["league"],
                 "match_date": pred["match_date"],
                 "kickoff": "",
-                "odds_1": ho if ho else round(100 / max(ens.get("home", 0.33) * 100, 1), 2),
-                "odds_x": do_ if do_ else round(100 / max(ens.get("draw", 0.33) * 100, 1), 2),
-                "odds_2": ao if ao else round(100 / max(ens.get("away", 0.34) * 100, 1), 2),
-                "ai_prediction": best.upper(),
+                "odds_1": ho,
+                "odds_x": do_,
+                "odds_2": ao,
+                "odds_available": has_complete_market,
+                "ai_prediction": recommended,
                 "ai_confidence": confidence,
-                "value_bet": edge_val > 0.03,
-                "value_edge": round(edge_val * 100, 1),
+                "value_bet": has_complete_market and edge_val > 0.03,
+                "value_edge": round(edge_val * 100, 1) if has_complete_market else 0,
             })
 
-        self.fs.write_cache("ml_predictions", {
-            "predictions": ai_preds,
-            "odds_matches": odds_matches,
-        })
+        if not preserve_predictions:
+            self.fs.write_cache("ml_predictions", {
+                "predictions": ai_preds,
+                "odds_matches": odds_matches,
+            })
+            self.fs.write_cache("model_breakdown", build_model_breakdown(self._ml_preds))
         try:
             self.fs.refresh_coupon_history_cache()
         except Exception as e:
             log.warning(f"  Coupon history cache refresh failed: {e}")
 
-        # cache/paper_trading — live P&L tracker
+        # Performance caches — history and live paper-trading P&L
         try:
-            all_results = self.fs.get_all_prediction_results(limit=2000)
-            if all_results:
-                pt_cfg = PAPER_TRADING
-                stake = pt_cfg.get("stake_per_bet", 100)
-                bankroll = pt_cfg.get("starting_bankroll", 10000)
-
-                total_bets = 0
-                total_won = 0
-                total_profit = 0.0
-                by_league: Dict[str, Dict] = {}
-                equity_curve = []
-                running_profit = 0.0
-
-                # Sort by date for equity curve
-                sorted_results = sorted(all_results, key=lambda r: r.get("matchDate", ""))
-
-                for r in sorted_results:
-                    odds = r.get("odds", 0)
-                    if not odds or odds <= 0:
-                        continue  # skip results without odds data
-
-                    total_bets += 1
-                    is_correct = r.get("isCorrect", False)
-                    if is_correct:
-                        total_won += 1
-                        bet_profit = (odds - 1) * stake
-                    else:
-                        bet_profit = -stake
-
-                    total_profit += bet_profit
-                    running_profit += bet_profit
-
-                    league = r.get("leagueCode", "UNK")
-                    if league not in by_league:
-                        by_league[league] = {"bets": 0, "won": 0, "profit": 0.0}
-                    by_league[league]["bets"] += 1
-                    if is_correct:
-                        by_league[league]["won"] += 1
-                    by_league[league]["profit"] += bet_profit
-
-                    equity_curve.append({
-                        "date": r.get("matchDate", ""),
-                        "profit": round(running_profit),
-                    })
-
-                # Compute per-league ROI
-                league_stats = []
-                for lg, stats in sorted(by_league.items(), key=lambda x: x[1]["profit"], reverse=True):
-                    staked = stats["bets"] * stake
-                    league_stats.append({
-                        "league": lg,
-                        "bets": stats["bets"],
-                        "won": stats["won"],
-                        "hitRate": round(stats["won"] / stats["bets"] * 100) if stats["bets"] else 0,
-                        "profit": round(stats["profit"]),
-                        "roi": round(stats["profit"] / staked * 100, 1) if staked else 0,
-                    })
-
-                staked_total = total_bets * stake
-                self.fs.write_cache("paper_trading", {
-                    "startingBankroll": bankroll,
-                    "stakePerBet": stake,
-                    "totalBets": total_bets,
-                    "totalWon": total_won,
-                    "hitRate": round(total_won / total_bets * 100, 1) if total_bets else 0,
-                    "totalProfit": round(total_profit),
-                    "totalStaked": staked_total,
-                    "roi": round(total_profit / staked_total * 100, 1) if staked_total else 0,
-                    "currentBankroll": bankroll + round(total_profit),
-                    "byLeague": league_stats,
-                    "equityCurve": equity_curve[-100:],  # last 100 data points
-                })
-                log.info(f"  Paper trading: {total_bets} bets, P&L {total_profit:+.0f} DKK, ROI {total_profit/staked_total*100:+.1f}%" if staked_total else "  Paper trading: no bets with odds data")
+            self.fs.refresh_prediction_history_cache()
+            paper = self.fs.refresh_paper_trading_cache(
+                stake=PAPER_TRADING.get("stake_per_bet", 100),
+                bankroll=PAPER_TRADING.get("starting_bankroll", 10000),
+            )
+            log.info(
+                "  Paper trading: %s bets, P&L %+.0f DKK, ROI %+.1f%%",
+                paper["totalBets"],
+                paper["totalProfit"],
+                paper["roi"],
+            )
         except Exception as e:
             log.debug(f"  Paper trading cache skipped: {e}")
 
-        log.info(f"  Wrote {len(upcoming)} matches, {len(ai_preds)} predictions, "
+        try:
+            self.fs.refresh_forecast_history_cache()
+        except Exception as e:
+            log.debug(f"  Forecast history cache skipped: {e}")
+
+        try:
+            self.fs.refresh_source_weights_cache()
+        except Exception as e:
+            log.warning(f"  Source weights cache refresh failed: {e}")
+
+        prediction_note = "preserved" if preserve_predictions else str(len(ai_preds))
+        log.info(f"  Wrote {len(upcoming)} matches, {prediction_note} predictions, "
                  f"{len(odds_matches)} odds_matches to cache")
+
+    def refresh_public_performance_caches(self):
+        """Rebuild historical/statistical caches after evaluation finishes."""
+        refreshers = (
+            ("coupon_history", self.fs.refresh_coupon_history_cache),
+            ("prediction_history", self.fs.refresh_prediction_history_cache),
+            (
+                "paper_trading",
+                lambda: self.fs.refresh_paper_trading_cache(
+                    stake=PAPER_TRADING.get("stake_per_bet", 100),
+                    bankroll=PAPER_TRADING.get("starting_bankroll", 10000),
+                ),
+            ),
+            ("forecast_history", self.fs.refresh_forecast_history_cache),
+            ("strategy_zoo", self.fs.refresh_strategy_zoo_cache),
+            ("source_weights", self.fs.refresh_source_weights_cache),
+        )
+        for cache_id, refresh in refreshers:
+            try:
+                refresh()
+            except Exception as e:
+                log.warning("  Final %s cache refresh failed: %s", cache_id, e)
+
+    def sync_public_cache(self, *, mode: str):
+        """Publish staged caches and fail the run if the website stays stale."""
+        try:
+            result = self.fs.sync_public_cache(mode=mode)
+        except Exception as e:
+            # Keep the exception deliberately generic: sync credentials must
+            # never be copied into pipeline logs.
+            log.error(
+                "PUBLIC CACHE NOT SYNCED (unexpected_%s). Firestore remains current; "
+                "aibets.dk may be stale.",
+                type(e).__name__,
+            )
+            self._stats["public_cache_synced"] = False
+            self._stats["public_cache_sync_reason"] = "unexpected_error"
+            raise PublicCacheSyncFailed("public_cache_sync_failed:unexpected_error") from e
+        self._stats["public_cache_synced"] = bool(result.synced)
+        self._stats["public_cache_sync_reason"] = result.reason
+        self._stats["public_cache_sync_attempted_at"] = result.attempted_at
+        if not result.synced:
+            raise PublicCacheSyncFailed(f"public_cache_sync_failed:{result.reason}")
+        return result
 
     # ──────────────────────────────────────
     # MAIN RUN
@@ -2327,6 +3069,12 @@ class PredictionPipeline:
         except Exception as e:
             log.warning(f"  Source performance update failed (quota?): {e}")
 
+        # The early cache write keeps today's predictions available even if a
+        # later Firestore stage fails.  Rebuild performance caches again here
+        # so history, P&L and source metrics include this run's evaluations.
+        self.refresh_public_performance_caches()
+        self.sync_public_cache(mode="full")
+
         elapsed = (datetime.now() - start).total_seconds()
         log.info("═══════════════════════════════════════")
         log.info(f"Pipeline complete in {elapsed:.1f}s")
@@ -2350,7 +3098,8 @@ class PredictionPipeline:
         self.fetch_matches()
         self.enrich_match_context()
         self.fetch_odds()
-        self.write_legacy_cache()
+        self.write_legacy_cache(preserve_predictions=True)
+        self.sync_public_cache(mode="odds")
 
     def run_evaluate_only(self):
         """Just evaluate finished matches."""
@@ -2363,6 +3112,15 @@ class PredictionPipeline:
                 log.warning("  Evaluate stage aborted — Firestore quota exhausted")
             else:
                 raise
+        try:
+            self.update_source_performance()
+        except Exception as e:
+            if "Quota" in str(e) or "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
+                log.warning("  Source performance update skipped — Firestore quota exhausted")
+            else:
+                log.warning("  Source performance update failed: %s", e)
+        self.refresh_public_performance_caches()
+        self.sync_public_cache(mode="evaluate")
 
     def run_context_only(self):
         """Just refresh lineup/injury/player context."""

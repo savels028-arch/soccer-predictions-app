@@ -7,6 +7,7 @@ Source: https://www.football-data.co.uk/
 Covers: 25+ leagues, 20+ seasons, with odds from 6+ bookmakers.
 """
 import csv
+import hashlib
 import io
 import logging
 from pathlib import Path
@@ -24,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 def _season_code_for_year(season: int) -> Optional[str]:
     """Convert season start year to Football-Data URL code."""
-    if 2000 <= season <= 2030:
+    if 1993 <= season <= 2030:
         s1 = str(season)[2:]
         s2 = str(season + 1)[2:]
         return f"{s1}{s2}"
@@ -51,13 +52,15 @@ class FootballDataCSVClient:
         "FL1": "F1",    # France Ligue 1
         "DED": "N1",    # Netherlands Eredivisie
         "PPL": "P1",    # Portugal Primeira Liga
-        "BSA": "B1",    # Belgium Jupiler League (not Brazil)
+        # B1 is Belgium.  Never expose it as BSA: that app code correctly
+        # means Brazil Serie A in every live feed.
+        "BEL1": "B1",
     }
 
     # Season codes: 2024/25 = "2425", 2000/01 = "0001", etc.
     AVAILABLE_SEASONS = [
         (season, _season_code_for_year(season))
-        for season in range(2025, 1999, -1)
+        for season in range(2025, 1992, -1)
     ]
 
     def __init__(self):
@@ -166,6 +169,12 @@ class FootballDataCSVClient:
             reader = csv.DictReader(io.StringIO(csv_text))
 
             league_info = LEAGUES.get(league_code, {})
+            if league_code == "BEL1":
+                league_info = {
+                    "name": "Belgian First Division A",
+                    "country": "Belgium",
+                    "emoji": "🇧🇪",
+                }
 
             for row in reader:
                 match = self._normalize_csv_row(row, league_code, league_info, season)
@@ -197,15 +206,32 @@ class FootballDataCSVClient:
             time_str = row.get("Time", "15:00")
             match_date = self._parse_date(date_str, time_str)
 
-            # Parse odds (Bet365 as primary, with fallbacks)
-            home_odds = self._safe_float(row.get("B365H")) or self._safe_float(row.get("BWH")) or self._safe_float(row.get("PSH"))
-            draw_odds = self._safe_float(row.get("B365D")) or self._safe_float(row.get("BWD")) or self._safe_float(row.get("PSD"))
-            away_odds = self._safe_float(row.get("B365A")) or self._safe_float(row.get("BWA")) or self._safe_float(row.get("PSA"))
+            # Parse a complete 1X2 quote from one bookmaker. Never mix the
+            # home price from one bookmaker with draw/away prices from another.
+            home_odds, draw_odds, away_odds = self._first_complete_odds(
+                row,
+                [
+                    ("B365H", "B365D", "B365A"),
+                    ("BWH", "BWD", "BWA"),
+                    ("PSH", "PSD", "PSA"),
+                    ("WHH", "WHD", "WHA"),
+                    ("IWH", "IWD", "IWA"),
+                    ("GBH", "GBD", "GBA"),
+                    ("LBH", "LBD", "LBA"),
+                    ("SBH", "SBD", "SBA"),
+                    ("SJH", "SJD", "SJA"),
+                    ("VCH", "VCD", "VCA"),
+                ],
+            )
 
-            # Average odds (most accurate for value betting)
-            avg_home_odds = self._safe_float(row.get("AvgH"))
-            avg_draw_odds = self._safe_float(row.get("AvgD"))
-            avg_away_odds = self._safe_float(row.get("AvgA"))
+            # Football-Data used BbAv*/BbMx* before the newer Avg*/Max*
+            # column names. Preserve both eras for consistent research.
+            avg_home_odds = self._first_float(row, "AvgH", "BbAvH")
+            avg_draw_odds = self._first_float(row, "AvgD", "BbAvD")
+            avg_away_odds = self._first_float(row, "AvgA", "BbAvA")
+            max_home_odds = self._first_float(row, "MaxH", "BbMxH")
+            max_draw_odds = self._first_float(row, "MaxD", "BbMxD")
+            max_away_odds = self._first_float(row, "MaxA", "BbMxA")
 
             # Match stats
             extra_data = {
@@ -233,9 +259,9 @@ class FootballDataCSVClient:
                 "avg_home_odds": avg_home_odds,
                 "avg_draw_odds": avg_draw_odds,
                 "avg_away_odds": avg_away_odds,
-                "max_home_odds": self._safe_float(row.get("MaxH")),
-                "max_draw_odds": self._safe_float(row.get("MaxD")),
-                "max_away_odds": self._safe_float(row.get("MaxA")),
+                "max_home_odds": max_home_odds,
+                "max_draw_odds": max_draw_odds,
+                "max_away_odds": max_away_odds,
                 "b365_close_home": self._safe_float(row.get("B365CH")),
                 "b365_close_draw": self._safe_float(row.get("B365CD")),
                 "b365_close_away": self._safe_float(row.get("B365CA")),
@@ -248,13 +274,51 @@ class FootballDataCSVClient:
                 # Over/under 2.5
                 "b365_over25": self._safe_float(row.get("B365>2.5")),
                 "b365_under25": self._safe_float(row.get("B365<2.5")),
+                "pinnacle_over25": self._safe_float(row.get("P>2.5")),
+                "pinnacle_under25": self._safe_float(row.get("P<2.5")),
+                "avg_over25": self._first_float(row, "Avg>2.5", "BbAv>2.5"),
+                "avg_under25": self._first_float(row, "Avg<2.5", "BbAv<2.5"),
+                "max_over25": self._first_float(row, "Max>2.5", "BbMx>2.5"),
+                "max_under25": self._first_float(row, "Max<2.5", "BbMx<2.5"),
+                "b365_close_over25": self._safe_float(row.get("B365C>2.5")),
+                "b365_close_under25": self._safe_float(row.get("B365C<2.5")),
+                "avg_close_over25": self._safe_float(row.get("AvgC>2.5")),
+                "avg_close_under25": self._safe_float(row.get("AvgC<2.5")),
+                "max_close_over25": self._safe_float(row.get("MaxC>2.5")),
+                "max_close_under25": self._safe_float(row.get("MaxC<2.5")),
+                # Asian handicap (home line and two-way prices). Older files
+                # pair B365AHH/AHA with Bet365's own B365AH line. AHh/BbAHh
+                # is the shared market/Betbrain line and must stay separate.
+                "asian_handicap_line": self._first_float(row, "AHh", "BbAHh"),
+                "b365_asian_line": self._safe_float(row.get("B365AH")),
+                "b365_asian_home": self._safe_float(row.get("B365AHH")),
+                "b365_asian_away": self._safe_float(row.get("B365AHA")),
+                "pinnacle_asian_home": self._safe_float(row.get("PAHH")),
+                "pinnacle_asian_away": self._safe_float(row.get("PAHA")),
+                "avg_asian_home": self._first_float(row, "AvgAHH", "BbAvAHH"),
+                "avg_asian_away": self._first_float(row, "AvgAHA", "BbAvAHA"),
+                "max_asian_home": self._first_float(row, "MaxAHH", "BbMxAHH"),
+                "max_asian_away": self._first_float(row, "MaxAHA", "BbMxAHA"),
+                "asian_handicap_close_line": self._safe_float(row.get("AHCh")),
+                "b365_close_asian_home": self._safe_float(row.get("B365CAHH")),
+                "b365_close_asian_away": self._safe_float(row.get("B365CAHA")),
+                "pinnacle_close_asian_home": self._safe_float(row.get("PCAHH")),
+                "pinnacle_close_asian_away": self._safe_float(row.get("PCAHA")),
+                "avg_close_asian_home": self._safe_float(row.get("AvgCAHH")),
+                "avg_close_asian_away": self._safe_float(row.get("AvgCAHA")),
+                "max_close_asian_home": self._safe_float(row.get("MaxCAHH")),
+                "max_close_asian_away": self._safe_float(row.get("MaxCAHA")),
                 # Result
                 "ftr": row.get("FTR", ""),  # H, D, A
                 "htr": row.get("HTR", ""),  # Half-time result
             }
 
             # Generate a stable ID
-            api_id = hash(f"{league_code}_{season}_{match_date}_{home}_{away}") % 10000000
+            stable_key = f"{league_code}|{season}|{match_date}|{home}|{away}"
+            api_id = int.from_bytes(
+                hashlib.sha256(stable_key.encode("utf-8")).digest()[:8],
+                "big",
+            ) & ((1 << 63) - 1)
 
             return {
                 "api_id": api_id,
@@ -314,6 +378,24 @@ class FootballDataCSVClient:
             return round(float(val), 2)
         except (ValueError, TypeError):
             return None
+
+    def _first_float(self, row: Dict, *keys: str) -> Optional[float]:
+        for key in keys:
+            value = self._safe_float(row.get(key))
+            if value is not None:
+                return value
+        return None
+
+    def _first_complete_odds(self, row: Dict, triples) -> tuple:
+        for home_key, draw_key, away_key in triples:
+            odds = (
+                self._safe_float(row.get(home_key)),
+                self._safe_float(row.get(draw_key)),
+                self._safe_float(row.get(away_key)),
+            )
+            if all(value is not None and value > 1.0 for value in odds):
+                return odds
+        return None, None, None
 
     def is_available(self) -> bool:
         """Check if football-data.co.uk is reachable."""

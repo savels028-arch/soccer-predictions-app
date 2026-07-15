@@ -101,6 +101,60 @@ python run_pipeline.py --context-only     # Hent lineups/skader/spillerdata
 python run_pipeline.py --watch            # Kør løbende hvert 15. minut
 ```
 
+### Privat lokal drift uden Vercel/GitHub Actions
+
+Hvis siden kun skal bruges privat, kan din Mac selv opdatere data og du kan åbne
+siden lokalt.
+
+```bash
+# Start hjemmesiden lokalt
+scripts/start-local-site.sh
+
+# Kør en fuld dataopdatering manuelt
+scripts/run-local-pipeline.sh
+
+# Installer automatisk lokal opdatering via macOS launchd
+scripts/install-local-scheduler.sh
+```
+
+Hvis projektet ligger under `~/Desktop`, kan macOS blokere `launchd` med
+`Operation not permitted`. Brug i stedet en driftskopi uden for Desktop:
+
+```bash
+mkdir -p ~/AIBets
+rsync -a --exclude .git --exclude deploy/node_modules --exclude deploy/.next \
+  ./ ~/AIBets/soccer-predictions-app/
+cd ~/AIBets/soccer-predictions-app
+scripts/install-local-scheduler.sh
+```
+
+Den lokale scheduler kører når Mac'en er vågen:
+
+- daglig full pipeline kl. 08:30
+- odds snapshot kl. 12:00
+- resultatevaluering kl. 23:15
+- retraining mandag kl. 07:00
+
+Stop scheduler igen med:
+
+```bash
+scripts/uninstall-local-scheduler.sh
+```
+
+## 🔬 Reproducerbar strategi-research
+
+Det isolerede research-lag tester 1X2 og over/under 2,5 med point-in-time
+features, nested walk-forward, en låst tre-sæsoners holdout og faste
+promotion-gates. Det ændrer aldrig live-predictions automatisk. Se
+[metode, CLI, datadækning og aktuelle resultater](research/README.md).
+
+Den offentlige Strategy Zoo-side bruger et separat, valideret artifact med 46
+faste strategier og sæsonresultater fra 1993/94 til 2025/26. Hver sæson starter
+med et grundkort over 1X2, målgrænser og holdfavoritternes W/D/L, før ROI og
+modstrategier vises. Genbyg det med `venv/bin/python -m research.run_pattern_zoo`.
+Ufuldstændige sæsoner sættes i karantæne, og fraværende bookmaker-odds bliver
+aldrig udfyldt med beregnet P&L.
+
 ### Med API nøgler
 
 ```bash
@@ -156,6 +210,7 @@ soccer-predictions-app/
 ├── config/
 │   ├── __init__.py
 │   └── settings.py              # ⚙️ App konfiguration
+├── research/                    # 🔬 Leakage-free strategi-research og CLI
 ├── src/
 │   ├── __init__.py
 │   ├── api/
@@ -178,6 +233,8 @@ soccer-predictions-app/
 ├── data/
 │   ├── db/                           # 💾 SQLite database filer
 │   ├── models/                       # 🧠 Gemte ML modeller
+│   ├── research/                     # 🔬 Genererede research-runs og feature-cache
+│   ├── strategy_zoo_public.json      # 📈 Valideret public Strategy Zoo-artifact
 │   └── cache/                        # 📦 API cache
 └── logs/                             # 📋 Log filer
 ```

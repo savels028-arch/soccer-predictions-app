@@ -5,6 +5,7 @@ New collection schema (replaces flat cache):
   matches/{matchId}        — Canonical match records with results + closing odds
   predictions/{autoId}     — Per-source per-match predictions with probabilities
   model_outputs/{autoId}   — Meta-model / ensemble final predictions
+  forecast_results/{id}    — Evaluated international forecasts (never bets)
   sources/{sourceName}     — Source performance metrics + weights
   model_features/{matchId} — Pre-computed ML features for meta-model
   daily_coupons/{date}     — Daily coupon picks (kept from old schema)
@@ -17,13 +18,209 @@ import re
 import json
 import math
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, List, Any
 
 import firebase_admin
 from firebase_admin import credentials, firestore
 
+from src.public_cache_sync import (
+    PublicCacheSyncResult,
+    public_cache_document_ids,
+    sync_public_cache as publish_public_cache,
+    utc_now_iso,
+)
+
 log = logging.getLogger("firestore_writer")
+
+VALIDATED_FORECAST_ONLY = "VALIDATED_FORECAST_ONLY"
+NON_BETTING_FORECAST_SCOPE = "NON_BETTING_FORECAST"
+PUBLIC_CACHE_DOCUMENT_IDS = public_cache_document_ids()
+
+
+def _normalize_betting_outcome(value: Any) -> Optional[str]:
+    """Return the canonical 1X2 betting outcome, or ``None``.
+
+    Keeping this normalization at the persistence boundary prevents callers
+    from accidentally turning a diagnostic model winner into an actionable
+    pick merely because two outcome-label conventions are in use.
+    """
+    normalized = str(value or "").strip().upper()
+    aliases = {
+        "1": "HOME",
+        "HOME": "HOME",
+        "HOME_WIN": "HOME",
+        "X": "DRAW",
+        "DRAW": "DRAW",
+        "2": "AWAY",
+        "AWAY": "AWAY",
+        "AWAY_WIN": "AWAY",
+    }
+    return aliases.get(normalized)
+
+
+def _verified_pick_odd(value: Any) -> Optional[float]:
+    try:
+        odd = float(value)
+    except (TypeError, ValueError):
+        return None
+    return odd if math.isfinite(odd) and odd > 1.0 else None
+
+
+def _forecast_timestamp_epoch(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        parsed = value if isinstance(value, datetime) else datetime.fromisoformat(
+            str(value).replace("Z", "+00:00")
+        )
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.timestamp()
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _validated_forecast_probabilities(raw: Any) -> Optional[Dict[str, float]]:
+    if not isinstance(raw, dict):
+        return None
+    try:
+        probabilities = {
+            key: float(raw.get(key)) for key in ("home", "draw", "away")
+        }
+    except (TypeError, ValueError):
+        return None
+    if any(
+        not math.isfinite(value) or value <= 0 or value >= 1
+        for value in probabilities.values()
+    ):
+        return None
+    total = sum(probabilities.values())
+    if not 0.99 <= total <= 1.01:
+        return None
+    return {key: value / total for key, value in probabilities.items()}
+
+
+def build_forecast_history_payload(results: list) -> dict:
+    """Build isolated performance history for validated, non-betting forecasts.
+
+    This payload is deliberately incompatible with ``prediction_history`` and
+    ``paper_trading``: it has forecast-specific field names and contains no
+    odds, stakes, profit or ROI fields.  That makes accidental mixing into the
+    betting feedback loop much harder.
+    """
+    valid_results = []
+    for raw in results:
+        status = str(raw.get("forecastStatus") or "").strip().upper()
+        decision = str(raw.get("decisionStatus") or "").strip().upper()
+        scope = str(raw.get("evaluationScope") or "").strip().upper()
+        outcome = str(raw.get("forecastOutcome") or "").strip().upper()
+        actual = str(raw.get("actualOutcome") or "").strip().upper()
+        if (
+            status != VALIDATED_FORECAST_ONLY
+            or decision != "ABSTAIN"
+            or scope != NON_BETTING_FORECAST_SCOPE
+            or outcome not in {"HOME", "DRAW", "AWAY"}
+            or actual not in {"HOME", "DRAW", "AWAY"}
+            or not raw.get("forecastGeneratedAt")
+        ):
+            continue
+
+        generated_epoch = _forecast_timestamp_epoch(raw.get("forecastGeneratedAt"))
+        kickoff_epoch = _forecast_timestamp_epoch(raw.get("matchDate"))
+        probabilities = _validated_forecast_probabilities(raw.get("probabilities"))
+        try:
+            confidence = float(raw.get("forecastConfidence"))
+        except (TypeError, ValueError):
+            continue
+        if (
+            generated_epoch is None
+            or kickoff_epoch is None
+            or generated_epoch > kickoff_epoch
+            or probabilities is None
+            or not math.isfinite(confidence)
+            or confidence < 0
+            or confidence > 100
+            or outcome != max(probabilities, key=probabilities.get).upper()
+        ):
+            continue
+
+        actual_vector = {"home": 0.0, "draw": 0.0, "away": 0.0}
+        actual_vector[actual.lower()] = 1.0
+        brier_score = sum(
+            (probabilities[key] - actual_vector[key]) ** 2
+            for key in probabilities
+        )
+        log_loss = -math.log(max(probabilities[actual.lower()], 1e-15))
+
+        # Explicit allow-list: never copy betting fields into this cache.
+        result = {
+            "matchId": raw.get("matchId"),
+            "matchDate": raw.get("matchDate"),
+            "homeTeam": raw.get("homeTeam"),
+            "awayTeam": raw.get("awayTeam"),
+            "leagueCode": raw.get("leagueCode"),
+            "homeScore": raw.get("homeScore"),
+            "awayScore": raw.get("awayScore"),
+            "actualOutcome": actual,
+            "forecastOutcome": outcome,
+            "forecastConfidence": round(confidence, 1),
+            "probabilities": {
+                key: round(value, 4) for key, value in probabilities.items()
+            },
+            "isCorrect": outcome == actual,
+            "brierScore": round(brier_score, 4),
+            "logLoss": round(log_loss, 4),
+            "modelVersion": raw.get("modelVersion"),
+            "forecastStatus": VALIDATED_FORECAST_ONLY,
+            "decisionStatus": "ABSTAIN",
+            "evaluationScope": NON_BETTING_FORECAST_SCOPE,
+            "forecastGeneratedAt": raw.get("forecastGeneratedAt"),
+        }
+        valid_results.append(result)
+
+    total = len(valid_results)
+    correct = sum(1 for result in valid_results if result["isCorrect"])
+    avg_confidence = (
+        sum(result["forecastConfidence"] for result in valid_results) / total
+        if total else 0
+    )
+    avg_brier = (
+        sum(result["brierScore"] for result in valid_results) / total
+        if total else 0
+    )
+    avg_log_loss = (
+        sum(result["logLoss"] for result in valid_results) / total
+        if total else 0
+    )
+    by_competition: Dict[str, Dict[str, int]] = {}
+    for result in valid_results:
+        league = result.get("leagueCode") or "Ukendt"
+        stats = by_competition.setdefault(league, {"total": 0, "correct": 0})
+        stats["total"] += 1
+        stats["correct"] += int(result["isCorrect"])
+
+    return {
+        "summary": {
+            "totalForecasts": total,
+            "correctForecasts": correct,
+            "forecastAccuracy": round(correct / total * 100, 1) if total else 0,
+            "averageConfidence": round(avg_confidence, 1),
+            "averageBrierScore": round(avg_brier, 4),
+            "averageLogLoss": round(avg_log_loss, 4),
+            "byCompetition": [
+                {
+                    "competition": competition,
+                    "total": stats["total"],
+                    "correct": stats["correct"],
+                    "accuracy": round(stats["correct"] / stats["total"] * 100, 1),
+                }
+                for competition, stats in sorted(by_competition.items())
+            ],
+        },
+        "results": valid_results,
+        "scope": NON_BETTING_FORECAST_SCOPE,
+    }
 
 
 def build_coupon_history_payload(coupons: list) -> dict:
@@ -49,12 +246,22 @@ def build_coupon_history_payload(coupons: list) -> dict:
             "pickResults": pick_results,
             "reason": data.get("reason"),
             "candidateCount": data.get("candidateCount"),
+            "oddsBasis": data.get("oddsBasis"),
+            "oddsSource": data.get("oddsSource"),
+            "evaluationMode": data.get("evaluationMode"),
+            "eligibleForBetting": data.get("eligibleForBetting") is True,
         })
 
     won = sum(1 for c in valid_coupons if c["status"] == "won")
     lost = sum(1 for c in valid_coupons if c["status"] == "lost")
     pending = sum(1 for c in valid_coupons if c["status"] == "pending")
     skipped = sum(1 for c in valid_coupons if c["status"] == "skipped")
+    coupons_with_picks = [c for c in valid_coupons if c.get("picks")]
+    verified_odds_coupons = sum(
+        1
+        for coupon in coupons_with_picks
+        if coupon.get("oddsBasis") == "verified_pre_match_odds"
+    )
     decided = won + lost
 
     total_picks = 0
@@ -93,6 +300,8 @@ def build_coupon_history_payload(coupons: list) -> dict:
         "lost": lost,
         "pending": pending,
         "skipped": skipped,
+        "verifiedOddsCoupons": verified_odds_coupons,
+        "excludedUnverifiedCoupons": len(coupons_with_picks) - verified_odds_coupons,
         "winRate": round((won / decided) * 100) if decided else 0,
         "totalPicks": total_picks,
         "correctPicks": correct_picks,
@@ -100,6 +309,65 @@ def build_coupon_history_payload(coupons: list) -> dict:
         "leagueStats": league_stats,
         "coupons": valid_coupons,
     }
+
+
+def build_source_weights_payload(
+    source_metrics: Dict[str, Dict[str, Any]],
+    prediction_results: List[Dict[str, Any]],
+) -> Dict[str, Dict[str, Any]]:
+    """Merge real source metrics with evaluated ensemble performance.
+
+    No default accuracy or weight is invented.  Existing source weights come
+    directly from Firestore, while the ensemble rows are calculated only from
+    persisted, evaluated prediction results.
+    """
+
+    payload: Dict[str, Dict[str, Any]] = {}
+    for name, raw_metrics in source_metrics.items():
+        if not isinstance(raw_metrics, dict):
+            continue
+        metrics = dict(raw_metrics)
+        # Legacy source docs sometimes contain ROI calculated from model-implied
+        # odds.  Do not republish it unless its verified price basis is explicit.
+        if metrics.get("roiBasis") != "verified_pre_match_odds":
+            metrics["roi"] = None
+            metrics["roiBets"] = 0
+            metrics["roiBasis"] = "unavailable_no_verified_odds"
+        try:
+            sample_size = int(metrics.get("totalPredictions") or 0)
+            brier = float(metrics.get("brierScore"))
+        except (TypeError, ValueError):
+            sample_size = 0
+            brier = float("nan")
+        if sample_size < 3 or not math.isfinite(brier):
+            metrics.pop("weight", None)
+        payload[str(name)] = metrics
+    valid_results = [
+        result
+        for result in prediction_results
+        if isinstance(result, dict) and not FirestoreWriter._is_abstention_result(result)
+    ]
+    grouped: Dict[str, List[Dict[str, Any]]] = {}
+    for result in valid_results:
+        source = str(result.get("source") or "ML Ensemble").strip() or "ML Ensemble"
+        grouped.setdefault(source, []).append(result)
+    if valid_results:
+        grouped["ML Ensemble"] = valid_results
+
+    for source, results in grouped.items():
+        total = len(results)
+        correct = sum(1 for result in results if bool(result.get("isCorrect")))
+        metrics = dict(payload.get(source, {}))
+        if source.startswith("ML Ensemble"):
+            metrics.pop("weight", None)
+        metrics.update({
+            "correct": correct,
+            "totalPredictions": total,
+            "accuracy": round(correct / total, 4) if total else 0,
+        })
+        payload[source] = metrics
+
+    return payload
 
 
 # ──────────────────────────────────────────
@@ -137,6 +405,8 @@ class FirestoreWriter:
             cred = self._get_credentials()
             firebase_admin.initialize_app(cred)
         self.db = firestore.client()
+        self._public_cache_envelopes: Dict[str, Dict[str, Any]] = {}
+        self.public_cache_sync_status: Optional[PublicCacheSyncResult] = None
         log.info("Firestore client initialized")
 
     def _get_credentials(self):
@@ -333,9 +603,35 @@ class FirestoreWriter:
                           confidence: float = 0.0,
                           model_version: str = "v1",
                           odds_at_pick: Dict[str, float] = None,
+                          odds_basis: str = None,
+                          odds_source: str = None,
                           calibration: Dict[str, Any] = None,
-                          context_summary: Dict[str, Any] = None) -> str:
+                          context_summary: Dict[str, Any] = None,
+                          decision_status: str = None,
+                          decision_reason: str = None,
+                          forecast_status: str = None,
+                          forecast_outcome: str = None,
+                          forecast_confidence: float = None) -> str:
         """Save meta-model / ensemble output for a match."""
+        recommended = _normalize_betting_outcome(recommended_bet)
+        normalized_decision = str(decision_status or "").strip().upper()
+        selected_odd = (
+            _verified_pick_odd((odds_at_pick or {}).get(recommended.lower()))
+            if recommended
+            else None
+        )
+        actionable = bool(
+            recommended
+            and normalized_decision == "BET"
+            and odds_basis == "verified_pre_match_odds"
+            and str(odds_source or "").strip()
+            and selected_odd
+            and forecast_status != VALIDATED_FORECAST_ONLY
+        )
+        if normalized_decision == "BET" and not actionable:
+            normalized_decision = "ABSTAIN"
+            decision_reason = decision_reason or "unverified_or_missing_pick_odds"
+
         doc: Dict[str, Any] = {
             "matchId": mid,
             "generatedAt": firestore.SERVER_TIMESTAMP,
@@ -346,21 +642,40 @@ class FirestoreWriter:
             },
             "confidenceScore": round(confidence, 2),
             "modelVersion": model_version,
+            "eligibleForBetting": actionable,
         }
         if edge:
             doc["edge"] = {k: round(v, 4) for k, v in edge.items()}
-        if recommended_bet:
-            doc["recommendedBet"] = recommended_bet
+        if actionable:
+            doc["recommendedBet"] = recommended
+            doc["evaluationMode"] = "forward_only"
         if odds_at_pick:
             doc["oddsAtPick"] = {
                 "home": odds_at_pick.get("home", 0),
                 "draw": odds_at_pick.get("draw", 0),
                 "away": odds_at_pick.get("away", 0),
             }
+        if actionable:
+            doc["oddsBasis"] = odds_basis
+            doc["oddsSource"] = odds_source
         if calibration:
             doc["calibration"] = calibration
         if context_summary:
             doc["contextSummary"] = context_summary
+        if normalized_decision:
+            doc["decisionStatus"] = normalized_decision
+        if decision_reason:
+            doc["decisionReason"] = decision_reason
+        if forecast_status:
+            doc["forecastStatus"] = forecast_status
+        if forecast_outcome:
+            doc["forecastOutcome"] = forecast_outcome
+        if forecast_confidence is not None:
+            doc["forecastConfidence"] = round(float(forecast_confidence), 4)
+        if forecast_status == VALIDATED_FORECAST_ONLY:
+            # A durable trust boundary for every downstream consumer.
+            doc["evaluationScope"] = NON_BETTING_FORECAST_SCOPE
+            doc["eligibleForBetting"] = False
 
         # Use matchId as doc ID so we only keep latest output per match
         self.db.collection("model_outputs").document(mid).set(doc)
@@ -406,6 +721,24 @@ class FirestoreWriter:
 
     def save_daily_coupon(self, date_str: str, picks: list, total_odds: float):
         """Save or update daily coupon."""
+        if not picks:
+            raise ValueError("daily_coupon_requires_at_least_one_pick")
+        for pick in picks:
+            recommendation = _normalize_betting_outcome(pick.get("pick"))
+            verified = bool(
+                recommendation
+                and str(pick.get("decisionStatus") or "").strip().upper() == "BET"
+                and str(pick.get("evaluationMode") or "").strip().lower()
+                == "forward_only"
+                and pick.get("eligibleForBetting") is True
+                and pick.get("oddsBasis") == "verified_pre_match_odds"
+                and str(pick.get("oddsSource") or "").strip()
+                and _verified_pick_odd(pick.get("odds"))
+            )
+            if not verified:
+                raise ValueError("daily_coupon_requires_verified_forward_only_picks")
+
+        odds_sources = sorted({str(pick["oddsSource"]) for pick in picks})
         ref = self.db.collection("daily_coupons").document(date_str)
         existing = ref.get()
         if existing.exists:
@@ -418,6 +751,11 @@ class FirestoreWriter:
             "picks": picks,
             "totalOdds": round(total_odds, 2),
             "status": "pending",
+            "decisionStatus": "BET",
+            "evaluationMode": "forward_only",
+            "eligibleForBetting": True,
+            "oddsBasis": "verified_pre_match_odds",
+            "oddsSource": odds_sources[0] if len(odds_sources) == 1 else odds_sources,
             "createdAt": firestore.SERVER_TIMESTAMP,
             "updatedAt": firestore.SERVER_TIMESTAMP,
         })
@@ -465,15 +803,52 @@ class FirestoreWriter:
     # BACKWARD COMPAT: cache/ collection
     # ──────────────────────────────────────
 
+    def stage_public_cache(self, cache_type: str, data: Any):
+        """Stage one allow-listed payload for the next Cloudflare bulk sync."""
+        if cache_type in PUBLIC_CACHE_DOCUMENT_IDS:
+            self._public_cache_envelopes[cache_type] = {
+                "data": data,
+                "updatedAt": utc_now_iso(),
+            }
+        else:
+            log.warning(
+                "Cache %s is not in the public-cache contract",
+                cache_type,
+            )
+
     def write_cache(self, cache_type: str, data: Any):
-        """Write to the old cache/ collection for backward compat with frontend."""
+        """Write a backward-compatible Firestore cache and stage it publicly."""
         self.db.collection("cache").document(cache_type).set({
             "data": data,
             "updatedAt": firestore.SERVER_TIMESTAMP,
-            "date": datetime.utcnow().strftime("%Y-%m-%d"),
+            "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         })
+        self.stage_public_cache(cache_type, data)
 
-    def refresh_coupon_history_cache(self, limit: int = 30) -> dict:
+    def sync_public_cache(self, *, mode: str) -> PublicCacheSyncResult:
+        """Publish all cache envelopes staged during this pipeline run once."""
+        result = publish_public_cache(dict(self._public_cache_envelopes), mode=mode)
+        self.public_cache_sync_status = result
+        if result.synced:
+            log.info(
+                "Public cache synced: %s documents (%s bytes, %s attempt%s)",
+                result.cache_count,
+                result.byte_count,
+                result.attempts,
+                "" if result.attempts == 1 else "s",
+            )
+            self._public_cache_envelopes.clear()
+        else:
+            log.error(
+                "PUBLIC CACHE NOT SYNCED (%s; %s documents). Upstream evaluation may be "
+                "current, but public-only artifacts and aibets.dk remain stale until the "
+                "next successful sync.",
+                result.reason,
+                result.cache_count,
+            )
+        return result
+
+    def refresh_coupon_history_cache(self, limit: int = 365) -> dict:
         """Refresh cache/coupon_history from daily_coupons."""
         snap = (
             self.db.collection("daily_coupons")
@@ -484,6 +859,189 @@ class FirestoreWriter:
         payload = build_coupon_history_payload([d.to_dict() for d in snap])
         self.write_cache("coupon_history", payload)
         log.info("Refreshed coupon_history cache with %s coupons", payload["total"])
+        return payload
+
+    def refresh_prediction_history_cache(self, limit: int = 2000) -> dict:
+        """Refresh the frontend history cache from evaluated predictions."""
+        results = self.get_all_prediction_results(limit=limit)
+        total = len(results)
+        correct = sum(1 for result in results if result.get("isCorrect"))
+        average_confidence = (
+            sum(float(result.get("confidence") or 0) for result in results) / total
+            if total else 0
+        )
+        leagues: Dict[str, Dict[str, int]] = {}
+        for result in results:
+            league = result.get("leagueCode") or "Ukendt"
+            stats = leagues.setdefault(league, {"total": 0, "correct": 0})
+            stats["total"] += 1
+            if result.get("isCorrect"):
+                stats["correct"] += 1
+
+        payload = {
+            "summary": {
+                "totalPredictions": total,
+                "correctPredictions": correct,
+                "accuracy": round(correct / total * 100) if total else 0,
+                "averageConfidence": round(average_confidence),
+                "byLeague": [
+                    {
+                        "league": league,
+                        "total": stats["total"],
+                        "correct": stats["correct"],
+                        "accuracy": round(stats["correct"] / stats["total"] * 100)
+                        if stats["total"] else 0,
+                    }
+                    for league, stats in leagues.items()
+                ],
+            },
+            "results": results,
+        }
+        self.write_cache("prediction_history", payload)
+        log.info("Refreshed prediction_history cache with %s results", total)
+        return payload
+
+    def refresh_forecast_history_cache(self, limit: int = 2000) -> dict:
+        """Refresh the isolated non-betting forecast history cache."""
+        results = self.get_all_forecast_results(limit=limit)
+        payload = build_forecast_history_payload(results)
+        self.write_cache("forecast_history", payload)
+        log.info(
+            "Refreshed forecast_history cache with %s non-betting forecasts",
+            payload["summary"]["totalForecasts"],
+        )
+        return payload
+
+    def refresh_strategy_zoo_cache(self) -> dict:
+        """Publish the audited, static strategy-zoo research artifact.
+
+        The research generator owns this payload.  The live pipeline only
+        validates and republishes it; it never recalculates or retunes a
+        historical rule while serving the public site.
+        """
+        from research.run_pattern_zoo import verify_artifact_against_canonical
+
+        payload = getattr(self, "_verified_strategy_zoo_payload", None)
+        if payload is None:
+            payload = verify_artifact_against_canonical()
+            self._verified_strategy_zoo_payload = payload
+        # The audited artifact is the system of record and is larger than one
+        # Firestore document.  It is consumed only by the Cloudflare frontend,
+        # so stage it directly instead of duplicating it in cache/strategy_zoo.
+        self.stage_public_cache("strategy_zoo", payload)
+        log.info(
+            "Refreshed strategy_zoo cache with %s strategies through season %s",
+            len(payload["strategies"]),
+            payload["dataset"]["completeThroughSeason"],
+        )
+        return payload
+
+    def refresh_paper_trading_cache(
+        self,
+        stake: float = 100,
+        bankroll: float = 10000,
+        limit: int = 2000,
+    ) -> dict:
+        """Recompute paper P&L only from explicitly verified pre-match odds."""
+        results = self.get_all_prediction_results(limit=limit)
+        total_bets = 0
+        total_won = 0
+        total_profit = 0.0
+        running_profit = 0.0
+        by_league: Dict[str, Dict[str, Any]] = {}
+        equity_curve = []
+        excluded_unverified = 0
+
+        for result in sorted(results, key=lambda item: item.get("matchDate", "")):
+            recommendation = _normalize_betting_outcome(result.get("recommendedBet"))
+            predicted = _normalize_betting_outcome(result.get("predictedOutcome"))
+            odds = _verified_pick_odd(result.get("oddsAtPick"))
+            eligible = bool(
+                result.get("eligibleForBetting") is True
+                and str(result.get("decisionStatus") or "").strip().upper() == "BET"
+                and str(result.get("evaluationMode") or "").strip().lower()
+                == "forward_only"
+                and recommendation
+                and recommendation == predicted
+                and result.get("oddsBasis") == "verified_pre_match_odds"
+                and str(result.get("oddsSource") or "").strip()
+                and odds
+            )
+            if not eligible:
+                if any(
+                    result.get(field) not in (None, "", 0, 0.0)
+                    for field in ("odds", "oddsAtPick", "profit")
+                ):
+                    excluded_unverified += 1
+                continue
+            total_bets += 1
+            won = bool(result.get("isCorrect"))
+            if won:
+                total_won += 1
+                bet_profit = (odds - 1) * stake
+            else:
+                bet_profit = -stake
+            total_profit += bet_profit
+            running_profit += bet_profit
+
+            league = result.get("leagueCode") or "UNK"
+            stats = by_league.setdefault(league, {"bets": 0, "won": 0, "profit": 0.0})
+            stats["bets"] += 1
+            stats["won"] += int(won)
+            stats["profit"] += bet_profit
+            equity_curve.append({
+                "date": result.get("matchDate", ""),
+                "profit": round(running_profit),
+            })
+
+        league_stats = []
+        for league, stats in sorted(
+            by_league.items(), key=lambda item: item[1]["profit"], reverse=True
+        ):
+            staked = stats["bets"] * stake
+            league_stats.append({
+                "league": league,
+                "bets": stats["bets"],
+                "won": stats["won"],
+                "hitRate": round(stats["won"] / stats["bets"] * 100) if stats["bets"] else 0,
+                "profit": round(stats["profit"]),
+                "roi": round(stats["profit"] / staked * 100, 1) if staked else 0,
+            })
+
+        total_staked = total_bets * stake
+        payload = {
+            "startingBankroll": bankroll,
+            "stakePerBet": stake,
+            "totalBets": total_bets,
+            "totalWon": total_won,
+            "hitRate": round(total_won / total_bets * 100, 1) if total_bets else 0,
+            "totalProfit": round(total_profit),
+            "totalStaked": total_staked,
+            "roi": round(total_profit / total_staked * 100, 1) if total_staked else 0,
+            "currentBankroll": bankroll + round(total_profit),
+            "byLeague": league_stats,
+            "equityCurve": equity_curve[-100:],
+            "oddsBasis": "verified_pre_match_odds",
+            "excludedUnverifiedBets": excluded_unverified,
+        }
+        self.write_cache("paper_trading", payload)
+        log.info(
+            "Refreshed paper_trading cache: %s bets, P&L %+.0f DKK",
+            total_bets,
+            total_profit,
+        )
+        return payload
+
+    def refresh_source_weights_cache(self) -> dict:
+        """Refresh public source metrics from real sources and evaluations."""
+        source_metrics = self.get_source_metrics()
+        prediction_results = self.get_all_prediction_results(limit=2000)
+        payload = build_source_weights_payload(source_metrics, prediction_results)
+        self.write_cache("source_weights", payload)
+        log.info(
+            "Refreshed source_weights cache with %s evaluated sources/models",
+            len(payload),
+        )
         return payload
 
     # ──────────────────────────────────────
@@ -531,18 +1089,153 @@ class FirestoreWriter:
     # PREDICTION RESULTS (legacy — kept for history page)
     # ──────────────────────────────────────
 
+    @staticmethod
+    def _is_abstention_result(result: dict) -> bool:
+        status = str(
+            result.get("decisionStatus") or result.get("decision_status") or ""
+        ).strip().upper()
+        outcome = str(
+            result.get("predictedOutcome") or result.get("predicted_outcome") or ""
+        ).strip().upper()
+        return status == "ABSTAIN" or outcome == "ABSTAIN"
+
     def save_prediction_result(self, result: dict) -> bool:
         """Save to prediction_results collection (legacy format for history page)."""
-        home = result.get("homeTeam", "")
-        away = result.get("awayTeam", "")
-        date_str = result.get("matchDate", "")
+        if self._is_abstention_result(result):
+            return False
+
+        normalized = dict(result)
+        recommendation = _normalize_betting_outcome(normalized.get("recommendedBet"))
+        predicted = _normalize_betting_outcome(normalized.get("predictedOutcome"))
+        odds_at_pick = _verified_pick_odd(normalized.get("oddsAtPick"))
+        pnl_eligible = bool(
+            normalized.get("eligibleForBetting") is True
+            and str(normalized.get("decisionStatus") or "").strip().upper() == "BET"
+            and str(normalized.get("evaluationMode") or "").strip().lower()
+            == "forward_only"
+            and recommendation
+            and recommendation == predicted
+            and normalized.get("oddsBasis") == "verified_pre_match_odds"
+            and str(normalized.get("oddsSource") or "").strip()
+            and odds_at_pick
+        )
+        normalized["eligibleForBetting"] = pnl_eligible
+        if recommendation:
+            normalized["recommendedBet"] = recommendation
+        if predicted:
+            normalized["predictedOutcome"] = predicted
+        if pnl_eligible:
+            normalized["oddsAtPick"] = round(odds_at_pick, 2)
+            normalized["odds"] = round(odds_at_pick, 2)
+            normalized["profit"] = round(
+                odds_at_pick - 1.0 if bool(normalized.get("isCorrect")) else -1.0,
+                2,
+            )
+        else:
+            # Accuracy/history may still be valid, but legacy or incomplete
+            # rows must never manufacture a paper-trading return.
+            normalized["oddsAtPick"] = None
+            normalized["odds"] = None
+            normalized["profit"] = None
+            if normalized.get("oddsBasis") != "verified_pre_match_odds":
+                normalized["oddsBasis"] = "unavailable_no_verified_odds"
+
+        home = normalized.get("homeTeam", "")
+        away = normalized.get("awayTeam", "")
+        date_str = normalized.get("matchDate", "")
         doc_id = f"{date_str}_{home}_{away}".replace(" ", "_").replace("/", "_").replace("\\", "_").replace(".", "_").lower()
 
         ref = self.db.collection("prediction_results").document(doc_id)
         if ref.get().exists:
             return False
 
-        ref.set({**result, "createdAt": firestore.SERVER_TIMESTAMP})
+        ref.set({**normalized, "createdAt": firestore.SERVER_TIMESTAMP})
+        return True
+
+    def save_forecast_result(self, result: dict) -> bool:
+        """Persist one pre-match international forecast outside betting data.
+
+        The caller must supply a forecast that was already stored before the
+        fixture.  This method does not infer, backfill, or read betting odds.
+        """
+        status = str(result.get("forecastStatus") or "").strip().upper()
+        decision = str(result.get("decisionStatus") or "").strip().upper()
+        scope = str(result.get("evaluationScope") or "").strip().upper()
+        outcome = str(result.get("forecastOutcome") or "").strip().upper()
+        actual = str(result.get("actualOutcome") or "").strip().upper()
+        if (
+            status != VALIDATED_FORECAST_ONLY
+            or decision != "ABSTAIN"
+            or scope != NON_BETTING_FORECAST_SCOPE
+            or outcome not in {"HOME", "DRAW", "AWAY"}
+            or actual not in {"HOME", "DRAW", "AWAY"}
+            or not result.get("forecastGeneratedAt")
+        ):
+            return False
+
+        generated_epoch = _forecast_timestamp_epoch(result.get("forecastGeneratedAt"))
+        kickoff_epoch = _forecast_timestamp_epoch(result.get("matchDate"))
+        probabilities = _validated_forecast_probabilities(result.get("probabilities"))
+        try:
+            confidence = float(result.get("forecastConfidence"))
+        except (TypeError, ValueError):
+            return False
+        if (
+            generated_epoch is None
+            or kickoff_epoch is None
+            or generated_epoch > kickoff_epoch
+            or probabilities is None
+            or not math.isfinite(confidence)
+            or confidence < 0
+            or confidence > 100
+            or outcome != max(probabilities, key=probabilities.get).upper()
+        ):
+            return False
+
+        actual_vector = {"home": 0.0, "draw": 0.0, "away": 0.0}
+        actual_vector[actual.lower()] = 1.0
+        brier_score = sum(
+            (probabilities[key] - actual_vector[key]) ** 2
+            for key in probabilities
+        )
+        log_loss = -math.log(max(probabilities[actual.lower()], 1e-15))
+
+        mid = str(result.get("matchId") or "").strip()
+        if not mid:
+            return False
+        doc_id = re.sub(r"[^a-zA-Z0-9_-]", "_", mid).lower()
+        ref = self.db.collection("forecast_results").document(doc_id)
+        if ref.get().exists:
+            return False
+
+        # Explicit allow-list prevents odds/profit fields leaking across the
+        # forecast/betting boundary even if a caller passes extra properties.
+        stored = {
+            "matchId": mid,
+            "matchDate": result.get("matchDate"),
+            "homeTeam": result.get("homeTeam"),
+            "awayTeam": result.get("awayTeam"),
+            "leagueCode": result.get("leagueCode"),
+            "homeScore": result.get("homeScore"),
+            "awayScore": result.get("awayScore"),
+            "actualOutcome": actual,
+            "forecastOutcome": outcome,
+            "forecastConfidence": round(confidence, 1),
+            "probabilities": {
+                key: round(value, 4) for key, value in probabilities.items()
+            },
+            "isCorrect": outcome == actual,
+            "brierScore": round(brier_score, 4),
+            "logLoss": round(log_loss, 4),
+            "modelVersion": result.get("modelVersion"),
+            "forecastStatus": VALIDATED_FORECAST_ONLY,
+            "decisionStatus": "ABSTAIN",
+            "evaluationScope": NON_BETTING_FORECAST_SCOPE,
+            "eligibleForBetting": False,
+            "forecastGeneratedAt": result.get("forecastGeneratedAt"),
+            "evaluatedAt": firestore.SERVER_TIMESTAMP,
+        }
+        ref.set(stored)
         return True
 
     # ──────────────────────────────────────
@@ -581,8 +1274,30 @@ class FirestoreWriter:
             .get()
         results = []
         for doc in snap:
-            results.append(doc.to_dict())
+            result = doc.to_dict()
+            if not self._is_abstention_result(result):
+                results.append(result)
         log.info(f"Downloaded {len(results)} prediction_results for retraining")
+        return results
+
+    def get_all_forecast_results(self, limit: int = 2000) -> List[Dict]:
+        """Read only evaluated non-betting forecasts for their own cache."""
+        snap = self.db.collection("forecast_results") \
+            .order_by("matchDate", direction=firestore.Query.DESCENDING) \
+            .limit(limit) \
+            .get()
+        results = []
+        for doc in snap:
+            result = doc.to_dict()
+            if (
+                str(result.get("forecastStatus") or "").strip().upper()
+                == VALIDATED_FORECAST_ONLY
+                and str(result.get("decisionStatus") or "").strip().upper()
+                == "ABSTAIN"
+                and str(result.get("evaluationScope") or "").strip().upper()
+                == NON_BETTING_FORECAST_SCOPE
+            ):
+                results.append(result)
         return results
 
     def get_source_metrics(self) -> Dict[str, Dict]:

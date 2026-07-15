@@ -27,6 +27,7 @@ import sys
 import time
 from collections import defaultdict
 from datetime import datetime
+from itertools import groupby
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -160,6 +161,26 @@ H2H_COUPON_SWEEP_MIN_LEAGUE_MATCHES = [0, 100]
 H2H_COUPON_SWEEP_FORM_THRESHOLDS = [None, 0.40]
 H2H_COUPON_SWEEP_COMBINED_ODDS_MAX = [None, 4.0, 5.0, 6.0]
 H2H_COUPON_SWEEP_TOP_FILTERS = 25
+OU_UNDER = 0
+OU_OVER = 1
+OU_OUTCOME_MAP = {OU_UNDER: "UNDER_2_5", OU_OVER: "OVER_2_5"}
+OU_CONF_THRESHOLDS = [None, 0.52, 0.55, 0.58, 0.60, 0.65]
+OU_EDGE_THRESHOLDS = [None, 0.0, 0.02, 0.05, 0.08, 0.10]
+OU_MIN_TEAM_MATCHES = [3, 5, 8, 10, 15]
+OU_MIN_LEAGUE_MATCHES = [25, 50, 100]
+OU_MIN_PAIR_MATCHES = [2, 3, 5]
+OU_RATE_THRESHOLDS = [0.55, 0.60, 0.65, 0.70, 0.75]
+OU_ODDS_BANDS = [None, (1.20, 1.60), (1.40, 1.90), (1.50, 2.20), (1.80, 2.80)]
+OU_WF_SOURCE_ALLOWLIST = {
+    "market_favorite",
+    "market_underdog",
+    "poisson_total",
+    "poisson_edge",
+    "recent_team_total_rate",
+    "league_total_rate",
+    "pair_total_history",
+    "market_poisson_agree",
+}
 
 
 # ═════════════════════════════════════════════════════════════
@@ -4036,6 +4057,558 @@ def print_strategy_zoo_walk_forward_summary(results: Dict):
     print()
 
 
+def _poisson_over25_probability(total_lambda: float) -> float:
+    total_lambda = max(0.05, float(total_lambda or 0.0))
+    under = sum(
+        (total_lambda ** goals) * math.exp(-total_lambda) / math.factorial(goals)
+        for goals in range(3)
+    )
+    return max(0.0, min(1.0, 1.0 - under))
+
+
+def _binary_no_vig_prob(odds_a: float, odds_b: float) -> Tuple[float, float]:
+    if not odds_a or not odds_b or odds_a <= 1.0 or odds_b <= 1.0:
+        return 0.0, 0.0
+    inv_a = 1.0 / odds_a
+    inv_b = 1.0 / odds_b
+    total = inv_a + inv_b
+    if total <= 0:
+        return 0.0, 0.0
+    return inv_a / total, inv_b / total
+
+
+def _mean_recent(values: List[float], limit: int) -> float:
+    sample = values[-limit:] if limit > 0 else values
+    return float(sum(sample) / len(sample)) if sample else 0.0
+
+
+def _build_over_under_rows(matches: List[Dict]) -> List[Dict]:
+    """Build O/U 2.5 rows from as-of history and complete market quotes.
+
+    Unpriced matches still update the rolling football state. Matches sharing a
+    kickoff timestamp are evaluated as one batch, so one simultaneous result
+    cannot leak into another match's pre-match features.
+    """
+    team_stats = defaultdict(lambda: {
+        "matches": 0,
+        "gf": 0.0,
+        "ga": 0.0,
+        "overs": 0,
+        "recent_totals": [],
+        "recent_overs": [],
+    })
+    league_stats = defaultdict(lambda: {"matches": 0, "overs": 0, "recent_overs": []})
+    pair_stats = defaultdict(lambda: {"matches": 0, "overs": 0})
+    rows = []
+
+    scored_matches = []
+    for match in sorted(matches, key=lambda m: m.get("match_date", "")):
+        try:
+            scored_matches.append((match, int(match.get("home_score")), int(match.get("away_score"))))
+        except (TypeError, ValueError):
+            continue
+
+    for _, kickoff_group in groupby(
+        scored_matches,
+        key=lambda item: item[0].get("match_date", ""),
+    ):
+        pending_updates = []
+        for match, hs, aws in kickoff_group:
+            league = str(match.get("league_code", ""))
+            home = str(match.get("home_team_name", ""))
+            away = str(match.get("away_team_name", ""))
+            season = int(match.get("season") or 0)
+            home_key = (league, home)
+            away_key = (league, away)
+            pair_key = (league, tuple(sorted([home.lower(), away.lower()])))
+
+            home_hist = team_stats[home_key]
+            away_hist = team_stats[away_key]
+            league_hist = league_stats[league]
+            pair_hist = pair_stats[pair_key]
+
+            home_matches = int(home_hist["matches"])
+            away_matches = int(away_hist["matches"])
+            league_matches = int(league_hist["matches"])
+            pair_matches = int(pair_hist["matches"])
+
+            home_gf = home_hist["gf"] / home_matches if home_matches else 1.30
+            home_ga = home_hist["ga"] / home_matches if home_matches else 1.25
+            away_gf = away_hist["gf"] / away_matches if away_matches else 1.15
+            away_ga = away_hist["ga"] / away_matches if away_matches else 1.35
+
+            expected_home = max(0.15, (home_gf + away_ga) / 2)
+            expected_away = max(0.15, (away_gf + home_ga) / 2)
+            poisson_over = _poisson_over25_probability(expected_home + expected_away)
+
+            home_recent_over = _mean_recent(home_hist["recent_overs"], 10)
+            away_recent_over = _mean_recent(away_hist["recent_overs"], 10)
+            recent_team_over = (
+                (home_recent_over + away_recent_over) / 2
+                if home_hist["recent_overs"] and away_hist["recent_overs"]
+                else 0.0
+            )
+            league_over = league_hist["overs"] / league_matches if league_matches else 0.0
+            league_recent_over = _mean_recent(league_hist["recent_overs"], 100)
+            pair_over = pair_hist["overs"] / pair_matches if pair_matches else 0.0
+
+            extra = match.get("extra_data") or {}
+            quote_options = [
+                ("average_open", extra.get("avg_under25"), extra.get("avg_over25")),
+                ("bet365_open", extra.get("b365_under25"), extra.get("b365_over25")),
+                ("pinnacle_open", extra.get("pinnacle_under25"), extra.get("pinnacle_over25")),
+            ]
+            odds_basis = None
+            under_odds = over_odds = 0.0
+            for basis, under_value, over_value in quote_options:
+                try:
+                    candidate_under = float(under_value or 0.0)
+                    candidate_over = float(over_value or 0.0)
+                except (TypeError, ValueError):
+                    continue
+                if candidate_under > 1.0 and candidate_over > 1.0:
+                    odds_basis = basis
+                    under_odds = candidate_under
+                    over_odds = candidate_over
+                    break
+
+            if odds_basis is not None:
+                market_under, market_over = _binary_no_vig_prob(under_odds, over_odds)
+                market_label = OU_UNDER if under_odds < over_odds else OU_OVER
+                poisson_label = OU_OVER if poisson_over >= 0.5 else OU_UNDER
+                recent_label = OU_OVER if recent_team_over >= 0.5 else OU_UNDER
+                league_label = OU_OVER if league_over >= 0.5 else OU_UNDER
+                pair_label = OU_OVER if pair_over >= 0.5 else OU_UNDER
+                actual = OU_OVER if (hs + aws) > 2.5 else OU_UNDER
+
+                rows.append({
+                    "match_date": match.get("match_date", ""),
+                    "league": league,
+                    "season": season,
+                    "home": home,
+                    "away": away,
+                    "home_score": hs,
+                    "away_score": aws,
+                    "actual": actual,
+                    "odds_basis": odds_basis,
+                    "under25_odds": under_odds,
+                    "over25_odds": over_odds,
+                    "home_history_matches": home_matches,
+                    "away_history_matches": away_matches,
+                    "team_history_matches": min(home_matches, away_matches),
+                    "league_history_matches": league_matches,
+                    "pair_history_matches": pair_matches,
+                    "poisson_over25_prob": poisson_over,
+                    "poisson_under25_prob": 1.0 - poisson_over,
+                    "recent_team_over25_rate": recent_team_over,
+                    "league_over25_rate": league_over,
+                    "league_recent_over25_rate": league_recent_over,
+                    "pair_over25_rate": pair_over,
+                    "market_under25_prob": market_under,
+                    "market_over25_prob": market_over,
+                    "market_label": market_label,
+                    "poisson_label": poisson_label,
+                    "recent_team_label": recent_label,
+                    "league_label": league_label,
+                    "pair_label": pair_label,
+                })
+
+            pending_updates.append((home_key, away_key, pair_key, league, hs, aws))
+
+        for home_key, away_key, pair_key, league, hs, aws in pending_updates:
+            total_goals = hs + aws
+            is_over = 1 if total_goals > 2.5 else 0
+            for key, gf, ga in [(home_key, hs, aws), (away_key, aws, hs)]:
+                stats = team_stats[key]
+                stats["matches"] += 1
+                stats["gf"] += gf
+                stats["ga"] += ga
+                stats["overs"] += is_over
+                stats["recent_totals"].append(total_goals)
+                stats["recent_overs"].append(is_over)
+            league_hist = league_stats[league]
+            league_hist["matches"] += 1
+            league_hist["overs"] += is_over
+            league_hist["recent_overs"].append(is_over)
+            pair_hist = pair_stats[pair_key]
+            pair_hist["matches"] += 1
+            pair_hist["overs"] += is_over
+
+    return rows
+
+
+def _over_under_arrays(rows: List[Dict]) -> Dict[str, object]:
+    def float_col(name: str) -> np.ndarray:
+        return np.array([float(row.get(name) or 0.0) for row in rows], dtype=float)
+
+    def int_col(name: str) -> np.ndarray:
+        return np.array([int(row.get(name) or 0) for row in rows], dtype=int)
+
+    odds = np.stack([float_col("under25_odds"), float_col("over25_odds")], axis=1)
+    prob = np.stack([float_col("poisson_under25_prob"), float_col("poisson_over25_prob")], axis=1)
+    market_prob = np.stack([float_col("market_under25_prob"), float_col("market_over25_prob")], axis=1)
+    return {
+        "rows": rows,
+        "actual": int_col("actual"),
+        "season": int_col("season"),
+        "league": np.array([str(row.get("league", "")) for row in rows], dtype=object),
+        "odds": odds,
+        "prob": prob,
+        "market_prob": market_prob,
+        "market_label": int_col("market_label"),
+        "poisson_label": int_col("poisson_label"),
+        "recent_team_label": int_col("recent_team_label"),
+        "league_label": int_col("league_label"),
+        "pair_label": int_col("pair_label"),
+        "team_history_matches": int_col("team_history_matches"),
+        "league_history_matches": int_col("league_history_matches"),
+        "pair_history_matches": int_col("pair_history_matches"),
+        "recent_team_over25_rate": float_col("recent_team_over25_rate"),
+        "league_over25_rate": float_col("league_over25_rate"),
+        "pair_over25_rate": float_col("pair_over25_rate"),
+    }
+
+
+def _ou_league_groups(rows: List[Dict]) -> Dict[str, List[str]]:
+    leagues = sorted({row.get("league") for row in rows if row.get("league")})
+    groups = {"all": leagues}
+    top = [league for league in leagues if league in TOP_LEAGUE_CODES]
+    if top:
+        groups["top_leagues"] = top
+    for league in top:
+        groups[f"league:{league}"] = [league]
+    return groups
+
+
+def _ou_source_values(arrays: Dict[str, object], source: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    n = len(arrays["rows"])
+    odds = arrays["odds"]
+    prob = arrays["prob"]
+    market_prob = arrays["market_prob"]
+    labels = np.zeros(n, dtype=int)
+    confidence = np.zeros(n, dtype=float)
+    pre_mask = np.ones(n, dtype=bool)
+
+    if source == "market_favorite":
+        labels = np.argmin(np.where(odds > 1.0, odds, 999.0), axis=1).astype(int)
+        confidence = market_prob[np.arange(n), labels]
+    elif source == "market_underdog":
+        labels = np.argmax(np.where(odds > 1.0, odds, -1.0), axis=1).astype(int)
+        confidence = market_prob[np.arange(n), labels]
+    elif source in ("poisson_total", "poisson_edge"):
+        labels = arrays["poisson_label"].copy()
+        confidence = prob[np.arange(n), labels]
+        pre_mask = arrays["team_history_matches"] >= 5
+        if source == "poisson_edge":
+            ev = np.where(odds > 1.0, prob * odds - 1.0, -99.0)
+            labels = np.argmax(ev, axis=1).astype(int)
+            confidence = prob[np.arange(n), labels]
+    elif source == "recent_team_total_rate":
+        rate = arrays["recent_team_over25_rate"]
+        labels = np.where(rate >= 0.5, OU_OVER, OU_UNDER).astype(int)
+        confidence = np.where(labels == OU_OVER, rate, 1.0 - rate)
+        pre_mask = arrays["team_history_matches"] >= 5
+    elif source == "league_total_rate":
+        rate = arrays["league_over25_rate"]
+        labels = np.where(rate >= 0.5, OU_OVER, OU_UNDER).astype(int)
+        confidence = np.where(labels == OU_OVER, rate, 1.0 - rate)
+        pre_mask = arrays["league_history_matches"] >= 50
+    elif source == "pair_total_history":
+        rate = arrays["pair_over25_rate"]
+        labels = np.where(rate >= 0.5, OU_OVER, OU_UNDER).astype(int)
+        confidence = np.where(labels == OU_OVER, rate, 1.0 - rate)
+        pre_mask = arrays["pair_history_matches"] >= 2
+    elif source == "market_poisson_agree":
+        labels = arrays["poisson_label"].copy()
+        confidence = prob[np.arange(n), labels]
+        pre_mask = (arrays["market_label"] == labels) & (arrays["team_history_matches"] >= 5)
+    else:
+        labels = arrays["poisson_label"].copy()
+        confidence = prob[np.arange(n), labels]
+
+    selected_odds = odds[np.arange(n), labels]
+    edge = np.where(selected_odds > 1.0, confidence * selected_odds - 1.0, -99.0)
+    valid = pre_mask & (selected_odds > 1.0) & np.isfinite(confidence)
+    return labels, confidence, edge, valid
+
+
+def _simulate_ou_arrays(mask: np.ndarray, labels: np.ndarray, arrays: Dict[str, object]) -> Dict:
+    idx = np.flatnonzero(mask)
+    odds = arrays["odds"]
+    actual = arrays["actual"]
+    season = arrays["season"]
+    selected_odds = odds[idx, labels[idx]]
+    wins = labels[idx] == actual[idx]
+    deltas = np.where(wins, (DEFAULT_SINGLE_STAKE * selected_odds) - DEFAULT_SINGLE_STAKE, -DEFAULT_SINGLE_STAKE)
+    cumulative = np.cumsum(deltas) if len(deltas) else np.array([])
+    final_bankroll = DEFAULT_STARTING_BANKROLL + (float(cumulative[-1]) if len(cumulative) else 0.0)
+    bankroll_curve = DEFAULT_STARTING_BANKROLL + cumulative if len(cumulative) else np.array([])
+    if len(bankroll_curve):
+        peaks = np.maximum.accumulate(np.concatenate(([DEFAULT_STARTING_BANKROLL], bankroll_curve)))[1:]
+        max_drawdown = float(np.max(peaks - bankroll_curve))
+        peak_bankroll = float(max(DEFAULT_STARTING_BANKROLL, np.max(bankroll_curve)))
+        min_bankroll = float(min(DEFAULT_STARTING_BANKROLL, np.min(bankroll_curve)))
+    else:
+        max_drawdown = 0.0
+        peak_bankroll = DEFAULT_STARTING_BANKROLL
+        min_bankroll = DEFAULT_STARTING_BANKROLL
+
+    season_stats: Dict[str, Dict] = defaultdict(_empty_period_stats)
+    for selected_idx, odd, won in zip(idx, selected_odds, wins):
+        key = str(int(season[selected_idx]))
+        season_stats[key]["bets"] += 1
+        season_stats[key]["wins"] += 1 if won else 0
+        season_stats[key]["staked"] += DEFAULT_SINGLE_STAKE
+        season_stats[key]["returned"] += DEFAULT_SINGLE_STAKE * float(odd) if won else 0.0
+
+    bets = int(len(idx))
+    staked = bets * DEFAULT_SINGLE_STAKE
+    profit = final_bankroll - DEFAULT_STARTING_BANKROLL
+    return {
+        "starting_bankroll": round(DEFAULT_STARTING_BANKROLL, 2),
+        "stake": round(DEFAULT_SINGLE_STAKE, 2),
+        "bets": bets,
+        "wins": int(np.sum(wins)) if bets else 0,
+        "accuracy": round((float(np.mean(wins)) * 100) if bets else 0.0, 2),
+        "staked": round(staked, 2),
+        "returned": round(staked + profit, 2),
+        "final_bankroll": round(final_bankroll, 2),
+        "profit": round(profit, 2),
+        "growth_pct": round((profit / DEFAULT_STARTING_BANKROLL * 100) if DEFAULT_STARTING_BANKROLL else 0.0, 2),
+        "roi_pct": round((profit / staked * 100) if staked else 0.0, 2),
+        "max_drawdown": round(max_drawdown, 2),
+        "max_drawdown_pct": round((max_drawdown / peak_bankroll * 100) if peak_bankroll else 0.0, 2),
+        "min_bankroll": round(min_bankroll, 2),
+        "stopped_bankroll_depleted": False,
+        "skipped_no_odds": 0,
+        "by_season": _finalize_period_stats(season_stats),
+    }
+
+
+def _trim_ou_candidate(candidate: Dict) -> Dict:
+    sim = candidate.get("simulation", {})
+    return {
+        "type": candidate.get("type"),
+        "mode": candidate.get("mode"),
+        "market": "over_under_2_5",
+        "name": candidate.get("name"),
+        "source": candidate.get("source"),
+        "league_filter": candidate.get("league_filter"),
+        "leagues": candidate.get("leagues"),
+        "confidence_min_pct": candidate.get("confidence_min_pct"),
+        "edge_min_pct": candidate.get("edge_min_pct"),
+        "history_min": candidate.get("history_min"),
+        "rate_min_pct": candidate.get("rate_min_pct"),
+        "odds_band": candidate.get("odds_band"),
+        "score": candidate.get("score"),
+        "eligible": candidate.get("eligible"),
+        "rejection_reasons": candidate.get("rejection_reasons", []),
+        "simulation": {
+            k: sim.get(k)
+            for k in [
+                "bets", "wins", "accuracy", "final_bankroll", "profit",
+                "roi_pct", "max_drawdown", "max_drawdown_pct", "by_season",
+            ]
+            if k in sim
+        },
+    }
+
+
+def walk_forward_over_under_25(
+    matches: List[Dict],
+    start_season: int,
+    end_season: int,
+    first_test_season: Optional[int] = None,
+    min_train_bets: int = STRATEGY_ZOO_WF_MIN_TRAIN_BETS,
+) -> Dict:
+    rows = _build_over_under_rows(matches)
+    arrays = _over_under_arrays(rows)
+    season_array = arrays["season"]
+    seasons = [
+        int(season)
+        for season in sorted(set(season_array.tolist()))
+        if start_season <= int(season) <= end_season
+    ]
+    if first_test_season is None:
+        first_test_season = max(start_season + 5, seasons[0] if seasons else start_season)
+
+    league_groups = _ou_league_groups(rows)
+    all_test_mask = np.zeros(len(rows), dtype=bool)
+    all_test_labels = np.zeros(len(rows), dtype=int)
+    folds = []
+    total_evaluated = 0
+
+    for test_season in seasons:
+        if test_season < first_test_season:
+            continue
+        train_mask = season_array < test_season
+        test_mask = season_array == test_season
+        if not np.any(test_mask):
+            continue
+
+        best = None
+        evaluated = 0
+        logger.info(f"O/U 2.5 walk-forward fold: train < {test_season}, test {test_season}")
+
+        for source in sorted(OU_WF_SOURCE_ALLOWLIST):
+            labels, confidence, edge, valid = _ou_source_values(arrays, source)
+            if source == "pair_total_history":
+                history_options = OU_MIN_PAIR_MATCHES
+                history_array = arrays["pair_history_matches"]
+                rate_options = OU_RATE_THRESHOLDS
+            elif source == "league_total_rate":
+                history_options = OU_MIN_LEAGUE_MATCHES
+                history_array = arrays["league_history_matches"]
+                rate_options = OU_RATE_THRESHOLDS
+            elif source in ("recent_team_total_rate", "poisson_total", "poisson_edge", "market_poisson_agree"):
+                history_options = OU_MIN_TEAM_MATCHES
+                history_array = arrays["team_history_matches"]
+                rate_options = [None]
+            else:
+                history_options = [None]
+                history_array = np.zeros(len(rows), dtype=int)
+                rate_options = [None]
+
+            for league_filter, leagues in league_groups.items():
+                league_mask = np.isin(arrays["league"], leagues)
+                for history_min in history_options:
+                    history_mask = (
+                        np.ones(len(rows), dtype=bool)
+                        if history_min is None
+                        else history_array >= history_min
+                    )
+                    for rate_min in rate_options:
+                        rate_mask = (
+                            np.ones(len(rows), dtype=bool)
+                            if rate_min is None
+                            else confidence >= rate_min
+                        )
+                        for conf_min in OU_CONF_THRESHOLDS:
+                            conf_mask = (
+                                np.ones(len(rows), dtype=bool)
+                                if conf_min is None
+                                else confidence >= conf_min
+                            )
+                            for edge_min in OU_EDGE_THRESHOLDS:
+                                edge_mask = (
+                                    np.ones(len(rows), dtype=bool)
+                                    if edge_min is None
+                                    else edge >= edge_min
+                                )
+                                selected_odds = arrays["odds"][np.arange(len(rows)), labels]
+                                for odds_band in OU_ODDS_BANDS:
+                                    odds_mask = (
+                                        np.ones(len(rows), dtype=bool)
+                                        if odds_band is None
+                                        else (selected_odds >= odds_band[0]) & (selected_odds <= odds_band[1])
+                                    )
+                                    base_mask = valid & league_mask & history_mask & rate_mask & conf_mask & edge_mask & odds_mask
+                                    candidate_train_mask = base_mask & train_mask
+                                    if int(np.sum(candidate_train_mask)) < min_train_bets:
+                                        continue
+
+                                    simulation = _simulate_ou_arrays(candidate_train_mask, labels, arrays)
+                                    score, eligible, reasons = _robust_score(simulation, "bets", min_train_bets)
+                                    candidate = {
+                                        "type": "over_under_25_single",
+                                        "mode": "over_under_25_walk_forward",
+                                        "name": (
+                                            f"ou25 source={source} leagues={league_filter} "
+                                            f"history>={history_min if history_min is not None else 'none'} "
+                                            f"rate>={_threshold_label(rate_min)} "
+                                            f"conf>={_threshold_label(conf_min)} "
+                                            f"edge>={_threshold_label(edge_min)} odds={odds_band or 'any'}"
+                                        ),
+                                        "source": source,
+                                        "league_filter": league_filter,
+                                        "leagues": leagues,
+                                        "history_min": history_min,
+                                        "rate_min_pct": None if rate_min is None else round(rate_min * 100, 1),
+                                        "confidence_min_pct": None if conf_min is None else round(conf_min * 100, 1),
+                                        "edge_min_pct": None if edge_min is None else round(edge_min * 100, 1),
+                                        "odds_band": odds_band,
+                                        "mask": base_mask,
+                                        "labels": labels,
+                                        "simulation": simulation,
+                                        "score": score,
+                                        "eligible": eligible,
+                                        "rejection_reasons": reasons,
+                                    }
+                                    evaluated += 1
+                                    if best is None or _candidate_rank_tuple(candidate) > _candidate_rank_tuple(best):
+                                        best = candidate
+
+        total_evaluated += evaluated
+        fold = {"test_season": test_season, "evaluated_candidates": evaluated}
+        if best is None:
+            fold["status"] = "no_train_candidate"
+            folds.append(fold)
+            continue
+
+        test_selected_mask = best["mask"] & test_mask
+        test_simulation = _simulate_ou_arrays(test_selected_mask, best["labels"], arrays)
+        chosen = _trim_ou_candidate(best)
+        chosen["train_simulation"] = chosen.pop("simulation")
+        chosen["test_simulation"] = test_simulation
+        fold["chosen_strategy"] = chosen
+        folds.append(fold)
+
+        all_test_mask |= test_selected_mask
+        all_test_labels[test_selected_mask] = best["labels"][test_selected_mask]
+
+    combined = _simulate_ou_arrays(all_test_mask, all_test_labels, arrays)
+    return {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "objective": "over_under_25_walk_forward_no_hindsight_selection",
+        "source": "football-data.co.uk CSV Bet365 O/U 2.5 odds",
+        "start_season": start_season,
+        "end_season": end_season,
+        "first_test_season": first_test_season,
+        "source_matches": len(matches),
+        "usable_matches": len(rows),
+        "market": "over_under_2_5",
+        "rules": {
+            "starting_bankroll": DEFAULT_STARTING_BANKROLL,
+            "stake": DEFAULT_SINGLE_STAKE,
+            "min_train_bets": min_train_bets,
+            "no_future_leakage": True,
+            "no_hindsight_strategy_selection": True,
+        },
+        "evaluated_candidates": total_evaluated,
+        "combined": combined,
+        "folds": folds,
+    }
+
+
+def print_over_under_walk_forward_summary(results: Dict):
+    print_header("OVER/UNDER 2.5 WALK-FORWARD")
+    print(f"  Seasons: {results.get('start_season')}-{results.get('end_season')}")
+    print(f"  First test season: {results.get('first_test_season')}")
+    print(f"  Source matches: {results.get('source_matches', 0)}")
+    print(f"  Usable matches with O/U odds: {results.get('usable_matches', 0)}")
+    print(f"  Candidates evaluated: {results.get('evaluated_candidates', 0)}")
+
+    sim = results.get("combined", {})
+    print()
+    print("  Out-of-sample singles")
+    print(
+        f"    Final: {sim.get('final_bankroll', 0):.0f} | "
+        f"Profit: {sim.get('profit', 0):+.0f} | ROI: {sim.get('roi_pct', 0):+.1f}% | "
+        f"MaxDD: {sim.get('max_drawdown', 0):.0f}"
+    )
+    print(f"    Bets: {sim.get('bets', 0)} | Hit: {sim.get('accuracy', 0):.1f}%")
+    print(f"    By season: {sim.get('by_season', {})}")
+
+    print()
+    print("  Fold choices:")
+    for fold in results.get("folds", []):
+        chosen = fold.get("chosen_strategy")
+        profit = chosen.get("test_simulation", {}).get("profit", 0.0) if chosen else 0.0
+        source = chosen.get("source") if chosen else "N/A"
+        print(f"    {fold.get('test_season')}: {profit:+.0f} {source}")
+    print()
+
+
 def optimize_h2h_coupon_criteria(
     matches: List[Dict],
     start_season: int,
@@ -5126,6 +5699,8 @@ def main():
                         help="Backtest many CSV-only money strategies against each other")
     parser.add_argument("--strategy-zoo-walk-forward-csv", action="store_true",
                         help="Walk-forward validate CSV strategy-zoo selection without hindsight")
+    parser.add_argument("--over-under25-walk-forward-csv", action="store_true",
+                        help="Walk-forward validate Over/Under 2.5 money strategies")
     parser.add_argument("--h2h-coupon-criteria-csv", action="store_true",
                         help="Train/validation sweep for mature H2H coupon criteria")
     parser.add_argument("--start-season", type=int, default=None,
@@ -5139,6 +5714,50 @@ def main():
     parser.add_argument("--validation-start-season", type=int, default=2022,
                         help="First validation season for H2H coupon criteria sweeps")
     args = parser.parse_args()
+
+    # ── Over/Under 2.5 walk-forward mode: money-first goal-market strategy search ──
+    if args.over_under25_walk_forward_csv:
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
+        start_season = args.start_season if args.start_season is not None else 2000
+        end_season = args.end_season if args.end_season is not None else max(ALL_SEASONS)
+        if start_season > end_season:
+            print(f"Invalid season range: {start_season}>{end_season}")
+            return
+        leagues = args.leagues.split(",") if args.leagues else CSV_LEAGUES
+        seasons = list(range(start_season, end_season + 1))
+        matches = load_all_csv_data(leagues, seasons)
+        if not matches:
+            print("No CSV matches loaded; cannot run Over/Under 2.5 walk-forward")
+            return
+
+        ou_results = walk_forward_over_under_25(
+            matches,
+            start_season,
+            end_season,
+            first_test_season=args.first_test_season,
+            min_train_bets=args.min_train_bets,
+        )
+        print_over_under_walk_forward_summary(ou_results)
+
+        suffix = f"{start_season}_{end_season}_first{ou_results.get('first_test_season')}_min{args.min_train_bets}"
+        ou_path = ROOT / "data" / f"over_under25_walk_forward_csv_{suffix}.json"
+        with open(ou_path, "w") as f:
+            json.dump(ou_results, f, indent=2, default=str)
+        print(f"Over/Under 2.5 results saved to {ou_path}")
+
+        results_path = ROOT / "data" / "backtest_results.json"
+        existing_results = {}
+        if results_path.exists():
+            try:
+                with open(results_path) as f:
+                    existing_results = json.load(f)
+            except Exception:
+                existing_results = {}
+        existing_results[f"over_under25_walk_forward_csv_{suffix}"] = ou_results
+        with open(results_path, "w") as f:
+            json.dump(existing_results, f, indent=2, default=str)
+        print(f"Backtest results updated at {results_path}")
+        return
 
     # ── H2H coupon criteria mode: tune knobs with train/validation split ──
     if args.h2h_coupon_criteria_csv:

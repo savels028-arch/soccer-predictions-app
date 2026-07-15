@@ -5,6 +5,7 @@ Handles all data storage: matches, teams, predictions, history.
 import sqlite3
 import json
 import logging
+import re
 import threading
 from datetime import datetime, date
 from pathlib import Path
@@ -285,6 +286,8 @@ class DatabaseManager:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_matches_date ON matches(match_date)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_matches_league ON matches(league_code)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_matches_status ON matches(status)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_matches_home_status_date ON matches(home_team_name, status, match_date)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_matches_away_status_date ON matches(away_team_name, status, match_date)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_predictions_match ON predictions(match_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_team_stats_team ON team_stats(team_name)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_h2h_teams ON head_to_head(home_team, away_team)")
@@ -411,17 +414,30 @@ class DatabaseManager:
         cursor = self.conn.cursor()
         if before_date:
             cursor.execute("""
-                SELECT * FROM matches
-                WHERE (home_team_name = ? OR away_team_name = ?)
-                AND status = 'FINISHED'
-                AND DATE(match_date) < DATE(?)
+                SELECT * FROM (
+                    SELECT * FROM matches
+                    WHERE home_team_name = ?
+                    AND status = 'FINISHED'
+                    AND DATE(match_date) < DATE(?)
+                    UNION ALL
+                    SELECT * FROM matches
+                    WHERE away_team_name = ?
+                    AND status = 'FINISHED'
+                    AND DATE(match_date) < DATE(?)
+                )
                 ORDER BY match_date DESC LIMIT ?
-            """, (team_name, team_name, before_date, limit))
+            """, (team_name, before_date, team_name, before_date, limit))
         else:
             cursor.execute("""
-                SELECT * FROM matches
-                WHERE (home_team_name = ? OR away_team_name = ?)
-                AND status = 'FINISHED'
+                SELECT * FROM (
+                    SELECT * FROM matches
+                    WHERE home_team_name = ?
+                    AND status = 'FINISHED'
+                    UNION ALL
+                    SELECT * FROM matches
+                    WHERE away_team_name = ?
+                    AND status = 'FINISHED'
+                )
                 ORDER BY match_date DESC LIMIT ?
             """, (team_name, team_name, limit))
         return [dict(row) for row in cursor.fetchall()]
@@ -536,6 +552,101 @@ class DatabaseManager:
         """, (home, away, league_code, match_date, home_score, away_score, season))
         self.conn.commit()
 
+    @staticmethod
+    def _team_h2h_pattern(team_name: str) -> str:
+        """Build a permissive SQL pattern for bookmaker-vs-history team names."""
+        cleaned = str(team_name or "").lower()
+        cleaned = re.sub(r"[^a-z0-9]+", " ", cleaned)
+        suffixes = {
+            "a",
+            "ac",
+            "afc",
+            "bk",
+            "calcio",
+            "cd",
+            "cf",
+            "club",
+            "de",
+            "fc",
+            "fk",
+            "if",
+            "sc",
+            "sd",
+            "the",
+            "ud",
+        }
+        tokens = [
+            token
+            for token in cleaned.split()
+            if token and token not in suffixes and len(token) > 1
+        ]
+        if not tokens:
+            return "%"
+        return "%" + "%".join(tokens[:3]) + "%"
+
+    def _get_h2h_from_matches(
+        self,
+        team1: str,
+        team2: str,
+        limit: int,
+        before_date: Optional[str],
+        fuzzy: bool = False,
+    ) -> List[Dict]:
+        cursor = self.conn.cursor()
+        if fuzzy:
+            query = """
+                SELECT
+                    home_team_name,
+                    away_team_name,
+                    home_team_name AS home_team,
+                    away_team_name AS away_team,
+                    league_code,
+                    match_date,
+                    home_score,
+                    away_score,
+                    season
+                FROM matches
+                WHERE status = 'FINISHED'
+                AND home_score IS NOT NULL
+                AND away_score IS NOT NULL
+                AND (
+                    (LOWER(home_team_name) LIKE ? AND LOWER(away_team_name) LIKE ?)
+                    OR (LOWER(home_team_name) LIKE ? AND LOWER(away_team_name) LIKE ?)
+                )
+            """
+            team1_param = self._team_h2h_pattern(team1)
+            team2_param = self._team_h2h_pattern(team2)
+            params: List[Any] = [team1_param, team2_param, team2_param, team1_param]
+        else:
+            query = """
+                SELECT
+                    home_team_name,
+                    away_team_name,
+                    home_team_name AS home_team,
+                    away_team_name AS away_team,
+                    league_code,
+                    match_date,
+                    home_score,
+                    away_score,
+                    season
+                FROM matches
+                WHERE status = 'FINISHED'
+                AND home_score IS NOT NULL
+                AND away_score IS NOT NULL
+                AND (
+                    (home_team_name = ? AND away_team_name = ?)
+                    OR (home_team_name = ? AND away_team_name = ?)
+                )
+            """
+            params = [team1, team2, team2, team1]
+        if before_date:
+            query += " AND DATE(match_date) < DATE(?)"
+            params.append(before_date)
+        query += " ORDER BY match_date DESC LIMIT ?"
+        params.append(limit)
+        cursor.execute(query, params)
+        return [dict(row) for row in cursor.fetchall()]
+
     def get_h2h(self, team1: str, team2: str, limit: int = 10,
                 before_date: str = None) -> List[Dict]:
         cursor = self.conn.cursor()
@@ -550,7 +661,14 @@ class DatabaseManager:
         query += " ORDER BY match_date DESC LIMIT ?"
         params.append(limit)
         cursor.execute(query, params)
-        return [dict(row) for row in cursor.fetchall()]
+        rows = [dict(row) for row in cursor.fetchall()]
+        if rows:
+            return rows
+
+        rows = self._get_h2h_from_matches(team1, team2, limit, before_date, fuzzy=False)
+        if rows:
+            return rows
+        return self._get_h2h_from_matches(team1, team2, limit, before_date, fuzzy=True)
 
     # ──────────────────────────────────────────────
     # PREDICTION OPERATIONS

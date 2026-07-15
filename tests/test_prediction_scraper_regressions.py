@@ -5,6 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.api.prediction_scraper import PredictionScraper
+from src.api.danske_spil_client import DanskeSpilClient
 
 
 def test_predictionpitch_json_source_parses_probabilities(monkeypatch):
@@ -50,6 +51,18 @@ def test_predictionpitch_json_source_parses_probabilities(monkeypatch):
             "value_bet_market": "home",
         }
     ]
+
+
+def test_danske_spil_league_mapping_requires_top_league_context():
+    client = DanskeSpilClient()
+
+    assert client._league_path_to_code(["England", "Premier League"]) == "PL"
+    assert client._league_path_to_code(["Spain", "LaLiga"]) == "PD"
+    assert client._league_path_to_code(["Senegal", "Premier League"]) == ""
+    assert client._league_path_to_code(["Ethiopia", "Premier League"]) == ""
+    assert client._league_path_to_code(["Spain", "LaLiga 2"]) == ""
+    assert client._league_name_to_code("Senegal Premier League") == ""
+    assert client._league_name_to_code("LaLiga 2") == ""
 
 
 def test_winfulltime_json_source_parses_matches(monkeypatch):

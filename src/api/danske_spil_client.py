@@ -279,12 +279,16 @@ class DanskeSpilClient:
                 league_name = ""
                 league_code = ""
                 if paths:
+                    path_names = []
                     for p in paths:
                         pname = p.get("name", "")
                         if pname and pname != "Fodbold" and pname != "Football":
+                            path_names.append(pname)
                             league_name = pname
-                    # Prøv at mappe til vores liga-kode
-                    league_code = self._league_name_to_code(league_name)
+                    league_code = self._league_path_to_code(path_names)
+                elif group:
+                    league_name = group
+                    league_code = self._league_name_to_code(group)
 
                 # Parse 1X2 odds fra betOffers
                 home_odds = draw_odds = away_odds = None
@@ -516,29 +520,81 @@ class DanskeSpilClient:
         words_b = {w for w in b.split() if len(w) > 3}
         return bool(words_a & words_b)
 
+    @staticmethod
+    def _league_token(name: str) -> str:
+        """Normalize league/country names without substring side effects."""
+        n = str(name or "").strip().lower()
+        n = (n.replace("é", "e").replace("è", "e").replace("ê", "e")
+              .replace("á", "a").replace("à", "a").replace("ã", "a")
+              .replace("í", "i").replace("ó", "o").replace("ú", "u")
+              .replace("ü", "u").replace("ø", "o").replace("æ", "ae")
+              .replace("å", "a"))
+        n = re.sub(r"[^a-z0-9]+", " ", n)
+        return re.sub(r"\s+", " ", n).strip()
+
+    def _league_path_to_code(self, path_names: List[str]) -> str:
+        """Map a full Kambi path to a supported top-league code."""
+        tokens = [
+            self._league_token(name)
+            for name in path_names
+            if self._league_token(name) not in {"", "football", "fodbold"}
+        ]
+        token_set = set(tokens)
+        joined = " / ".join(tokens)
+
+        if any(blocked in joined for blocked in ("women", "kvinder", "youth", "u19", "u21")):
+            return ""
+
+        def country(*names: str) -> bool:
+            return any(name in token_set for name in names)
+
+        def league(*names: str) -> bool:
+            return any(name in token_set for name in names)
+
+        if country("england") and league("premier league"):
+            return "PL"
+        if country("spain", "spanien") and league("la liga", "laliga"):
+            return "PD"
+        if country("germany", "tyskland") and league("bundesliga"):
+            return "BL1"
+        if country("italy", "italien") and league("serie a"):
+            return "SA"
+        if country("france", "frankrig") and league("ligue 1"):
+            return "FL1"
+        if country("netherlands", "nederlandene", "holland") and league("eredivisie"):
+            return "DED"
+        if country("portugal") and league("primeira liga"):
+            return "PPL"
+        if country("brazil", "brasilien") and league("serie a"):
+            return "BSA"
+        if league("champions league", "uefa champions league"):
+            return "CL"
+        if league("europa league", "uefa europa league"):
+            return "EL"
+        return ""
+
     def _league_name_to_code(self, league_name: str) -> str:
-        """Map Kambi liga-navn til vores liga-kode."""
+        """Map exact standalone Kambi league names to our league code."""
         if not league_name:
             return ""
-        ln = league_name.lower()
+        ln = self._league_token(league_name)
         mapping = {
             "premier league": "PL",
             "la liga": "PD",
+            "laliga": "PD",
             "bundesliga": "BL1",
             "serie a": "SA",
             "ligue 1": "FL1",
             "champions league": "CL",
+            "uefa champions league": "CL",
             "europa league": "EL",
+            "uefa europa league": "EL",
             "eredivisie": "DED",
             "primeira liga": "PPL",
-            "série a": "BSA",
             "superligaen": "DK_SL",
             "1st division": "DK_1D",
         }
-        for key, code in mapping.items():
-            if key in ln:
-                return code
-        return ""
+        return mapping.get(ln, "")
 
     # ──────────────────────────────────────────────
     #  UTILITY
