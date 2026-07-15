@@ -3,9 +3,11 @@
 Den hjemlige strategy zoo er adskilt fra den forecast-only landsholdsmodel.
 VM-modellens dataproveniens, validering og begrænsninger er dokumenteret i
 [`data/international/README.md`](../data/international/README.md) og den frosne
-[`validation_report.md`](../data/international/validation_report.md). Der laves
-ingen VM-ROI-påstand, fordi den internationale kilde ikke har historiske
-pre-match odds.
+[`validation_report.md`](../data/international/validation_report.md). En
+separat, checksum-pinnet VM-workbook giver navngivne historiske 90-minutters
+1X2-odds for 2014, 2018, 2022 og den foreløbige 2026-turnering. De tal er
+bagudskuende evidens, aldrig en valideret fremadrettet edge. EM har fortsat
+ingen verificeret oddsserie og viser derfor ingen ROI.
 
 Denne mappe er AIBets' isolerede research-lag. Formålet er at finde strategier,
 der skaber positiv ROI på odds, uden at bruge information fra fremtiden. En høj
@@ -60,7 +62,7 @@ Reglerne bliver ikke genvalgt ud fra samme års resultat. Kampe med samme startt
 isoleres fra hinanden, og kun komplette Bet365-opening-markeder kan skabe P&L.
 Manglende odds giver derfor aldrig syntetisk profit.
 
-Det aktuelle artifact dækker 115.840 evaluerede kampe fra 1993/94 til og med
+Det aktuelle artifact dækker 115.460 evaluerede kampe fra 1993/94 til og med
 2025/26. Alle ti 2025/26-filer blev hentet og atomisk valideret efter sæsonens
 afslutning; der er derfor ingen karantænesatte kampe i den aktuelle udgave.
 
@@ -74,6 +76,29 @@ Den lokale uge-træning genopbygger artifactet efter en bestået data-refresh.
 Hvis genopbygningen fejler, bevares det seneste validerede artifact i stedet
 for at publicere et halvt eller ukomplet resultat.
 
+### Edge Atlas og EM/VM
+
+Edge Atlas viser grundkort, ROI og usikkerhed for hver liga og sæson. Det
+adskiller konsekvent: hvad der skete; hvilken fast strategi der ser bedst ud
+med facit i hånden; og hvad en regel valgt udelukkende på tidligere sæsoner
+faktisk leverede. EM- og VM-fanerne holder klubdata, kvalifikation og
+slutrunder adskilt.
+
+Begge offentlige atlasfiler bygges og kopieres til deploy-repositoryet med én
+fail-closed kommando:
+
+```bash
+venv/bin/python scripts/publish_research_atlases.py \
+  --world-cup-xlsx /tmp/WorldCup2026.xlsx
+```
+
+Kommandoen kræver den fulde canonical klubcache, det manifesterede
+landsholdssnapshot og den reviewede VM-workbook med SHA256
+`b14a24e218f25ffaa0037718471187bced6b835e2293b6e94cb2ce2a76ad544b`.
+Alle source-checksums valideres før deploy-assets overskrives. VM-workbooken
+indeholder 64 kampe i hver af 2014, 2018 og 2022 samt 100 af 104 kampe i 2026
+gennem 12. juli; 2026-resultater er derfor tydeligt markeret foreløbige.
+
 Hver kørsel skriver et manifest med SHA256 for datasæt, feature-cache og hver
 research-kildefil, samlet code-fingerprint samt Git dirty/untracked-status.
 Feature-cache-nøglen afledes af datasæt, parser/feature-kode og den eksplicitte
@@ -85,23 +110,32 @@ er derfor ikke versionsstyret.
 
 ## Datasæt og begrænsninger
 
-Den aktuelle canonical cache bruger dataset-id `7e131786cd7a35f0ae84` fra 328
-lokale Football-Data CSV-filer:
+Den aktuelle canonical cache bruger canonical dataset-id `b182289f8a9733b01da6`
+fra 328 lokale Football-Data CSV-filer:
 
-- 115.840 valide, unikke klubkampe fra 23. juli 1993 til 24. maj 2026.
+- 115.460 valide, unikke klubkampe fra 23. juli 1993 til 24. maj 2026.
+- 380 rækker er eksplicit afvist, fordi `Div`-feltet modsiger ligaen i
+  filnavnet. De stammer fra en historisk Portugal-URL, der leverer den spanske
+  1993/94-fil, og må derfor ikke tælles som Primeira Liga.
+- Dataset-id'et hashes de normaliserede rækker, som analysen faktisk bruger;
+  den separate råfil-identitet er `7e131786cd7a35f0ae84`. En parserrettelse
+  kan derfor ikke længere genbruge samme dataset-id som et forurenet run.
 - Ti turneringer: Premier League, Championship, Bundesliga, 2. Bundesliga,
   La Liga, Serie A, Ligue 1, Eredivisie, Primeira Liga og belgisk 1. division.
-- Åbningsodds findes for 91.451 1X2-kampe (78,9 %), 78.753 O/U 2,5-kampe
-  (68,0 %) og 78.907 Asian Handicap-kampe (68,1 %). Closing odds findes for
+- Den offentlige coverage-kontrakt kræver præcis 327 valide liga-sæson-par.
+  De eneste undtagelser er Belgien 1993/94 og 1994/95, som Football-Data ikke
+  udgiver, samt Primeira Liga 1993/94, hvor den publicerede P1-fil i stedet
+  indeholder de 380 spanske SP1-rækker, som vi afviser.
+- Åbningsodds findes for 91.451 1X2-kampe (79,2 %), 78.753 O/U 2,5-kampe
+  (68,2 %) og 78.907 Asian Handicap-kampe (68,3 %). Closing odds findes for
   49.364 1X2-kampe og 24.760 O/U-kampe.
 - Kampe uden komplette odds opdaterer stadig historiske hold- og ligafeatures,
   men kan ikke blive til afregnede bets.
 
-Den fulde modelkørsel dokumenteret længere nede er fortsat et frosset,
-reproducerbart run på det tidligere dataset-id `722889f3145638357ee9` gennem
-2024/25. Dens holdout-tal omskrives ikke bagudrettet, blot fordi den canonical
-cache nu også indeholder 2025/26. En ny fuld walk-forward-kørsel skal have sit
-eget run-id og manifest.
+Den fulde modelkørsel dokumenteret længere nede er et frosset, reproducerbart
+run på det korrigerede dataset-id `3528b6fd6613e6e7a94c`: 111.927 kampe gennem
+2024/25. 2025/26 holdes uden for modelvalget og fungerer som næste
+fremadrettede periode; run-id og manifest ændres ved hver ny kørsel.
 
 Dette datasæt indeholder ikke landsholds- eller VM-kampe, ægte xG, skader,
 lineups, vejr eller bookmaker-limits. Historiske bookmakerfelter har også
@@ -211,21 +245,21 @@ classifier. Gennemsnits- og maksimumspriserne er ikke eksekverbare live.
 ## Aktuelt ærligt resultat
 
 Den auditerede fulde kørsel
-[`20260714T183718Z_722889f3145638357ee9_full`](../data/research/runs/20260714T183718Z_722889f3145638357ee9_full/report.md)
+[`20260715T133227Z_3528b6fd6613e6e7a94c_full`](../data/research/runs/20260715T133227Z_3528b6fd6613e6e7a94c_full/report.md)
 brugte 1 % odds-haircut, 2.000 block-bootstrap-resamples og kun komplette
 sæsoner. Registry-resultatet er **`NO_PROMOTION`**; ingen markeder blev
 registreret og automatisk live-aktivering er `false`.
 
 | Marked og test | Bets | Hit-rate | Profit | ROI | 95 % ROI-interval | Profitable sæsoner | Beslutning |
 |---|---:|---:|---:|---:|---:|---:|---|
-| 1X2, adaptiv executable | 1.659 | 42,4 % | -118,7 u | -7,15 % | -12,25 % til -2,30 % | 2/13 | Afvist |
-| 1X2, adaptiv proxy | 2.011 | 38,2 % | -112,4 u | -5,59 % | -10,98 % til -0,08 % | 5/13 | Proxy; afvist |
+| 1X2, adaptiv executable | 1.897 | 45,4 % | -115,7 u | -6,10 % | -9,92 % til -2,37 % | 2/13 | Afvist |
+| 1X2, adaptiv proxy | 1.830 | 40,5 % | -29,7 u | -1,62 % | -7,74 % til +4,28 % | 8/13 | Proxy; afvist |
 | 1X2, låst executable 2022–2024 | 249 | 62,2 % | +1,9 u | +0,77 % | -9,24 % til +10,63 % | 2/3 | Afvist |
 | 1X2, låst proxy 2022–2024 | 29 | 31,0 % | +1,0 u | +3,30 % | -45,04 % til +48,51 % | 1/3 | Proxy; afvist |
-| O/U 2,5, adaptiv executable | 663 | 56,6 % | +10,2 u | +1,54 % | -5,20 % til +7,58 % | 3/5 | Afvist |
-| O/U 2,5, adaptiv proxy | 2.288 | 52,1 % | -35,4 u | -1,55 % | -5,68 % til +2,91 % | 6/13 | Proxy; afvist |
+| O/U 2,5, adaptiv executable | 662 | 56,3 % | +7,4 u | +1,11 % | -5,80 % til +7,63 % | 3/5 | Afvist |
+| O/U 2,5, adaptiv proxy | 2.149 | 51,5 % | -33,7 u | -1,57 % | -5,97 % til +2,71 % | 4/13 | Proxy; afvist |
 | O/U 2,5, låst executable 2022–2024 | 0 | — | 0,0 u | 0,00 % | Ingen bets | 0/0 | Ingen kvalificeret policy |
-| O/U 2,5, låst proxy 2022–2024 | 109 | 59,6 % | +11,1 u | +10,22 % | -3,72 % til +24,19 % | 2/3 | Proxy; afvist |
+| O/U 2,5, låst proxy 2022–2024 | 11 | 45,5 % | -1,1 u | -10,27 % | -61,03 % til +35,57 % | 1/3 | Proxy; afvist |
 
 Den låste 1X2-policy er den klareste læring. Hjemmehold med rå
 markedssandsynlighed på mindst 55 % og primære odds 1,50–2,50 gav +6,35 % ROI
@@ -235,10 +269,20 @@ usikkerhedsgrænsen, 95 % sandsynlighed for positiv ROI eller CLV-kravene.
 
 Det adaptive O/U-resultat er positivt, men er ikke evidens for en profitabel
 live-strategi. Intervallet krydser nul, sandsynligheden for positiv ROI er kun
-66,85 %, og same-source closing-dækningen er 39,5 % mod kravet på 50 %. Den
-gennemsnitlige same-source CLV er +0,59 % på 262 bets, men kun 47,7 % af dem har
+61,75 %, og same-source closing-dækningen er 39,3 % mod kravet på 50 %. Den
+gennemsnitlige same-source CLV er +0,59 % på 260 bets, men kun 47,3 % af dem har
 positiv CLV. Ingen fast eksekverbar O/U-policy bestod udviklingskravene. Den
 bedste diagnostiske udviklingsregel faldt til -14,10 % ROI på 98 holdout-bets.
+
+En særskilt audit af 36 faste COD/opposite-varianter fandt én watchlist-regel,
+som var positiv i alle tre tidsblokke: i La Liga, spil hjemmeholdet når
+udeholdets Wheatcroft-COD er mindst 0,875. Med Bet365-priser gav den +14,45 %
+på 530 udviklingsbets (2005–2017), +2,95 % på 191 valideringsbets (2018–2024)
+og +50,34 % på 35 bets i 2025/26. Det er stadig **ikke en bekræftet edge**:
+valideringsintervallet er -32,58 % til +38,49 %, 2025/26-intervallet er
+-10,27 % til +110,96 %, og udviklingsfundet består ikke korrektionen for de
+mange testede regler. Reglen er derfor tilføjet som synlig, årlig
+opposite-COD-strategi i Edge Atlas, men forbliver i paper-tracking.
 
 ### Metodiske forbehold
 
@@ -257,9 +301,9 @@ bedste diagnostiske udviklingsregel faldt til -14,10 % ROI på 98 holdout-bets.
 - Millioner af policy-slice-evalueringer skaber en stor multiple-testing-
   byrde. Nested walk-forward og den låste holdout reducerer risikoen for
   overtilpasning, men fjerner den ikke.
-- Datasættet indeholder ikke landsholds- eller VM-kampe, ægte xG, skader,
-  lineups, vejr eller bookmaker-limits. Landsholdsmodellen er et separat
-  forecast-only spor uden ROI-påstand.
+- Klubdatasættet indeholder ikke landshold, ægte xG, skader, lineups, vejr eller
+  bookmaker-limits. Landshold er et separat forecast-spor; VM-workbookens
+  historiske ROI er kun hindsight, og EM-ROI fejler lukket uden oddsdata.
 
 ## Fagligt grundlag
 
@@ -267,6 +311,10 @@ bedste diagnostiske udviklingsregel faldt til -14,10 % ROI på 98 holdout-bets.
 - [Dixon og Coles: dynamisk Poisson-model til fodbold](https://doi.org/10.1111/1467-9876.00065)
 - [Evaluering af fodboldprognoser på økonomisk værdi](https://doi.org/10.1016/j.ijforecast.2003.12.007)
 - [Publiceret O/U-modellering med profit som mål](https://doi.org/10.1016/j.ijforecast.2019.02.008)
+- [Wheatcroft: chance-of-defeat og maksimumsodds](https://doi.org/10.1515/jqas-2019-0009)
+- [Angelini og De Angelis: oddsaggregation og markedseffektivitet](https://doi.org/10.1016/j.ijforecast.2018.07.008)
+- [White: Reality Check for multiple testing](https://doi.org/10.1111/1468-0262.00152)
+- [Hansen: Superior Predictive Ability-test](https://doi.org/10.1198/073500105000000063)
 - [Scikit-learn: tidsserie-validering](https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.TimeSeriesSplit.html)
 - [Scikit-learn: sandsynlighedskalibrering](https://scikit-learn.org/stable/modules/calibration.html)
 - [Hvorfor kalibrering skal måles separat fra accuracy](https://arxiv.org/abs/2303.06021)

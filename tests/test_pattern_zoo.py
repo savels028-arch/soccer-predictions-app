@@ -448,13 +448,13 @@ def test_validator_fails_closed_on_guarantees_and_synthetic_pnl(tmp_path):
 
     path = tmp_path / "strategy-zoo.json"
     path.write_text(json.dumps(payload), encoding="utf-8")
-    assert load_strategy_zoo(path)["schemaVersion"] == 2
+    assert load_strategy_zoo(path)["schemaVersion"] == 3
 
     path.with_suffix(".sha256").write_text(
         hashlib.sha256(path.read_bytes()).hexdigest() + "\n",
         encoding="ascii",
     )
-    assert load_strategy_zoo(path, require_checksum=True)["schemaVersion"] == 2
+    assert load_strategy_zoo(path, require_checksum=True)["schemaVersion"] == 3
     path.write_text(path.read_text(encoding="utf-8") + " ", encoding="utf-8")
     with pytest.raises(StrategyZooValidationError, match="checksum"):
         load_strategy_zoo(path, require_checksum=True)
@@ -691,6 +691,63 @@ def test_atomic_publication_guard_rejects_a_shrinking_dataset(tmp_path):
 
     with pytest.raises(RuntimeError, match="smaller evaluated dataset"):
         _guard_against_regression(path, smaller)
+
+
+def test_atomic_publication_guard_allows_exact_accounted_league_correction(tmp_path):
+    previous = build_strategy_zoo(
+        [
+            _match("2024-08-01T12:00:00Z", "Alpha", "Beta", 1, 0, season=2024),
+            _match("2024-08-02T12:00:00Z", "Gamma", "Delta", 1, 0, season=2024),
+        ],
+        # Before normalized-row IDs, datasetId was the raw-source identity.
+        {"dataset_id": "raw-fixture"},
+        generated_at="2026-07-14T00:00:00Z",
+        bootstrap_resamples=10,
+        complete_through_season=2024,
+        display_through_season=2024,
+    )
+    path = tmp_path / "strategy-zoo.json"
+    path.write_text(json.dumps(previous), encoding="utf-8")
+    corrected = build_strategy_zoo(
+        [_match("2024-08-01T12:00:00Z", "Alpha", "Beta", 1, 0, season=2024)],
+        {
+            "dataset_id": "normalized-fixture",
+            "source_dataset_id": "raw-fixture",
+            "raw_rows": 2,
+            "invalid_rows": 1,
+            "league_mismatch_rows": 1,
+            "duplicates": 0,
+        },
+        generated_at="2026-07-14T00:00:00Z",
+        bootstrap_resamples=10,
+        complete_through_season=2024,
+        display_through_season=2024,
+    )
+
+    _guard_against_regression(path, corrected)
+
+
+def test_dataset_source_row_accounting_is_public_and_validated():
+    payload = build_strategy_zoo(
+        [_match("2024-08-01T12:00:00Z", "Alpha", "Beta", 1, 0, season=2024)],
+        {
+            "dataset_id": "fixture",
+            "raw_rows": 3,
+            "invalid_rows": 1,
+            "league_mismatch_rows": 1,
+            "duplicates": 1,
+        },
+        generated_at="2026-07-14T00:00:00Z",
+        bootstrap_resamples=10,
+        complete_through_season=2024,
+        display_through_season=2024,
+    )
+
+    assert payload["dataset"]["sourceRows"] == 3
+    assert payload["dataset"]["sourceDatasetId"] == "fixture"
+    assert payload["dataset"]["rejectedSourceRows"] == 1
+    assert payload["dataset"]["leagueMismatchRows"] == 1
+    assert payload["dataset"]["duplicateSourceRows"] == 1
 
 
 def test_canonical_coverage_guard_detects_earliest_and_intermediate_gaps():

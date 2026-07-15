@@ -22,8 +22,8 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 MODEL_SCHEMA = "aibets.international_elo.v1"
 MANIFEST_SCHEMA = "aibets.international_manifest.v1"
 VALIDATED_STATUS = "VALIDATED_FORECAST_ONLY"
-PINNED_SOURCE_COMMIT = "f73286079f8c6b48a59f8a16e895d757119dca71"
-PINNED_SOURCE_SHA256 = "096184efc2d705b2acd6f5aebec3887a42019f24e2f8c11f60b76fa4b38a6a7c"
+PINNED_SOURCE_COMMIT = "23449460b67a975bcf84d1042472c4f8da507f9c"
+PINNED_SOURCE_SHA256 = "126d983c1e0f6849f1d75222da93aa0e8559ce3fb32ab17da02c526c4b69288e"
 PINNED_SOURCE_URL = (
     "https://raw.githubusercontent.com/martj42/international_results/"
     f"{PINNED_SOURCE_COMMIT}/results.csv"

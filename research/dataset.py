@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import json
 import math
 import re
 import unicodedata
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from research.asian_handicap import valid_asian_handicap_line
 from src.api.csv_football_client import FootballDataCSVClient
@@ -45,6 +46,23 @@ CSV_LEAGUES: Dict[str, Dict[str, str]] = {
     "P1": {"code": "PPL", "name": "Primeira Liga", "country": "Portugal"},
     "B1": {"code": "BEL1", "name": "Belgian First Division A", "country": "Belgium"},
 }
+
+# Football-Data has no Belgian B1 file in the first two seasons.  Its 1993/94
+# P1 URL currently serves the Spanish SP1 rows; those 380 explicit Div
+# mismatches are quarantined, so there must not be a PPL season-pair either.
+PUBLIC_CANONICAL_MISSING_FILES = {"9394_B1.csv", "9495_B1.csv"}
+PUBLIC_CANONICAL_MISSING_PAIRS = {
+    (1993, "BEL1"),
+    (1994, "BEL1"),
+    (1993, "PPL"),
+}
+PUBLIC_CANONICAL_DATASET_ID = "b182289f8a9733b01da6"
+PUBLIC_CANONICAL_SOURCE_DATASET_ID = "7e131786cd7a35f0ae84"
+PUBLIC_CANONICAL_ROWS = 115_460
+PUBLIC_CANONICAL_RAW_ROWS = 125_917
+PUBLIC_CANONICAL_INVALID_ROWS = 10_457
+PUBLIC_CANONICAL_LEAGUE_MISMATCH_ROWS = 380
+PUBLIC_CANONICAL_DUPLICATE_ROWS = 0
 
 _FILE_RE = re.compile(r"^(?P<season>\d{4})_(?P<league>[A-Z0-9]+)\.csv$")
 
@@ -317,12 +335,25 @@ def load_canonical_matches(
     raw_rows = 0
     normalized_rows = 0
     invalid_rows = 0
+    league_mismatch_rows = 0
     duplicates = 0
     deduplicated: Dict[Tuple[str, str, str, str], Dict[str, Any]] = {}
     for path, season, _csv_league, league_info in selected_files:
         with path.open("r", encoding="utf-8-sig", errors="replace", newline="") as handle:
             for row in csv.DictReader(handle):
                 raw_rows += 1
+                # A cached file is only authoritative for the competition in
+                # its filename when the row agrees.  Football-Data currently
+                # serves its 1993/94 Spanish file at the historic Portugal
+                # URL as well; accepting those rows silently duplicates La
+                # Liga and labels it Primeira Liga.  Older files sometimes
+                # omit Div entirely, so fail closed only on an explicit
+                # contradiction.
+                raw_division = str(row.get("Div") or "").strip().upper()
+                if raw_division and raw_division != _csv_league:
+                    league_mismatch_rows += 1
+                    invalid_rows += 1
+                    continue
                 normalized = parser._normalize_csv_row(
                     row,
                     league_info["code"],
@@ -374,8 +405,27 @@ def load_canonical_matches(
     )
     match_dates = [_parsed_datetime(match["match_date"]) for match in matches]
     valid_dates = [value for value in match_dates if value is not None]
+    # Identify the rows the models actually consume, not only the raw files.
+    # A parser correction can legitimately change the canonical match set
+    # while every source-file byte remains identical. Hashing canonical JSON
+    # prevents corrected and contaminated datasets from sharing an ID.
+    canonical_digest = hashlib.sha256()
+    for match in matches:
+        canonical_digest.update(
+            json.dumps(
+                match,
+                ensure_ascii=False,
+                allow_nan=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        )
+        canonical_digest.update(b"\n")
+
     manifest: Dict[str, Any] = {
-        "dataset_id": dataset_digest.hexdigest()[:20],
+        "dataset_id": canonical_digest.hexdigest()[:20],
+        "source_dataset_id": dataset_digest.hexdigest()[:20],
+        "dataset_id_basis": "sha256_canonical_normalized_rows_v1",
         "source": "data/cache/football_data_csv",
         "file_hashes": file_hashes,
         "files": len(selected_files),
@@ -383,6 +433,7 @@ def load_canonical_matches(
         "raw_rows": raw_rows,
         "normalized_rows": normalized_rows,
         "invalid_rows": invalid_rows,
+        "league_mismatch_rows": league_mismatch_rows,
         "duplicates": duplicates,
         "rows": len(matches),
         "start_date": min(valid_dates).date().isoformat() if valid_dates else None,
@@ -395,11 +446,85 @@ def load_canonical_matches(
     return matches, manifest
 
 
+def assert_public_canonical_coverage(
+    matches: Sequence[Mapping[str, Any]],
+    manifest: Mapping[str, Any],
+    *,
+    start_season: int = MIN_SEASON,
+    end_season: int = MAX_SEASON,
+) -> None:
+    """Reject partial or mislabelled input at a public research boundary."""
+
+    expected_leagues = {item["code"] for item in CSV_LEAGUES.values()}
+    expected_seasons = set(range(start_season, end_season + 1))
+    expected_files = {
+        f"{season % 100:02d}{(season + 1) % 100:02d}_{file_code}.csv"
+        for season in expected_seasons
+        for file_code in CSV_LEAGUES
+    }.difference(PUBLIC_CANONICAL_MISSING_FILES)
+    expected_pairs = {
+        (season, league)
+        for season in expected_seasons
+        for league in expected_leagues
+    }.difference(PUBLIC_CANONICAL_MISSING_PAIRS)
+    try:
+        observed_pairs = {
+            (int(match["season"]), str(match["league_code"]))
+            for match in matches
+        }
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError("canonical public matches contain malformed coverage fields") from exc
+
+    file_hashes = manifest.get("file_hashes")
+    raw_rows = manifest.get("raw_rows")
+    invalid_rows = manifest.get("invalid_rows")
+    duplicate_rows = manifest.get("duplicates")
+    if (
+        manifest.get("source") != "data/cache/football_data_csv"
+        or manifest.get("dataset_id") != PUBLIC_CANONICAL_DATASET_ID
+        or manifest.get("source_dataset_id") != PUBLIC_CANONICAL_SOURCE_DATASET_ID
+        or manifest.get("start_season") != start_season
+        or manifest.get("end_season") != end_season
+        or set(manifest.get("leagues") or []) != expected_leagues
+        or not isinstance(file_hashes, Mapping)
+        or set(file_hashes) != expected_files
+        or observed_pairs != expected_pairs
+        or {season for season, _league in observed_pairs} != expected_seasons
+        or {_league for _season, _league in observed_pairs} != expected_leagues
+        or manifest.get("rows") != len(matches)
+        or len(matches) != PUBLIC_CANONICAL_ROWS
+        or raw_rows != PUBLIC_CANONICAL_RAW_ROWS
+        or invalid_rows != PUBLIC_CANONICAL_INVALID_ROWS
+        or manifest.get("league_mismatch_rows") != PUBLIC_CANONICAL_LEAGUE_MISMATCH_ROWS
+        or duplicate_rows != PUBLIC_CANONICAL_DUPLICATE_ROWS
+        or isinstance(raw_rows, bool)
+        or not isinstance(raw_rows, int)
+        or isinstance(invalid_rows, bool)
+        or not isinstance(invalid_rows, int)
+        or isinstance(duplicate_rows, bool)
+        or not isinstance(duplicate_rows, int)
+        or raw_rows != len(matches) + invalid_rows + duplicate_rows
+    ):
+        raise RuntimeError(
+            "canonical public cache is incomplete, mislabelled, or has unaccounted rows"
+        )
+
+
 __all__ = [
     "CANONICAL_CACHE_DIR",
     "CSV_LEAGUES",
     "MAX_SEASON",
     "MIN_SEASON",
+    "PUBLIC_CANONICAL_MISSING_FILES",
+    "PUBLIC_CANONICAL_MISSING_PAIRS",
+    "PUBLIC_CANONICAL_DATASET_ID",
+    "PUBLIC_CANONICAL_SOURCE_DATASET_ID",
+    "PUBLIC_CANONICAL_ROWS",
+    "PUBLIC_CANONICAL_RAW_ROWS",
+    "PUBLIC_CANONICAL_INVALID_ROWS",
+    "PUBLIC_CANONICAL_LEAGUE_MISMATCH_ROWS",
+    "PUBLIC_CANONICAL_DUPLICATE_ROWS",
+    "assert_public_canonical_coverage",
     "decode_season_code",
     "load_canonical_matches",
 ]

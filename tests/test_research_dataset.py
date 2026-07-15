@@ -116,3 +116,106 @@ def test_loader_rejects_non_research_leagues_and_invalid_ranges(canonical_cache)
         dataset.load_canonical_matches(leagues=["BSA"])
     with pytest.raises(ValueError, match="must not be after"):
         dataset.load_canonical_matches(start=2020, end=2019)
+
+
+def test_loader_quarantines_rows_that_contradict_filename_league(canonical_cache):
+    _write_csv(
+        canonical_cache / "9394_P1.csv",
+        [
+            {
+                **_row("05/09/93", "Ath Bilbao", "Albacete", home_score="4", away_score="1"),
+                "Div": "SP1",
+            },
+            {
+                **_row("12/09/93", "Porto", "Benfica", home_score="2", away_score="0"),
+                "Div": "P1",
+            },
+        ],
+    )
+
+    matches, manifest = dataset.load_canonical_matches(leagues=["PPL"], start=1993, end=1993)
+
+    assert [(match["home_team_name"], match["away_team_name"]) for match in matches] == [
+        ("Porto", "Benfica")
+    ]
+    assert manifest["raw_rows"] == 2
+    assert manifest["normalized_rows"] == 1
+    assert manifest["invalid_rows"] == 1
+    assert manifest["league_mismatch_rows"] == 1
+    assert manifest["dataset_id_basis"] == "sha256_canonical_normalized_rows_v1"
+    assert manifest["dataset_id"] != manifest["source_dataset_id"]
+
+    _, repeated_manifest = dataset.load_canonical_matches(
+        leagues=["PPL"], start=1993, end=1993
+    )
+    assert repeated_manifest["dataset_id"] == manifest["dataset_id"]
+
+
+def _public_coverage_fixture():
+    leagues = {item["code"] for item in dataset.CSV_LEAGUES.values()}
+    matches = [
+        {"season": season, "league_code": league}
+        for season in range(dataset.MIN_SEASON, dataset.MAX_SEASON + 1)
+        for league in sorted(leagues)
+        if (season, league) not in dataset.PUBLIC_CANONICAL_MISSING_PAIRS
+    ]
+    file_hashes = {
+        f"{season % 100:02d}{(season + 1) % 100:02d}_{file_code}.csv": "sha"
+        for season in range(dataset.MIN_SEASON, dataset.MAX_SEASON + 1)
+        for file_code in dataset.CSV_LEAGUES
+    }
+    for name in dataset.PUBLIC_CANONICAL_MISSING_FILES:
+        file_hashes.pop(name)
+    manifest = {
+        "source": "data/cache/football_data_csv",
+        "dataset_id": "fixture-normalized",
+        "source_dataset_id": "fixture-source",
+        "start_season": dataset.MIN_SEASON,
+        "end_season": dataset.MAX_SEASON,
+        "leagues": sorted(leagues),
+        "file_hashes": file_hashes,
+        "rows": len(matches),
+        "raw_rows": len(matches),
+        "invalid_rows": 0,
+        "league_mismatch_rows": 0,
+        "duplicates": 0,
+    }
+    return matches, manifest
+
+
+def test_public_coverage_guard_accepts_only_the_327_valid_league_seasons(monkeypatch):
+    matches, manifest = _public_coverage_fixture()
+    monkeypatch.setattr(dataset, "PUBLIC_CANONICAL_DATASET_ID", "fixture-normalized")
+    monkeypatch.setattr(dataset, "PUBLIC_CANONICAL_SOURCE_DATASET_ID", "fixture-source")
+    monkeypatch.setattr(dataset, "PUBLIC_CANONICAL_ROWS", len(matches))
+    monkeypatch.setattr(dataset, "PUBLIC_CANONICAL_RAW_ROWS", len(matches))
+    monkeypatch.setattr(dataset, "PUBLIC_CANONICAL_INVALID_ROWS", 0)
+    monkeypatch.setattr(dataset, "PUBLIC_CANONICAL_LEAGUE_MISMATCH_ROWS", 0)
+    monkeypatch.setattr(dataset, "PUBLIC_CANONICAL_DUPLICATE_ROWS", 0)
+
+    assert len({(row["season"], row["league_code"]) for row in matches}) == 327
+    dataset.assert_public_canonical_coverage(matches, manifest)
+
+    missing_middle = [
+        row
+        for row in matches
+        if (row["season"], row["league_code"]) != (2010, "PL")
+    ]
+    with pytest.raises(RuntimeError, match="incomplete, mislabelled"):
+        dataset.assert_public_canonical_coverage(missing_middle, manifest)
+
+
+def test_public_coverage_guard_rejects_reintroduced_false_portugal_pair():
+    matches, manifest = _public_coverage_fixture()
+    matches.append({"season": 1993, "league_code": "PPL"})
+    manifest = {**manifest, "rows": len(matches), "raw_rows": len(matches)}
+
+    with pytest.raises(RuntimeError, match="incomplete, mislabelled"):
+        dataset.assert_public_canonical_coverage(matches, manifest)
+
+
+def test_public_coverage_guard_rejects_structurally_complete_but_unpinned_cache():
+    matches, manifest = _public_coverage_fixture()
+
+    with pytest.raises(RuntimeError, match="incomplete, mislabelled"):
+        dataset.assert_public_canonical_coverage(matches, manifest)

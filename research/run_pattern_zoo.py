@@ -15,6 +15,7 @@ from research.dataset import (
     LATEST_COMPLETE_SEASON,
     MAX_SEASON,
     MIN_SEASON,
+    assert_public_canonical_coverage,
     load_canonical_matches,
 )
 from research.pattern_zoo import (
@@ -115,10 +116,41 @@ def _guard_against_regression(path: Path, payload: dict) -> None:
     next_dataset = payload["dataset"]
     if next_dataset["completeThroughSeason"] < previous_dataset["completeThroughSeason"]:
         raise RuntimeError("refusing to regress the Strategy Zoo complete-season cutoff")
-    if (
+    shrinking = (
         next_dataset["completeThroughSeason"] >= previous_dataset["completeThroughSeason"]
         and next_dataset["evaluatedMatches"] < previous_dataset["evaluatedMatches"]
-    ):
+    )
+    if not shrinking:
+        return
+
+    # The source-file fingerprint can stay unchanged when a parser correction
+    # starts rejecting rows whose explicit Div value contradicts the league in
+    # the filename.  Permit only that exact, fully accounted correction.  A
+    # stale/partial cache still fails because it either changes the dataset
+    # fingerprint or cannot explain every missing row as a newly quarantined
+    # league mismatch.
+    previous_mismatches = previous_dataset.get("leagueMismatchRows", 0)
+    next_mismatches = next_dataset.get("leagueMismatchRows", 0)
+    correction_rows = next_mismatches - previous_mismatches
+    evaluated_reduction = (
+        previous_dataset["evaluatedMatches"] - next_dataset["evaluatedMatches"]
+    )
+    match_reduction = previous_dataset.get("matches", 0) - next_dataset.get("matches", 0)
+    previous_source_id = previous_dataset.get(
+        "sourceDatasetId",
+        previous_dataset.get("datasetId"),
+    )
+    next_source_id = next_dataset.get(
+        "sourceDatasetId",
+        next_dataset.get("datasetId"),
+    )
+    accounted_parser_correction = (
+        previous_source_id == next_source_id
+        and correction_rows > 0
+        and evaluated_reduction == correction_rows
+        and match_reduction == correction_rows
+    )
+    if not accounted_parser_correction:
         raise RuntimeError("refusing to replace Strategy Zoo with a smaller evaluated dataset")
 
 
@@ -155,6 +187,13 @@ def build_from_canonical_cache(
     if display_through_season != source_end_season:
         raise ValueError("display-through-season must equal source-end-season")
     matches, manifest = load_canonical_matches(start=start_season, end=source_end_season)
+    if start_season == MIN_SEASON and source_end_season == MAX_SEASON:
+        assert_public_canonical_coverage(
+            matches,
+            manifest,
+            start_season=start_season,
+            end_season=source_end_season,
+        )
     if manifest.get("end_season") != source_end_season:
         raise RuntimeError("canonical cache does not contain the requested source-end season")
     observed_seasons = {int(match["season"]) for match in matches}
@@ -218,6 +257,16 @@ def verify_artifact_against_canonical(
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.output.resolve() == DEFAULT_PUBLIC_PATH.resolve() and (
+        args.start_season != MIN_SEASON
+        or args.source_end_season != MAX_SEASON
+        or args.complete_through_season != LATEST_COMPLETE_SEASON
+        or args.display_through_season != MAX_SEASON
+        or args.bootstrap_resamples != ROI_BOOTSTRAP_RESAMPLES
+    ):
+        raise RuntimeError(
+            "refusing to publish Strategy Zoo with non-canonical coverage or settings"
+        )
     payload = build_from_canonical_cache(
         start_season=args.start_season,
         source_end_season=args.source_end_season,

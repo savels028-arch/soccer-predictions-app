@@ -30,10 +30,11 @@ from research.features import extract_1x2_quotes, extract_ou25_quotes
 from research.metrics import max_drawdown
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 DEFAULT_PUBLIC_PATH = Path(__file__).resolve().parents[1] / "data" / "strategy_zoo_public.json"
 DEFAULT_PUBLIC_CHECKSUM_PATH = DEFAULT_PUBLIC_PATH.with_suffix(".sha256")
-# Schema v2 adds audited annual rankings and descriptive season profiles.  The
+# Schema v3 separates the normalized row identity from the immutable raw
+# source identity used by publication regression guards.  The
 # compact canonical payload is ~1.05 MB, still far below Cloudflare KV's value
 # limit; retain a tight regression guard with modest headroom.
 MAX_PUBLIC_BYTES = 1_250_000
@@ -1940,7 +1941,15 @@ def build_strategy_zoo(
         "researchVerdict": "NO_CONFIRMED_BETTING_EDGE",
         "dataset": {
             "datasetId": manifest.get("dataset_id"),
+            "sourceDatasetId": manifest.get(
+                "source_dataset_id",
+                manifest.get("dataset_id"),
+            ),
             "source": manifest.get("source", "data/cache/football_data_csv"),
+            "sourceRows": int(manifest.get("raw_rows", total_matches)),
+            "rejectedSourceRows": int(manifest.get("invalid_rows", 0)),
+            "leagueMismatchRows": int(manifest.get("league_mismatch_rows", 0)),
+            "duplicateSourceRows": int(manifest.get("duplicates", 0)),
             "matches": total_matches,
             "evaluatedMatches": len(prepared),
             "quarantinedMatches": len(source_prepared) - len(prepared),
@@ -2686,7 +2695,12 @@ def validate_strategy_zoo(payload: Any) -> Dict[str, Any]:
     dataset = payload.get("dataset")
     if not isinstance(dataset, Mapping) or set(dataset) != {
         "datasetId",
+        "sourceDatasetId",
         "source",
+        "sourceRows",
+        "rejectedSourceRows",
+        "leagueMismatchRows",
+        "duplicateSourceRows",
         "matches",
         "evaluatedMatches",
         "quarantinedMatches",
@@ -2699,6 +2713,8 @@ def validate_strategy_zoo(payload: Any) -> Dict[str, Any]:
         raise StrategyZooValidationError("dataset has an unsupported schema")
     if not isinstance(dataset.get("datasetId"), str) or not dataset["datasetId"]:
         raise StrategyZooValidationError("datasetId must be a non-empty string")
+    if not isinstance(dataset.get("sourceDatasetId"), str) or not dataset["sourceDatasetId"]:
+        raise StrategyZooValidationError("sourceDatasetId must be a non-empty string")
     if dataset.get("source") != "data/cache/football_data_csv":
         raise StrategyZooValidationError("dataset source is not canonical")
     if dataset.get("completeThroughSeason") != complete_through_season:
@@ -2706,11 +2722,28 @@ def validate_strategy_zoo(payload: Any) -> Dict[str, Any]:
     match_count = dataset.get("matches")
     evaluated_matches = dataset.get("evaluatedMatches")
     quarantined_matches = dataset.get("quarantinedMatches")
+    source_rows = dataset.get("sourceRows")
+    rejected_source_rows = dataset.get("rejectedSourceRows")
+    league_mismatch_rows = dataset.get("leagueMismatchRows")
+    duplicate_source_rows = dataset.get("duplicateSourceRows")
     if any(
         isinstance(value, bool) or not isinstance(value, int) or value < 0
-        for value in (match_count, evaluated_matches, quarantined_matches)
+        for value in (
+            match_count,
+            evaluated_matches,
+            quarantined_matches,
+            source_rows,
+            rejected_source_rows,
+            league_mismatch_rows,
+            duplicate_source_rows,
+        )
     ) or evaluated_matches + quarantined_matches != match_count:
         raise StrategyZooValidationError("dataset match counts are inconsistent")
+    if (
+        source_rows != match_count + rejected_source_rows + duplicate_source_rows
+        or league_mismatch_rows > rejected_source_rows
+    ):
+        raise StrategyZooValidationError("dataset source-row accounting is inconsistent")
     if not match_count or not evaluated_matches:
         raise StrategyZooValidationError("dataset cannot be empty")
     try:

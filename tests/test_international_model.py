@@ -25,6 +25,17 @@ from src.predictions.international_model import (
 )
 
 
+def test_international_source_snapshot_is_pinned_through_2026_07_14():
+    assert PINNED_SOURCE_COMMIT == "23449460b67a975bcf84d1042472c4f8da507f9c"
+    assert (
+        PINNED_SOURCE_SHA256
+        == "126d983c1e0f6849f1d75222da93aa0e8559ce3fb32ab17da02c526c4b69288e"
+    )
+    assert PINNED_SOURCE_URL.endswith(
+        "/23449460b67a975bcf84d1042472c4f8da507f9c/results.csv"
+    )
+
+
 def test_espn_and_current_world_cup_team_aliases_normalize_to_dataset_keys():
     assert normalize_team_name("USA") == "united states"
     assert normalize_team_name("U.S.A.") == "united states"
@@ -112,7 +123,7 @@ def test_checked_in_bundle_covers_all_2026_world_cup_teams_and_is_forecast_only(
     ]
     assert missing == []
 
-    forecast = model.predict_fixture("Norway", "England", "2026-07-11")
+    forecast = model.predict_fixture("England", "Argentina", "2026-07-15")
     assert forecast["model_version"] == "international_elo_forecast_only_v1"
     assert forecast["decision_scope"] == "forecast_only_no_historical_odds"
 

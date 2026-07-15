@@ -24,14 +24,18 @@ venv/bin/python scripts/build_international_model.py
 Or rebuild from an already downloaded pinned file:
 
 ```bash
-venv/bin/python scripts/build_international_model.py --source /path/to/results.csv
+venv/bin/python scripts/build_international_model.py \
+  --source /path/to/results.csv --as-of 2026-07-14
 ```
 
 The runtime loader verifies the normalized snapshot checksum, artifact checksum,
 source provenance, schema and every holdout gate. Any mismatch, unknown team,
 insufficient history or fixture at/before the training cutoff fails closed.
 
-This is forecast-only. The source has no historical pre-match odds, so these
-results do not establish betting ROI or value. World Cup forecasts retain an
-`ABSTAIN` decision status and cannot enter coupons or P&L until a separate,
-odds-aware betting strategy passes the existing promotion gates.
+This bundle is forecast-only. Its source has no historical pre-match odds, so
+these results do not establish betting ROI or value. The public International
+Atlas separately parses the checksum-pinned Football-Data World Cup workbook
+for historical 90-minute 1X2 hindsight; it is not model-training input and is
+not a promoted edge. World Cup forecasts retain an `ABSTAIN` decision status
+and cannot enter coupons or P&L until an odds-aware strategy passes the
+existing promotion gates.

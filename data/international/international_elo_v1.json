@@ -1,8 +1,8 @@
 {
   "dataset": {
-    "end": "2026-07-10",
-    "matches": 32384,
-    "skipped_unscored_rows": 2,
+    "end": "2026-07-14",
+    "matches": 32387,
+    "skipped_unscored_rows": 0,
     "start": "1990-01-12",
     "teams": 326
   },
@@ -350,7 +350,7 @@
     "anguilla": 90,
     "antigua and barbuda": 199,
     "arameans suryoye": 10,
-    "argentina": 473,
+    "argentina": 474,
     "armenia": 271,
     "artsakh": 11,
     "aruba": 95,
@@ -426,7 +426,7 @@
     "el salvador": 408,
     "elba island": 2,
     "ellan vannin": 22,
-    "england": 435,
+    "england": 436,
     "equatorial guinea": 162,
     "eritrea": 71,
     "estonia": 430,
@@ -438,7 +438,7 @@
     "fiji": 178,
     "finland": 396,
     "fr ya": 37,
-    "france": 456,
+    "france": 457,
     "franconia": 3,
     "french guiana": 136,
     "gabon": 313,
@@ -543,7 +543,7 @@
     "northern cyprus": 31,
     "northern ireland": 305,
     "northern mariana islands": 30,
-    "norway": 399,
+    "norway": 400,
     "occitania": 33,
     "oman": 476,
     "orkney": 28,
@@ -609,13 +609,13 @@
     "south korea": 557,
     "south ossetia": 17,
     "south sudan": 78,
-    "spain": 446,
+    "spain": 447,
     "sri lanka": 208,
     "sudan": 342,
     "suriname": 189,
     "surrey": 1,
     "sweden": 464,
-    "switzerland": 386,
+    "switzerland": 387,
     "syria": 371,
     "szekely land": 27,
     "tahiti": 144,
@@ -664,7 +664,7 @@
     "zimbabwe": 365
   },
   "model_version": "international_elo_forecast_only_v1",
-  "normalized_snapshot_sha256": "2ab759f217040100e044d9123b0932e5f437c15fd9d55f0debc9726bdf54314e",
+  "normalized_snapshot_sha256": "a1046082e3d4eef99ea6b1561f4305f337c0c691d11d2355fdf32c84d18b144d",
   "parameters": {
     "draw_base": 0.3,
     "draw_decay": 0.9,
@@ -688,7 +688,7 @@
     "anguilla": 1110.08108015,
     "antigua and barbuda": 1258.92936838,
     "arameans suryoye": 1524.54459761,
-    "argentina": 2033.51299312,
+    "argentina": 2043.05877612,
     "armenia": 1391.37521819,
     "artsakh": 1517.89506086,
     "aruba": 1293.01207489,
@@ -764,7 +764,7 @@
     "el salvador": 1501.52965422,
     "elba island": 1508.20016228,
     "ellan vannin": 1538.57735084,
-    "england": 1939.17781699,
+    "england": 1953.12925181,
     "equatorial guinea": 1466.28876565,
     "eritrea": 1298.48432758,
     "estonia": 1373.33447025,
@@ -776,7 +776,7 @@
     "fiji": 1497.07010389,
     "finland": 1519.95420523,
     "fr ya": 1350.05962116,
-    "france": 2006.87621848,
+    "france": 1988.39304308,
     "franconia": 1503.81089961,
     "french guiana": 1453.21493666,
     "gabon": 1526.63396014,
@@ -881,7 +881,7 @@
     "northern cyprus": 1599.35514038,
     "northern ireland": 1527.30011959,
     "northern mariana islands": 1263.95051208,
-    "norway": 1830.71184425,
+    "norway": 1816.76040943,
     "occitania": 1577.34134763,
     "oman": 1583.47443383,
     "orkney": 1442.43145868,
@@ -947,13 +947,13 @@
     "south korea": 1768.41130321,
     "south ossetia": 1485.70995346,
     "south sudan": 1317.23526409,
-    "spain": 2033.27685642,
+    "spain": 2051.76003182,
     "sri lanka": 1171.44953291,
     "sudan": 1484.24133416,
     "suriname": 1554.49657709,
     "surrey": 1508.39370919,
     "sweden": 1678.58339951,
-    "switzerland": 1831.97864084,
+    "switzerland": 1822.43285785,
     "syria": 1585.85641572,
     "szekely land": 1474.53518804,
     "tahiti": 1522.53534817,
@@ -1002,9 +1002,9 @@
     "zimbabwe": 1464.17504371
   },
   "schema": "aibets.international_elo.v1",
-  "source_sha256": "096184efc2d705b2acd6f5aebec3887a42019f24e2f8c11f60b76fa4b38a6a7c",
+  "source_sha256": "126d983c1e0f6849f1d75222da93aa0e8559ce3fb32ab17da02c526c4b69288e",
   "status": "VALIDATED_FORECAST_ONLY",
-  "training_cutoff": "2026-07-10",
+  "training_cutoff": "2026-07-14",
   "validation": {
     "fixed_prior_baseline": {
       "metrics": {
@@ -1175,24 +1175,29 @@
     },
     "world_cup_fixed_prior_baseline": {
       "accuracy": 0.414062,
-      "brier": 0.656663,
+      "brier": 0.646053,
       "calibration_bins": [
         {
           "accuracy": 0.414062,
-          "avg_confidence": 0.478994,
+          "avg_confidence": 0.412214,
           "count": 128,
           "lower": 0.4,
           "upper": 0.5
         }
       ],
-      "log_loss": 1.08068,
+      "log_loss": 1.065771,
       "matches": 128,
       "outcome_counts": {
         "away": 47,
         "draw": 28,
         "home": 53
       },
-      "top_label_ece": 0.064931
+      "top_label_ece": 0.001849
+    },
+    "world_cup_fixed_prior_probabilities": {
+      "away": 0.35877863,
+      "draw": 0.22900763,
+      "home": 0.41221374
     },
     "world_cup_holdout": {
       "accuracy": 0.53125,
